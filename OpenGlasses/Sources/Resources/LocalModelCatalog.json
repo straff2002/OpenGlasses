@@ -93,6 +93,111 @@
       "architecture": "qwen2",
       "trainedContextTokens": 32768,
       "evidence": "fileMetadataOnly"
+    },
+    {
+      "id": "ggml-org/gemma-4-E2B-it-GGUF#gemma-4-E2B-it-Q4_0.gguf",
+      "displayName": "Gemma 4 E2B (GGUF)",
+      "repositoryID": "ggml-org/gemma-4-E2B-it-GGUF",
+      "revision": "2a8538c2e2d4687953a86c422c7c623cfd022880",
+      "quantization": "Q4_0",
+      "capabilities": ["text"],
+      "contextLength": 4096,
+      "estimatedWeightsBytes": 2841481184,
+      "estimatedWorkingBytes": 805306368,
+      "minimumHeadroomBytes": 268435456,
+      "files": [
+        {
+          "relativePath": "gemma-4-E2B-it-Q4_0.gguf",
+          "byteCount": 2841481184,
+          "sha256": "8e30dff3ac4c8434c49a7036fa15564bdbb6044e42bf04550bf1a096ad7e6a52",
+          "role": "weights"
+        }
+      ],
+      "license": {
+        "displayName": "Apache License 2.0",
+        "summary": "Permissive: use, modify and redistribute, keeping the notices and stating changes. Includes a patent grant.",
+        "requiresAcceptance": false,
+        "revision": "2a8538c2e2d4687953a86c422c7c623cfd022880"
+      },
+      "notes": "Gemma 4 E2B on the GGUF runtime, text only. About a 2.8 GB download.",
+      "minimumRAMGB": 8,
+      "architecture": "gemma4",
+      "trainedContextTokens": 131072,
+      "evidence": "fileMetadataOnly",
+      "sampling": {
+        "temperature": 1.0,
+        "topP": 0.95,
+        "topK": 64,
+        "source": "Gemma 4 E2B/E4B model cards, Best Practices: Sampling Parameters (temperature 1.0, top-p 0.95, top-k 64), read 2026-11-22"
+      }
+    },
+    {
+      "id": "ggml-org/gemma-4-E4B-it-GGUF#gemma-4-E4B-it-Q4_0.gguf",
+      "displayName": "Gemma 4 E4B (GGUF)",
+      "repositoryID": "ggml-org/gemma-4-E4B-it-GGUF",
+      "revision": "8903cb408c7df39cde2ed15fac397e6d7be92951",
+      "quantization": "Q4_0",
+      "capabilities": ["text"],
+      "contextLength": 4096,
+      "estimatedWeightsBytes": 4590807392,
+      "estimatedWorkingBytes": 805306368,
+      "minimumHeadroomBytes": 268435456,
+      "files": [
+        {
+          "relativePath": "gemma-4-E4B-it-Q4_0.gguf",
+          "byteCount": 4590807392,
+          "sha256": "a555b900214b477d8880e7832e0b8925e139b0159640036b09fe472b6f2097f2",
+          "role": "weights"
+        }
+      ],
+      "license": {
+        "displayName": "Apache License 2.0",
+        "summary": "Permissive: use, modify and redistribute, keeping the notices and stating changes. Includes a patent grant.",
+        "requiresAcceptance": false,
+        "revision": "8903cb408c7df39cde2ed15fac397e6d7be92951"
+      },
+      "notes": "Bigger Gemma 4 on the GGUF runtime, text only. About a 4.6 GB download; needs a high-memory device (12 GB).",
+      "minimumRAMGB": 12,
+      "architecture": "gemma4",
+      "trainedContextTokens": 131072,
+      "evidence": "fileMetadataOnly",
+      "sampling": {
+        "temperature": 1.0,
+        "topP": 0.95,
+        "topK": 64,
+        "source": "Gemma 4 E2B/E4B model cards, Best Practices: Sampling Parameters (temperature 1.0, top-p 0.95, top-k 64), read 2026-11-22"
+      }
+    },
+    {
+      "id": "ggml-org/Qwen3.5-4B-GGUF#Qwen3.5-4B-Q4_K_M.gguf",
+      "displayName": "Qwen 3.5 4B (GGUF)",
+      "repositoryID": "ggml-org/Qwen3.5-4B-GGUF",
+      "revision": "8d43d974efc48399cb58957ad49c8b26bf5a109c",
+      "quantization": "Q4_K_M",
+      "capabilities": ["text"],
+      "contextLength": 4096,
+      "estimatedWeightsBytes": 3032091584,
+      "estimatedWorkingBytes": 805306368,
+      "minimumHeadroomBytes": 268435456,
+      "files": [
+        {
+          "relativePath": "Qwen3.5-4B-Q4_K_M.gguf",
+          "byteCount": 3032091584,
+          "sha256": "217002fa8008ef4fc6d548353a3aebef055a96e6ff8e0e2c0953ef8254a89c14",
+          "role": "weights"
+        }
+      ],
+      "license": {
+        "displayName": "Apache License 2.0",
+        "summary": "Permissive: use, modify and redistribute, keeping the notices and stating changes. Includes a patent grant.",
+        "requiresAcceptance": false,
+        "revision": "8d43d974efc48399cb58957ad49c8b26bf5a109c"
+      },
+      "notes": "Qwen 3.5 4B on the GGUF runtime, text only. About a 3 GB download.",
+      "minimumRAMGB": 8,
+      "architecture": "qwen35",
+      "trainedContextTokens": 262144,
+      "evidence": "fileMetadataOnly"
     }
   ]
 }

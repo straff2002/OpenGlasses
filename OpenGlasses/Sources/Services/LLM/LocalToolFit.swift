@@ -90,3 +90,33 @@ enum LocalToolFit {
         return Set(report.keptNames).intersection(offered)
     }
 }
+
+extension LocalToolFit {
+
+    /// Fit a tool turn's definitions to `budget`: standard (when it leaves `historyReserve` for a
+    /// turn with history), then compact, then dropping from the lowest-priority end, then none.
+    /// `count(kept, detail)` is the prompt's real tokens with no history. A turn whose template
+    /// renders no tools (no format was inferred: the Hermes instruction stands in) is not fitted,
+    /// since its definitions are not in the prompt; it keeps every tool. Logged as counts. Both
+    /// runtimes run this: MLX in `LocalLLMService.generateTurn`, GGUF in its backend (Plan MQ P2).
+    static func fit(_ toolTurn: LocalToolTurn, rendersTools: Bool, budget: Int, window: Int,
+                    count: (_ kept: Int, _ detail: Detail) throws -> Int) rethrows
+        -> (turn: LocalToolTurn, report: Report) {
+        let names = toolTurn.toolNames
+        guard rendersTools, !toolTurn.tools.isEmpty else {
+            return (toolTurn, Report(offered: names.count, keptNames: names, compact: false, contextWindow: window))
+        }
+        let choice = try choose(offered: toolTurn.tools.count, budget: budget,
+                                reserve: toolTurn.history.isEmpty ? 0 : historyReserve,
+                                tokenCount: count)
+        let fitted = toolTurn.fitted(kept: choice.kept, detail: choice.detail, history: toolTurn.history)
+        let compact = choice.kept > 0 && choice.detail == .compact && !toolTurn.compactTools.isEmpty
+        if choice.kept < toolTurn.tools.count || compact {
+            PrivacyLog.localModel(.toolsFitted, count: choice.kept, total: toolTurn.tools.count,
+                                  tokens: choice.tokens,
+                                  detail: PrivacyToken(choice.kept == 0 ? "none" : choice.detail.rawValue))
+        }
+        return (fitted, Report(offered: names.count, keptNames: Array(names.prefix(choice.kept)),
+                               compact: compact, contextWindow: window))
+    }
+}

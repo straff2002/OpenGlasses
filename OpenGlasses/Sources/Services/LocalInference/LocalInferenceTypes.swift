@@ -484,8 +484,9 @@ struct LocalGenerationRequest: @unchecked Sendable {
     let stopSequences: [String]
     let previewSink: ((String) -> Void)?
     /// Plan MQ P1: a native tool turn — the call-and-result transcript in template roles and the
-    /// tools for the model's own chat template. Nil on every other turn; a backend that has no tool
-    /// rendering (GGUF until P2) generates from `messages` as before.
+    /// tools for the model's own chat template. Nil on every other turn. Both runtimes render it
+    /// (GGUF through llama.cpp's `common/chat` since P2); a GGUF model whose templates `common/chat`
+    /// cannot read generates from `messages` with the Hermes instruction instead.
     let toolTurn: LocalToolTurn?
 
     init(messages: [LocalChatMessage],
@@ -546,6 +547,9 @@ enum LocalGenerationEvent: Sendable {
     /// What the runtime sent of a native tool turn's tools (`LocalToolFit`), so the dispatcher
     /// refuses a call to a tool the fit dropped. Only on a tool turn.
     case toolFit(LocalToolFit.Report)
+    /// The runtime's own counts and timings for the generation (Plan MQ P2): what the qualification
+    /// record reads time to first token and decode rate from, on either runtime.
+    case stats(LocalGenerationStats)
 }
 
 /// A native tool turn for the runtime to render (Plan MQ P1).

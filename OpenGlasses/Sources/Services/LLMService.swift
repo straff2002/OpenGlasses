@@ -6187,6 +6187,12 @@ class LLMService: ObservableObject {
             history = HandoffTranscriptBridge.outboundWindow(
                 history: recentTupleHistory(conversationHistory.count, stripToolMarkup: true),
                 budgetTokens: budget)
+        } else if nativeTools && isGGUF {
+            // Plan MQ H3: a GGUF native turn hands the runtime the conversation's tail and lets it
+            // trim in batches (`LocalModelBudget.historyFittingBudgetInBatches`), so the prompt's
+            // start stays where its KV cache already holds it. A fixed six-message window would
+            // move the start every turn.
+            history = recentTupleHistory(Self.ggufNativeHistoryMessages, stripToolMarkup: true)
         } else {
             history = recentTupleHistory(6, stripToolMarkup: true)
         }
@@ -6238,14 +6244,16 @@ class LLMService: ObservableObject {
                 var assembled = ""
                 var calls: [LocalToolCallEvent] = []
                 var fit: LocalToolFit.Report?
+                var stats: LocalGenerationStats?
                 for try await event in stream {
                     switch event {
                     case .text(let chunk): assembled += chunk
                     case .toolCall(let call): calls.append(call)
                     case .toolFit(let report): fit = report
+                    case .stats(let report): stats = report
                     }
                 }
-                return LocalToolLoop.Generation(text: assembled, toolCalls: calls, toolFit: fit)
+                return LocalToolLoop.Generation(text: assembled, toolCalls: calls, stats: stats, toolFit: fit)
             }
         } else {
             generateTurn = { message, turnHistory, image, preview, systemOverride, toolTurn in
@@ -6545,6 +6553,10 @@ class LLMService: ObservableObject {
         return validated
     }
 
+    /// Messages of history a GGUF native tool turn hands its runtime to trim (Plan MQ H3): twelve
+    /// exchanges, well past what a 4,096-token prompt holds, so the runtime's batch trim decides.
+    static let ggufNativeHistoryMessages = 24
+
     /// Plan MQ P1: one native tool turn on a downloaded model — `LocalToolLoop` over the turn's
     /// runtime, every call checked against the turn's offer, coerced to its declared types
     /// (`OnDeviceArgumentCoercion`) and dispatched through the router, whose approval and safety
@@ -6590,7 +6602,9 @@ class LLMService: ObservableObject {
                                                          toolSpecs: toolSpecs, compactToolSpecs: compactToolSpecs,
                                                          fallbackInstructions: fallback, contextWindow: contextWindow)
                 // The same transcript flattened, for a runtime that renders no tool turn (the seam
-                // composes its messages from it); the MLX runtime renders `toolTurn` instead.
+                // composes its messages from it); both runtimes render `toolTurn` instead (GGUF
+                // through llama.cpp's `common/chat`, Plan MQ P2), and fall back to this only when
+                // the model's template gives them no tool format.
                 let flat = LocalToolTranscript.flattened(request.messages)
                 let isFirst = firstPass
                 firstPass = false

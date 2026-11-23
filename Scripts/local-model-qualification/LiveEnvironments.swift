@@ -75,6 +75,76 @@ enum LiveEnvironments {
         return environment
     }
 
+    // MARK: - A downloaded GGUF model (Plan MQ P2)
+
+    /// A runtime behind the backend seam — the GGUF backend, `LlamaCppLocalInferenceBackend` — on
+    /// the same cases, each pass sent as `LLMService.sendLocal` sends it through the coordinator: the
+    /// seam's messages composed from the flattened transcript, the tool turn beside them, the model's
+    /// catalog sampling (`LocalModelSampling.configuration`) and its generation reserve. Its calls
+    /// come back as `.toolCall` events from llama.cpp's `common/chat`, its fit as `.toolFit`, and its
+    /// counts and timings as `.stats`, which the record reads as it reads MLX's. `promptModelID`
+    /// names the fixture prompt (Gemma 4 E2B's MLX entry: the same window and the same job tier).
+    static func backend(_ backend: any LocalInferenceBackend, fixture: LocalModelQualificationFixture,
+                        modelID: String, promptModelID: String, cancellationBound: TimeInterval,
+                        transcript: DebugTranscript? = nil) -> LocalToolEval.Environment {
+        let reserve = LocalModelBudget.generationReserve(for: modelID)
+        func run(_ request: LocalGenerationRequest) async throws -> LocalToolLoop.Generation {
+            var text = ""
+            var calls: [LocalToolCallEvent] = []
+            var fit: LocalToolFit.Report?
+            var stats: LocalGenerationStats?
+            for try await event in backend.generateEvents(request) {
+                switch event {
+                case .text(let chunk): text += chunk
+                case .toolCall(let call): calls.append(call)
+                case .toolFit(let report): fit = report
+                case .stats(let report): stats = report
+                }
+            }
+            return LocalToolLoop.Generation(text: text, toolCalls: calls, stats: stats, toolFit: fit)
+        }
+        var environment = LocalToolEval.Environment(
+            generateTurn: { testCase, request, _ in
+                let offered = appOrder(offered: testCase.offered, utterance: testCase.turn)
+                let specs = offered.compactMap { fixture.toolSpec($0) }
+                let compact = offered.compactMap { fixture.toolSpec($0, limits: .compact) }
+                guard let system = fixture.systemPrompt(for: testCase, modelID: promptModelID,
+                                                        dateTimeLine: LLMService.currentDateTimeLine()) else {
+                    throw QualificationFailure.noPromptForModel
+                }
+                let toolTurn = LocalToolTurn.forLoopPass(
+                    history: testCase.loopHistory, request: request, toolSpecs: specs, compactToolSpecs: compact,
+                    fallbackInstructions: LLMService.localToolInstructions(toolNames: offered))
+                let flat = LocalToolTranscript.flattened(request.messages)
+                let generation = try await run(LocalGenerationRequest(
+                    messages: MLXPromptAdapter.compose(systemPrompt: system, history: Array(flat.dropLast()),
+                                                       userMessage: flat.last?.content ?? testCase.turn),
+                    maxOutputTokens: reserve,
+                    sampling: LocalModelSampling.configuration(for: modelID, toolTurn: true),
+                    toolTurn: toolTurn))
+                transcript?.write(caseID: testCase.id, turn: testCase.turn, offered: offered,
+                                  kept: generation.toolFit?.keptNames, expected: testCase.expect.calls.map(\.tool),
+                                  text: generation.text, calls: generation.toolCalls.map { ($0.name, $0.arguments) },
+                                  pass: request.messages.count)
+                return generation
+            },
+            read: { _, request in
+                try await run(LocalGenerationRequest(
+                    messages: MLXPromptAdapter.compose(systemPrompt: request.instructions, history: [],
+                                                       userMessage: request.prompt),
+                    maxOutputTokens: reserve,
+                    sampling: LocalModelSampling.configuration(for: modelID, toolTurn: false)))
+            },
+            schema: { fixture.schemaRoot($0) },
+            referenceModelID: promptModelID,
+            cancellationBound: cancellationBound)
+        environment.groundingText = { testCase in
+            fixture.systemPrompt(for: testCase, modelID: promptModelID, dateTimeLine: "")
+                .map(LLMService.localGroundingText(systemPrompt:)) ?? []
+        }
+        return environment
+    }
+
     /// A case's offered tools in the order `LLMService.sendLocal` offers them: the Field Assist ones
     /// first, by `FieldAssistLocalToolSet.ordered` (the turn's words, then the priority list), then
     /// the rest by `LocalNativeToolPolicy.ordered` (the everyday tools the turn names first). The

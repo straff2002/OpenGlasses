@@ -1,6 +1,6 @@
 # Plan MQ — Local Model Tool Harness and Device Qualification
 
-**Status:** 🚧 P0 built 2026-11-21 (headless core) · P1 built 2026-11-22 behind `Config.localNativeToolCallsEnabled`, off by default, Gemma 4 E2B only (see [P1 as built](#p1-as-built-2026-11-22)) · P3 part 1 built 2026-11-22: per-model sampling, the kill-limit memory budget, the run gate, the grader additions and the device qualification app (see [P3 part 1 as built](#p3-part-1-as-built-2026-11-22)); first phone run 2026-11-22 found every tool turn overflowing (`promptTooLong`, 4,317–4,326 of 3,456): the runtime now fits the definitions (compact, then drop, then none) before trimming history, the native selection's estimate is calibrated on the phone, and a native turn on Gemma 4 E2B gets 6,144 tokens on phones with 8 GB and the memory (see [Found on the phone](#found-on-the-phone-2026-11-22)); phone runs 2026-11-22 to 23 (see [Phone runs](#phone-runs-2026-11-22-to-2026-11-23)): the tool cases went from 6 of 94 to 303 of 326 through the fixes below and `LocalTurnRouter`, which runs error-code, model-number and procedure-step calls before the model; two-step 7–9 of 12, restraint and clean output 100%; P3 part 2 (2026-11-24): the full corpus on main 582/618 with every hard floor clear, and job commands, evidence choices and reading follow-ups routed too: tool cases 317/326 · P2 and the rest of P3 not built · P4 device pass owed · all 8 decisions taken 2026-11-21; owner 2026-11-22: phone results first, the Mac screener is a compile check · mlx-swift-lm moved to `4c21c84` (mlx-swift 0.33.0) in P1
+**Status:** 🚧 P0 built 2026-11-21 (headless core) · P1 built 2026-11-22 behind `Config.localNativeToolCallsEnabled`, off by default, Gemma 4 E2B only (see [P1 as built](#p1-as-built-2026-11-22)) · P3 part 1 built 2026-11-22: per-model sampling, the kill-limit memory budget, the run gate, the grader additions and the device qualification app (see [P3 part 1 as built](#p3-part-1-as-built-2026-11-22)); first phone run 2026-11-22 found every tool turn overflowing (`promptTooLong`, 4,317–4,326 of 3,456): the runtime now fits the definitions (compact, then drop, then none) before trimming history, the native selection's estimate is calibrated on the phone, and a native turn on Gemma 4 E2B gets 6,144 tokens on phones with 8 GB and the memory (see [Found on the phone](#found-on-the-phone-2026-11-22)); phone runs 2026-11-22 to 23 (see [Phone runs](#phone-runs-2026-11-22-to-2026-11-23)): the tool cases went from 6 of 94 to 303 of 326 through the fixes below and `LocalTurnRouter`, which runs error-code, model-number and procedure-step calls before the model; two-step 7–9 of 12, restraint and clean output 100%; P3 part 2 (2026-11-24): the full corpus on main 582/618 with every hard floor clear, and job commands, evidence choices and reading follow-ups routed too: tool cases 317/326 · **P2 built 2026-11-24** behind the same flag (and `Config.ggufModelsEnabled`): GGUF models call tools through llama.cpp's own `common/chat` at the kept v0.3.0 pin (Gemma 4 and Qwen 3.x handlers, lazy call grammars), feeding the same `LocalToolLoop`; the KV cache keeps its shared prefix and GGUF history is trimmed in batches; Gemma 4 E2B, Gemma 4 E4B and Qwen 3.5 4B added as GGUF catalog entries (text only, no badge) and allowlisted; device app `--gguf`; nothing run on a phone (see [P2 as built](#p2-as-built-2026-11-24)) · the rest of P3 not built · P4 device pass owed · all 8 decisions taken 2026-11-21; owner 2026-11-22: phone results first, the Mac screener is a compile check · mlx-swift-lm moved to `4c21c84` (mlx-swift 0.33.0) in P1
 
 Offline Field Assist depends on the downloaded models (MLX and GGUF) when Apple Intelligence is
 missing or can't hold the turn. The research of 2026-11-20
@@ -516,6 +516,114 @@ qualification run scores scripted tool results, so a reply after a refused call 
 the script); the preview stream can show a Gemma or Python-style call line briefly before it is
 classified (the spoken and stored text never carries it).
 
+## P2 as built (2026-11-24)
+
+GGUF models now take their tools natively, through llama.cpp's own `common/chat` (decision 4),
+behind the same flag as MLX (`Config.localNativeToolCallsEnabled`, and `Config.ggufModelsEnabled`
+for GGUF at all). Nothing changes with either flag off.
+
+- **The pin is kept.** v0.3.0 (`c1d0e7a0`, 2026-08-25) already has `common/chat` with what P2
+  needs: a dedicated Gemma 4 handler (`peg-gemma4`: Gemma's `<|tool_call>call:name{…}<tool_call|>`
+  syntax and its `<|"|>` strings, written back as Gemma writes them), the Qwen 3.5 / Qwen3-Coder XML
+  handler (`<function=…><parameter=…>`), an automatic parser for Hermes-style templates (Qwen 3,
+  Qwen 2.5), lazy grammars with their triggers, `tool_choice`, and llama.cpp's own Jinja engine.
+  Newer non-prerelease releases exist (v1.0.0, 2026-11-13, about 50 commits to the chat code,
+  including a Gemma 4 grammar refactor); moving there means a new engine API to adopt and is left
+  to its own change.
+- **What is built, and what is not.** Not upstream's `llama-common` target: it also carries the
+  model downloader, the Hugging Face cache, the argument parser and cpp-httplib. A separate
+  configure, `Vendor/LlamaCpp/chat/CMakeLists.txt`, compiles chat's link closure from the same
+  pinned checkout (worked out from the objects' undefined symbols: chat, its PEG parser, the Jinja
+  engine, JSON (nlohmann, MIT), `common.cpp` and what it pulls in), and leaves out `arg`, `console`,
+  `debug`, `download`, `hf-cache`, `http`, `imatrix-loader`, `llguidance`, `preset` and `subproc` by
+  name. The build script merges it into `libllama.a`, ships its headers under
+  `Headers/llama-common/`, fingerprints its source list in BUILD-INFO's options digest, and now
+  fails the build when the device archive references a socket, resolver, URL-loading or TLS symbol
+  (none does). `common/`'s own logger, which would write template text and model output to stderr,
+  is switched off by the bridge.
+- **Size.** The device slice went from 10,322,800 bytes (v0.3.0 without chat, Xcode 26.6) to
+  15,621,800 (with it, Xcode 26.6); the chat library alone is a 5.3 MB archive. Linked and
+  dead-stripped into a minimal arm64 executable, chat adds 1,522,744 bytes (stripped: 5.53 → 7.05 MB).
+- **Reproducibility.** The bytes were re-recorded because the options changed. A first record on
+  the Mac (Xcode 27.2) could not be reproduced: no GitHub macOS runner has 27.2, so the strict
+  rebuild failed on the toolchain. The committed engine is instead the CI runner's own build
+  (Xcode 26.6, the toolchain `main`'s engine was recorded with), made by a hand-started run of the
+  Engine Reproducibility workflow with its new `record` input, which builds with `--update-sums` and
+  uploads the engine, SHA256SUMS and BUILD-INFO for a person to commit; the ordinary strict run then
+  checks those bytes against the same toolchain. The workflow now also runs when
+  `chat/CMakeLists.txt` changes, and selects the Xcode BUILD-INFO names when the runner has it.
+- **The bridge.** `LlamaCppChat.mm` in the wrapper, behind C functions in `LlamaCppWrapper.h`, JSON
+  text in and out: templates from the model (or from Jinja source, for the tests), a render
+  (OpenAI-style messages, tools, `tool_choice`, thinking, a fixed clock → prompt, format, lazy grammar
+  and triggers, the control tokens the parser needs as text, extra stops, the serialized parser), a
+  parser handle and a parse (full, or partial for the preview). The lazy grammar sits on the sampler
+  beside its chain, applied as llama.cpp's own sampler does: the chain draws, and only a token that
+  would break a started call is redrawn under the grammar. No status carries a message, so no
+  prompt or reply can reach a log through an error. `LlamaToolChat` (Swift, pure) builds the
+  request and reads the parse; a call whose name is empty or whose arguments are not a whole JSON
+  object (a call cut off by the cap) is counted and never run.
+- **How GGUF reaches `LocalToolLoop`.** `LlamaCppLocalInferenceBackend.generateEvents` renders a
+  tool turn through `common/chat`: the system prompt, the earlier turns, this turn's calls and
+  results in `tool` roles, and the tools, fitted by `LocalToolFit.fit` (moved out of
+  `LocalLLMService`, so both runtimes run the same fit) with no history, then the history trimmed
+  into the room left. The completion is read by the family's parser: the reply without its calls as
+  `.text`, each call as `.toolCall`, the fit as `.toolFit`, and the runtime's counts and timings as
+  a new `.stats` event (MLX's backend yields it too). `sendLocal` and `sendLocalNative` are
+  unchanged apart from reading `.stats`: the router, grounding, completion, claim and promise
+  guards, the round cap and the dispatcher's refusal of dropped tools all apply as on MLX. A model
+  whose templates `common/chat` cannot read falls back to the Hermes instruction, as MLX does with
+  no format. Ordinary (non-tool) turns keep the fixed-list template path Plan DZ shipped, except on
+  a model only `common/chat` can render — Gemma 4's template is not on llama.cpp's fixed list, so
+  before P2 a Gemma 4 GGUF could not load at all.
+- **Prefix reuse (H3).** The backend keeps the tokens its KV cache holds and, before each prompt,
+  keeps their longest shared prefix (less one token, for the logits) instead of clearing the cache
+  (`og_llama_context_keep_prefix`). A sliding-window cache that has dropped early cells, or a
+  recurrent or hybrid model's state (Qwen 3.5 is hybrid), cannot be cut back: the cache is then
+  cleared and the prompt read from the start, as llama.cpp's server does. A cancel, an error or an
+  unload forgets the cache. GGUF history is trimmed in batches of a quarter of the room, rounded up
+  to whole exchanges (`LocalModelBudget.historyFittingBudgetInBatches`), so the same exchanges stay
+  dropped until the conversation has grown another batch; the system prompt, the job tier and the
+  turn never go. A GGUF native turn hands the runtime the last 24 messages for that trim, not the
+  six-message window that moves the start every turn. MLX keeps its one-at-a-time trim (its cache
+  is not reused). Time to first token is in every generation's `.stats` (render, tokenize and the
+  prefill the cache did not save), which the device app records as it records MLX's.
+- **The targets.** `LocalNativeToolPolicy.ggufAllowlist` holds Gemma 4 E2B, Gemma 4 E4B and
+  Qwen 3.5 4B as GGUF, under qualification like the MLX entry (no badge, decision 6). All three are
+  new catalog entries from llama.cpp's own GGUF repositories, at pinned revisions with their files'
+  sizes and SHA-256 digests, text only, `fileMetadataOnly`, Apache 2.0 (the base models' licence;
+  decision 7): Gemma 4 E2B and E4B at Q4_0 (the only 4-bit quantisation published there), Qwen 3.5
+  4B at Q4_K_M. The Gemma entries carry the same sampling as the MLX entries. Qwen 3.5's card asks
+  for a presence penalty the GGUF sampler does not take yet, so its entry carries none.
+- **The device app.** `--gguf <catalog id>` runs a GGUF entry on the production GGUF backend
+  through the same loop and graders (`LiveEnvironments.backend`, over any backend behind the seam),
+  with Gemma 4 E2B's fixture prompt, the record naming llama.cpp's revision and the mapped backing.
+  It has no GGUF downloader: the weights file is copied into its `Documents/gguf/` (README). Not
+  yet for GGUF: the cancel-latency probes, and a run with the phone locked.
+
+- **Found while building: C++ exceptions in the app image.** Inside the app (and the test host,
+  which is the app), `catch (const std::exception &)` does not catch a libc++ `std::runtime_error`:
+  the MediaPipe graph archive's `regex_split.o` and `wordpiece_tokenizer.o` define their own
+  `std::exception` typeinfo (device and simulator archives alike), and every catch clause in the
+  image binds to that copy, while libc++'s exceptions derive from libc++abi's. The same code on the
+  Mac catches them. `common/chat` relies on such catches when it probes a template for its automatic
+  parser, so a template without a dedicated handler (Qwen 3, Qwen 2.5, SmolLM2) fails to render
+  there: the backend then gives the turn the Hermes instruction over the fixed-list path, and logs
+  `gguf-exceptions-unreliable` once per load. Gemma 4 and Qwen 3.5 have their own handlers and are
+  unaffected; the two Qwen 3 bridge tests skip while the probe
+  (`og_llama_runtime_catches_standard_exceptions`) says so. The same hazard sits under any C++ in
+  the image that catches `std::exception` from libc++ — llama.cpp's own model loader among it — so
+  it is an owner decision to fix at the MediaPipe archive rather than here.
+
+Verified headless on main at `727ce7e56`: 604 tests across the GGUF, local-model, loop, eval,
+privacy and guard suites, 0 failures, 2 skipped (the Qwen 3 bridge tests above), slowest 23 s; the
+device app's compile check passes; `Scripts/check-privacy-logging.sh` passes.
+
+**Not checked on a phone:** any of it. Owed: that each target loads at v0.3.0 (the GGUF files were
+re-uploaded 2026-11-12, after the pin), Gemma 4 E2B GGUF against its MLX run on the same corpus,
+time to first token on turn 1 and turn 8 of a long job with the cache kept, and the grammar's cost
+per token inside a call. The GGUF runtime still offloads every layer to Metal by default, so the
+locked-phone case the plan names needs a CPU-only load before it can be measured.
+
 ## What the local path does today (read from the code, 2026-11-20)
 
 1. **The prompt lists tool names, not schemas.** `LLMService.localToolInstructions` appends
@@ -780,9 +888,11 @@ licences are confirmed.
   What the vault's core files become in that tier, and what `table_lookup` and a manual question
   hand a small model, is [Plan MV](MV-manuals-a-small-model-can-use.md)'s: typed facts the app
   scopes to the unit and speaks itself, and cards of at most 200 tokens for the reader.
-- **P2 — GGUF tool parsing**, behind the same flag: `common/chat` in the framework build (or the
-  alternative from decision 4), with the engine-reproducibility check updated, and the GGUF cache
-  keeping its shared prefix with batch trimming (H3).
+- **P2 — GGUF tool parsing** (✅ built 2026-11-24, [as built](#p2-as-built-2026-11-24)), behind
+  the same flag: `common/chat` in the framework build (or the alternative from decision 4), with
+  the engine-reproducibility check updated, and the GGUF cache keeping its shared prefix with batch
+  trimming (H3). Owed on a phone: each target loading at the pin, Gemma 4 E2B GGUF against its MLX
+  run, and time to first token with the cache kept.
 - **P3 — qualification:** part 1 (🚧 built 2026-11-22, [as built](#p3-part-1-as-built-2026-11-22)):
   per-model sampling in the catalog (H1), the kill-limit memory budget (H2), the device app with
   its run gate (H4), the grader additions, Apple's baseline, and the test that fails if a catalog

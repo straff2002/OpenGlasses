@@ -881,32 +881,12 @@ final class LocalLLMService: ObservableObject {
                              toolFit: fittedToolTurn?.report)
     }
 
-    /// Fit a tool turn's definitions to `budget` (Plan MQ P3, `LocalToolFit`): standard (when it
-    /// leaves `LocalToolFit.historyReserve` for a turn with history), then compact, then dropping
-    /// from the lowest-priority end, then none. `count(kept, detail)` is the
-    /// prompt's real tokens with no history. A turn whose template renders no tools (no format was
-    /// inferred: the Hermes instruction stands in) is not fitted, since its definitions are not in
-    /// the prompt; it keeps every tool. Logged as counts.
+    /// Fit a tool turn's definitions to `budget` (Plan MQ P3): `LocalToolFit.fit`, which the GGUF
+    /// backend runs too (Plan MQ P2), so both runtimes cut the same tools the same way.
     nonisolated static func fitTools(_ toolTurn: LocalToolTurn, rendersTools: Bool, budget: Int, window: Int,
                          count: (_ kept: Int, _ detail: LocalToolFit.Detail) throws -> Int) rethrows
         -> (turn: LocalToolTurn, report: LocalToolFit.Report) {
-        let names = toolTurn.toolNames
-        guard rendersTools, !toolTurn.tools.isEmpty else {
-            return (toolTurn, LocalToolFit.Report(offered: names.count, keptNames: names, compact: false,
-                                                  contextWindow: window))
-        }
-        let choice = try LocalToolFit.choose(offered: toolTurn.tools.count, budget: budget,
-                                             reserve: toolTurn.history.isEmpty ? 0 : LocalToolFit.historyReserve,
-                                             tokenCount: count)
-        let fitted = toolTurn.fitted(kept: choice.kept, detail: choice.detail, history: toolTurn.history)
-        let compact = choice.kept > 0 && choice.detail == .compact && !toolTurn.compactTools.isEmpty
-        if choice.kept < toolTurn.tools.count || compact {
-            PrivacyLog.localModel(.toolsFitted, count: choice.kept, total: toolTurn.tools.count,
-                                  tokens: choice.tokens,
-                                  detail: PrivacyToken(choice.kept == 0 ? "none" : choice.detail.rawValue))
-        }
-        return (fitted, LocalToolFit.Report(offered: names.count, keptNames: Array(names.prefix(choice.kept)),
-                                            compact: compact, contextWindow: window))
+        try LocalToolFit.fit(toolTurn, rendersTools: rendersTools, budget: budget, window: window, count: count)
     }
 
     /// Keep a turn's reasoning for the prompt inspector, and log that there was some.

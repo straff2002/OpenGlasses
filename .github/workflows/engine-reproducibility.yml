@@ -15,11 +15,17 @@ on:
   schedule:
     - cron: '0 4 * * 1'          # Mondays, 04:00 UTC
   workflow_dispatch:
+    inputs:
+      record:
+        description: 'Record this runner''s build (--update-sums) and upload it, instead of comparing'
+        type: boolean
+        default: false
   pull_request:
     paths:
       - 'Vendor/LlamaCpp/REVISION'
       - 'Vendor/LlamaCpp/SHA256SUMS'
       - 'Vendor/LlamaCpp/BUILD-INFO'
+      - 'Vendor/LlamaCpp/chat/CMakeLists.txt'
       - 'Scripts/build-llamacpp-framework.sh'
       - 'Scripts/fetch-llamacpp-framework.sh'
       - '.github/workflows/engine-reproducibility.yml'
@@ -43,6 +49,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # The bytes depend on the toolchain, and BUILD-INFO names the one that produced them. Use it
+      # when the runner has it; when it does not, say so — the --strict rebuild below still fails
+      # on the difference, which is the decision this workflow exists to force.
+      - name: Use the Xcode the record names
+        run: |
+          want="$(sed -n 's/^xcodebuild=Xcode \([0-9.]*\) .*/\1/p' Vendor/LlamaCpp/BUILD-INFO)"
+          app="/Applications/Xcode_${want}.app"
+          if [ -n "$want" ] && [ -d "$app" ]; then
+            sudo xcode-select -s "$app"
+          else
+            echo "::warning::Xcode ${want:-?} (named in BUILD-INFO) is not on this runner"
+            ls -d /Applications/Xcode*.app || true
+          fi
+
       - name: Show toolchain
         run: |
           xcodebuild -version
@@ -50,9 +70,31 @@ jobs:
           echo "recorded:"; cat Vendor/LlamaCpp/BUILD-INFO
 
       - name: Rebuild the pinned engine and require identical bytes
+        if: ${{ !inputs.record }}
         run: ./Scripts/build-llamacpp-framework.sh --clean --strict
 
       # --strict already fails on any difference; this catches the other half — a build that
       # somehow edited what is committed instead of comparing itself to it.
       - name: The rebuild changed nothing in the tree
+        if: ${{ !inputs.record }}
         run: git diff --exit-code Vendor/LlamaCpp
+
+      # The deliberate re-record: a run started by hand with `record` builds on this runner's
+      # toolchain, records its digests and uploads engine, SHA256SUMS and BUILD-INFO for a person
+      # to commit. The next ordinary run then checks those bytes against the same toolchain. It
+      # writes nothing to the repository itself.
+      - name: Record this runner's build
+        if: ${{ inputs.record }}
+        run: ./Scripts/build-llamacpp-framework.sh --clean --update-sums
+
+      - name: Upload the recorded engine
+        if: ${{ inputs.record }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: llama-engine-record
+          path: |
+            Vendor/LlamaCpp/Frameworks/llama.xcframework
+            Vendor/LlamaCpp/SHA256SUMS
+            Vendor/LlamaCpp/BUILD-INFO
+          if-no-files-found: error
+          retention-days: 7

@@ -387,6 +387,44 @@ enum LocalModelBudget {
             kept = Array(kept.dropFirst())   // drop the oldest exchange and re-measure
         }
     }
+
+    /// Batches per history room: a trim drops about a quarter of the room at a time (Plan MQ H3).
+    static let historyTrimBatchesPerRoom = 4
+
+    /// Trim history the way a runtime that reuses its KV cache wants it trimmed (Plan MQ H3, the
+    /// GGUF backend): oldest first, but in **batches** of about a quarter of the room the history
+    /// has (`budget` less the prompt with no history), rounded up, rather than one message at a
+    /// time. Dropping the fewest messages moves the start of the history every turn once a
+    /// conversation is full, so the cache's prefix ends at the system prompt each time; dropping a
+    /// batch leaves slack, and the same messages stay dropped — the prompt's start stays put —
+    /// until the conversation has grown by another batch.
+    ///
+    /// The kept history starts at a message `startsExchange` accepts (a user turn), so a call's
+    /// result is never kept without the call. The system prompt, the job tier and the turn being
+    /// answered are outside `history` and never go. Pure: `tokenCount` renders a candidate history
+    /// with everything else. Nil when even no history does not fit.
+    static func historyFittingBudgetInBatches<Message>(
+        history: [Message],
+        budget: Int,
+        startsExchange: (Message) -> Bool,
+        tokenCount: ([Message]) throws -> Int
+    ) rethrows -> [Message]? {
+        let full = try tokenCount(history)
+        if full <= budget { return history }
+        let bare = try tokenCount([])
+        guard bare <= budget else { return nil }
+        let room = budget - bare
+        let batch = max(1, (room + historyTrimBatchesPerRoom - 1) / historyTrimBatchesPerRoom)
+        let overflow = full - budget
+        let target = ((overflow + batch - 1) / batch) * batch
+        // The first exchange boundary that sheds at least `target` tokens.
+        for start in history.indices.dropFirst() where startsExchange(history[start]) {
+            let kept = Array(history[start...])
+            let count = try tokenCount(kept)
+            if full - count >= target, count <= budget { return kept }
+        }
+        return []
+    }
 }
 
 // MARK: - A larger window for native tool turns (Plan MQ P3)
