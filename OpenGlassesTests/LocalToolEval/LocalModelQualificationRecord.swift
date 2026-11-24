@@ -246,6 +246,7 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         /// Arguments the loop set, replaced or took off the model's calls from what the technician
         /// said (Plan MQ P3; a count only); nil in older records.
         var argumentsCompleted: Int?
+        var callsScreened: Int?
         /// `QualificationRunGate.Thermal`'s raw value when the case started; nil in older records.
         var thermalAtStart: Int?
         var seconds: Double
@@ -339,7 +340,7 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             toolsOffered: m.toolsOffered, toolsKept: m.toolsKept, fitDroppedGenerations: m.fitDroppedGenerations,
             compactGenerations: m.compactGenerations, expectedToolDropped: m.expectedToolDropped,
             contextWindow: m.contextWindow, routedCalls: m.routedCalls, argumentsDropped: m.argumentsDropped,
-            argumentsCompleted: m.argumentsCompleted,
+            argumentsCompleted: m.argumentsCompleted, callsScreened: m.callsScreened,
             thermalAtStart: thermalAtStart?.rawValue, seconds: seconds)
         entry.promptSources = m.promptSources
         entry.reusedPromptTokens = m.reusedPromptTokens
@@ -378,6 +379,7 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             measurements.routedCalls = entry.routedCalls ?? 0
             measurements.argumentsDropped = entry.argumentsDropped ?? 0
             measurements.argumentsCompleted = entry.argumentsCompleted ?? 0
+            measurements.callsScreened = entry.callsScreened ?? 0
             // The id is not kept; the hash stands in for it, which is all the report groups by.
             return LocalToolEval.Run(caseID: entry.caseHash, category: category, group: group, grades: grades,
                                      measurements: measurements)
