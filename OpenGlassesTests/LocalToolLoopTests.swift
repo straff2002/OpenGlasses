@@ -148,6 +148,38 @@ final class LocalToolLoopTests: XCTestCase {
 
     // MARK: - Repeats
 
+    // MARK: - A reading with no number
+
+    func testAReadingWhoseValueHoldsNoNumberIsNotRun() async throws {
+        let model = ScriptedModel([
+            call("reading", #"{"action": "record_reading", "value": "outside"}"#),
+            "I can't send texts from here.",
+        ])
+        let tools = ToolLog()
+        let outcome = try await run(model, tools, message: "Text the customer that I'm outside")
+        XCTAssertTrue(tools.calls.isEmpty, "nothing measured, nothing recorded")
+        XCTAssertTrue(outcome.executed.isEmpty)
+        XCTAssertEqual(outcome.callsNotRun, 1)
+        XCTAssertEqual(outcome.text, "I can't send texts from here.")
+        XCTAssertFalse(model.requests[1].toolsOffered, "answered without tools")
+        XCTAssertFalse(model.requests[1].messages.contains { $0.toolName == "reading" }, "the call is not in the transcript")
+    }
+
+    func testAReadingWithANumberOrANumberWordRuns() {
+        for value in ["118", "0.6", "seven", "twelve point five", "about 140"] {
+            let call = LocalToolLoop.Call(id: "call_1", name: "reading", arguments: ["action": "record_reading", "value": value])
+            XCTAssertFalse(LocalToolLoop.isReadingWithoutNumber(call), value)
+        }
+        for value in ["outside", "not applicable", "", "N/A"] {
+            let call = LocalToolLoop.Call(id: "call_1", name: "reading", arguments: ["action": "record_reading", "value": value])
+            XCTAssertTrue(LocalToolLoop.isReadingWithoutNumber(call), value)
+        }
+        XCTAssertFalse(LocalToolLoop.isReadingWithoutNumber(
+            LocalToolLoop.Call(id: "call_1", name: "reading", arguments: ["action": "record_reading", "value": NSNumber(value: 7)])))
+        XCTAssertFalse(LocalToolLoop.isReadingWithoutNumber(
+            LocalToolLoop.Call(id: "call_1", name: "evidence", arguments: ["value": "outside"])), "only reading")
+    }
+
     func testARepeatWithReorderedArgumentsEndsTheLoop() async throws {
         let model = ScriptedModel([
             call("reading", #"{"action": "record_reading", "value": "118"}"#),

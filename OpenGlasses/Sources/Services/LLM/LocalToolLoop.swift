@@ -506,6 +506,11 @@ enum LocalToolLoop {
                 // Past the cap: only reachable when the cap is 0, a model calls after tools were
                 // withheld, or one generation asked for more calls than the cap has left.
                 guard executed.count < cap else { notRun += 1; continue }
+                // A reading whose value holds no number records nothing the technician measured
+                // ("outside", "not applicable", from "Text the customer that I'm outside" and "Is it
+                // going to rain later?" on the phone): not run, as a repeat is not, so the turn is
+                // answered without it.
+                guard !LocalToolLoop.isReadingWithoutNumber(call) else { notRun += 1; continue }
                 guard seen.insert(call.signature).inserted else { notRun += 1; continue }
 
                 if call.fromReasoning { fromReasoning += 1 }
@@ -585,6 +590,26 @@ enum LocalToolLoop {
         guard let first = rest.first else { return "" }
         return first.uppercased() + rest.dropFirst()
     }
+
+    /// A `reading` record or correction whose `value` holds no number, as digits or as a number
+    /// word ("seven", "twelve point five"): the tool takes "the number alone", so a value like
+    /// "outside" or "not applicable" is the model filling a slot, not a reading.
+    static func isReadingWithoutNumber(_ call: Call) -> Bool {
+        guard call.name == "reading" else { return false }
+        let action = (call.arguments["action"] as? String)?.lowercased() ?? "record_reading"
+        guard action == "record_reading" || action == "correct_reading" else { return false }
+        if call.arguments["value"] is NSNumber { return false }
+        let value = (call.arguments["value"] as? String) ?? ""
+        if value.contains(where: \.isNumber) { return false }
+        let words = value.lowercased().split(whereSeparator: { !$0.isLetter })
+        return !words.contains { numberWords.contains(String($0)) }
+    }
+
+    static let numberWords: Set<String> = [
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
+        "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty",
+        "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred", "thousand", "half", "quarter", "point",
+    ]
 
     /// The longest tool result `spokenResult(of:)` will say in place of an empty reply.
     static let spokenResultLimit = 240
