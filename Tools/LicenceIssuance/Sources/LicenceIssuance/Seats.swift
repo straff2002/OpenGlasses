@@ -154,12 +154,18 @@ public struct SeatClaimRequest: Codable, Equatable, Sendable {
 /// none, so a renewal from a phone without company vaults is byte-for-byte what it was, and a
 /// service built before the field ignores it. A disclosed field: the privacy manifest, the in-app
 /// copy and `DeviceSeatTests` name it.
+///
+/// Plan ND P4 (decision 14): a renewal may also carry `profileGeneration`, the highest version of
+/// the company's settings profile the phone has applied, so the portal can show how many phones are
+/// on the latest version. Optional and omitted when the phone has applied none with a generation,
+/// with the same byte-for-byte and older-service guarantees as `vaults`, and disclosed the same way.
 public struct SeatRenewRequest: Codable, Equatable, Sendable {
     public let build: String
     public let lease: String
     public let vaults: [SeatInstalledVault]?
-    public init(build: String, lease: String, vaults: [SeatInstalledVault]? = nil) {
-        self.build = build; self.lease = lease; self.vaults = vaults
+    public let profileGeneration: Int?
+    public init(build: String, lease: String, vaults: [SeatInstalledVault]? = nil, profileGeneration: Int? = nil) {
+        self.build = build; self.lease = lease; self.vaults = vaults; self.profileGeneration = profileGeneration
     }
 }
 
@@ -232,13 +238,17 @@ public struct SeatRecord: Codable, Equatable, Sendable {
     public var freedBy: String?
     /// Plan LR P2: the company vaults the phone reported on its latest renewal. Nil until it reports.
     public var vaults: [SeatInstalledVault]?
+    /// Plan ND P4: the settings profile generation the phone reported on its latest renewal. Nil
+    /// until it reports one.
+    public var profileGeneration: Int?
     public init(profileId: String, deviceKeyHash: String, devicePublicKey: String, enrolmentId: String,
                 claimedAt: Date, leaseNotAfter: Date, lastSeenAt: Date, build: String,
-                freedAt: Date? = nil, freedBy: String? = nil, vaults: [SeatInstalledVault]? = nil) {
+                freedAt: Date? = nil, freedBy: String? = nil, vaults: [SeatInstalledVault]? = nil,
+                profileGeneration: Int? = nil) {
         self.profileId = profileId; self.deviceKeyHash = deviceKeyHash; self.devicePublicKey = devicePublicKey
         self.enrolmentId = enrolmentId; self.claimedAt = claimedAt; self.leaseNotAfter = leaseNotAfter
         self.lastSeenAt = lastSeenAt; self.build = build; self.freedAt = freedAt; self.freedBy = freedBy
-        self.vaults = vaults
+        self.vaults = vaults; self.profileGeneration = profileGeneration
     }
 }
 
@@ -301,12 +311,43 @@ public enum SeatPolicy {
     /// `vaults` is what the renewal reported (Plan LR P2): kept on the granted seat when given,
     /// limited to `SeatInstalledVault.maximumPerRenewal` well-formed entries; nil keeps what the
     /// seat last reported.
+    ///
+    /// `profileGeneration` (Plan ND P4) is kept the same way: on the granted seat when given and not
+    /// negative; nil keeps what the seat last reported.
     public static func renew(_ lease: SeatLeasePayload, build: String, profileId: String, licence: SeatLicence?,
-                             seats: [SeatRecord], now: Date, vaults: [SeatInstalledVault]? = nil) -> Outcome {
+                             seats: [SeatRecord], now: Date, vaults: [SeatInstalledVault]? = nil,
+                             profileGeneration: Int? = nil) -> Outcome {
         let outcome = renewSeat(lease, build: build, profileId: profileId, licence: licence, seats: seats, now: now)
-        guard let vaults, case .grant(var seat, let granted) = outcome else { return outcome }
-        seat.vaults = Array(vaults.filter(\.isWellFormed).prefix(SeatInstalledVault.maximumPerRenewal))
+        guard case .grant(var seat, let granted) = outcome else { return outcome }
+        if let vaults {
+            seat.vaults = Array(vaults.filter(\.isWellFormed).prefix(SeatInstalledVault.maximumPerRenewal))
+        }
+        if let profileGeneration, profileGeneration >= 0 { seat.profileGeneration = profileGeneration }
         return .grant(seat: seat, lease: granted)
+    }
+
+    /// Plan ND P4 (decision 14): the held seats on a profile, counted by the settings generation each
+    /// last reported — *"7 of 9 phones on version 13"*. `held` counts every held seat; a seat whose
+    /// phone has not reported a generation (an older build, or one that has applied none) is in
+    /// `held` and in no generation.
+    public struct FleetGenerations: Equatable, Sendable {
+        public let held: Int
+        public let byGeneration: [Int: Int]
+        public init(held: Int, byGeneration: [Int: Int]) { self.held = held; self.byGeneration = byGeneration }
+        /// The held seats whose phone reported `generation` or later.
+        public func onOrAfter(_ generation: Int) -> Int {
+            byGeneration.filter { $0.key >= generation }.values.reduce(0, +)
+        }
+    }
+
+    public static func fleetGenerations(_ seats: [SeatRecord], profileId: String, now: Date) -> FleetGenerations {
+        var held = 0
+        var counts: [Int: Int] = [:]
+        for seat in seats where seat.profileId == profileId && isHeld(seat, now: now) {
+            held += 1
+            if let generation = seat.profileGeneration { counts[generation, default: 0] += 1 }
+        }
+        return FleetGenerations(held: held, byGeneration: counts)
     }
 
     private static func renewSeat(_ lease: SeatLeasePayload, build: String, profileId: String, licence: SeatLicence?,

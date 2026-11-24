@@ -1,8 +1,8 @@
 # Plan ND — Company Settings from the Portal (the administrator sets them once, every phone that joins follows)
 
-**Status:** 🚧 P0, P1, P2 and P3 built 2026-11-24 (see [As built](#as-built)), on the recommended answer to each
-of the 15 [decisions](#decisions-for-greig), which stay the owner's to change. Owed: P4 (the portal, private
-repository), P5 (catalog sync), P6 (device pass).
+**Status:** 🚧 P0, P1, P2 and P3 built 2026-11-24, and P4's phone half 2026-11-25 (see [As built](#as-built)), on
+the recommended answer to each of the 15 [decisions](#decisions-for-greig), which stay the owner's to change.
+Owed: P4's service half (the portal, private repository), P5 (catalog sync), P6 (device pass).
 **Track:** Field Assist — fleet. The organisation profile, the licence portal, onboarding, Managed App
 Configuration.
 **Builds on:** Plan [CT](CT-org-configuration-profiles.md) (the signed profile, `SettingKey` and its directions,
@@ -526,3 +526,26 @@ data-store registry's organisation record names the two new stores.
 
 **Strings owed to the catalog (P5):** the Privacy footer's new sentence (both footers).
 
+### P4, the phone half (2026-11-25)
+
+[Decision 14](#decisions-for-greig), the fleet view. The seat renewal carries `profileGeneration`, the highest
+settings generation the phone has applied (`OrgEnrolmentRecord.profileGenerationHighWater`), beside the installed
+vaults. It is absent on a phone that has applied none, so that renewal is the bytes it was. A request too large
+for its vaults drops the vaults, never the version.
+
+- **Licence core.** `SeatRenewRequest` and `SeatRecord` gain the optional field. `SeatPolicy.renew` keeps a
+  reported version on the granted seat and ignores a negative one, and a renewal without one keeps the last.
+  `SeatPolicy.fleetGenerations` counts held seats by version for *"7 of 9 phones on version 13"*. The claim
+  carries none.
+- **Disclosure, in the same PR.** The privacy manifest's header and its DeviceID comment, both Privacy footers'
+  seat sentence, and `TelemetryOptOutGuardTests`.
+- **Contract.** `Contracts/company-settings.md`, *The fleet view*.
+
+**Tests:** in the core, the bytes with and without the field, an older renewal decoding with none, the seat
+keeping, replacing and ignoring a version, and the fleet count (a freed seat is not counted; one that never
+reported is held). In the app, `DeviceSeatTests` (the renewal reports the applied version and the service keeps
+it; a later renewal without one keeps it) and `CompanyVaultSeatContractTests` (the core's bytes, a negative
+version dropped, the version kept when the vaults are dropped for size).
+
+**Strings owed to the catalog (P5):** the Privacy footer's seat sentence, now naming the settings version (both
+footers).

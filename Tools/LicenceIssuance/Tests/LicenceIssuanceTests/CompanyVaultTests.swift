@@ -405,4 +405,44 @@ final class CompanyVaultTests: XCTestCase {
                                                                seats: [seat], now: now) else { return XCTFail() }
         XCTAssertNil(unchanged.vaults)
     }
+
+    // MARK: - Plan ND P4: the applied settings version on the renewal (decision 14)
+
+    func testTheRenewalCarriesTheAppliedSettingsVersionOnlyWhenThereIsOne() throws {
+        let bytes = String(decoding: try SeatWire.encoder().encode(
+            SeatRenewRequest(build: "767", lease: "l", profileGeneration: 13)), as: UTF8.self)
+        XCTAssertEqual(bytes, #"{"build":"767","lease":"l","profileGeneration":13}"#)
+        let older = try SeatWire.decoder().decode(SeatRenewRequest.self, from: Data(#"{"build":"660","lease":"l"}"#.utf8))
+        XCTAssertNil(older.profileGeneration, "a renewal from an older build decodes with no version")
+    }
+
+    func testARenewalKeepsTheReportedSettingsVersionAndTheFleetCountsIt() throws {
+        let now = Self.issued
+        let licence = SeatLicence(licenseIDHash: "l", seats: 4, seatCheck: true, expires: nil)
+        func seat(_ key: String, _ generation: Int?, freed: Bool = false) -> SeatRecord {
+            SeatRecord(profileId: Self.profileId, deviceKeyHash: key, devicePublicKey: "k", enrolmentId: "e",
+                       claimedAt: now, leaseNotAfter: now.addingTimeInterval(SeatWire.leaseLength), lastSeenAt: now,
+                       build: "767", freedAt: freed ? now : nil, profileGeneration: generation)
+        }
+        let lease = SeatLeasePayload(deviceKeyHash: "a", enrolmentId: "e", issued: now, licenseIDHash: "l",
+                                     notAfter: now.addingTimeInterval(SeatWire.leaseLength))
+        guard case .grant(let renewed, _) = SeatPolicy.renew(lease, build: "767", profileId: Self.profileId, licence: licence,
+                                                              seats: [seat("a", 12)], now: now, profileGeneration: 13)
+        else { return XCTFail() }
+        XCTAssertEqual(renewed.profileGeneration, 13)
+        guard case .grant(let kept, _) = SeatPolicy.renew(lease, build: "767", profileId: Self.profileId, licence: licence,
+                                                           seats: [seat("a", 12)], now: now) else { return XCTFail() }
+        XCTAssertEqual(kept.profileGeneration, 12, "no version on the renewal keeps the seat's last one")
+        guard case .grant(let negative, _) = SeatPolicy.renew(lease, build: "767", profileId: Self.profileId, licence: licence,
+                                                               seats: [seat("a", 12)], now: now, profileGeneration: -4)
+        else { return XCTFail() }
+        XCTAssertEqual(negative.profileGeneration, 12, "a negative version is not kept")
+
+        let fleet = SeatPolicy.fleetGenerations([seat("a", 13), seat("b", 13), seat("c", 12), seat("d", nil),
+                                                 seat("e", 13, freed: true)], profileId: Self.profileId, now: now)
+        XCTAssertEqual(fleet.held, 4, "a freed seat is not counted; one that never reported is")
+        XCTAssertEqual(fleet.byGeneration, [13: 2, 12: 1])
+        XCTAssertEqual(fleet.onOrAfter(13), 2)
+        XCTAssertEqual(fleet.onOrAfter(12), 3)
+    }
 }
