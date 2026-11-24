@@ -62,7 +62,7 @@ struct SafeErrorSummary: CustomStringConvertible {
 enum PrivacyLog {
     enum LocalModelEvent {
         case deleted, downloadCancelled, downloaded, generationCompleted, generationFailed, generationStarted,
-             historyTrimmed, imageRefused, loaded, loadFailed, promptDecoded, reasoningProduced, tempsSwept,
+             historyTrimmed, imageRefused, loaded, loadFailed, promptDecoded, promptSnapshot, reasoningProduced, tempsSwept,
              tokenShape, toolCall, toolFormat, toolsFitted, unloaded, visionDemoted
     }
 
