@@ -545,6 +545,13 @@ model says the result. Over the corpus: two-step 12/12 routed, no case wrongly r
 cases on the phone: **325 of 326** (was 323) — two-step 12/12, procedure answers 12/12, logged
 readings 38/38, restraint and clean output 100%. The one left: the `show_source` table argument.
 
+**The source the technician named (2026-11-24).** That last case was "Show me the page that table
+came from", sent as `show_source` with `which: "first"`, which opens the first cited page rather
+than the table. `LocalArgumentCompletion`'s source rule only filled a missing `which`; it now reads
+the one source the turn names (an ordinal, the cited table, a table number or every source) and
+replaces a different `which` from the model, as the conductor and supply rules do. A turn that names
+none leaves the model's alone, and two different sources give none.
+
 **Not checked on the phone:** what the router and the argument steps say in the real app (the
 qualification run scores scripted tool results, so a reply after a refused call can still quote
 the script); the preview stream can show a Gemma or Python-style call line briefly before it is
