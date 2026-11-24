@@ -1,6 +1,9 @@
 # Plan NB — Twist to Zoom, Swipe to Pan (the Neural Band moves a manual page on the lens the way Meta's own Gallery and Maps do)
 
-**Status:** 📋 Planned 2026-11-23; P0–P2 to be built in one PR, P3 (the device pass) owed. Everything
+**Status:** 🚧 P0–P2 built 2026-11-24 (headless: unflagged and flagged suites green, Release built);
+P3 (the device pass on a Ray-Ban Display with a Neural Band) owed. Twist to zoom and pinch-and-move
+to pan are each their own switch, both off by default until the device pass settles the twist's sign
+and whether a held pinch lasts. Everything
 that touches Meta's SDK is in the TestFlight-only lane (Plan [JV](JV-dat-experimental-testflight-lane.md)):
 Motion and Inputs are both beta in DAT 1.1 and an app that uses them cannot be published. The pure
 core compiles and is tested in every build, so the store build gets it the day Meta makes them stable.
