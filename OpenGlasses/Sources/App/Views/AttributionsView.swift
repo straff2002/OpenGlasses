@@ -31,6 +31,10 @@ struct AttributionsView: View {
             name: "SenseVoice ASR",
             role: String(localized: "On-device speech recognition tier."),
             license: "Apache 2.0"),
+        Attribution(
+            name: "Silero VAD",
+            role: String(localized: "On-device voice activity detection that notices when you stop talking. Bundled with the app as a Core ML conversion, published under MIT. Copyright (c) 2020-present Silero Team."),
+            license: "MIT"),
     ]
 
     private let libraries: [Attribution] = [

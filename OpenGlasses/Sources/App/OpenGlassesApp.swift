@@ -3341,6 +3341,13 @@ class AppState: ObservableObject, AppStateProtocol {
             Config.recognizerComparisonEnabled && UIApplication.shared.applicationState != .background
         }
 
+        // Plan CU P2 PR2: the acoustic end-of-turn detector, only while the developer switch is on.
+        // Read per utterance, so a flip installs or removes it at the next utterance boundary. The
+        // model loads off the main thread when the detector is first made; until it has, the
+        // timer keeps the turn.
+        transcriptionService.acousticEndOfTurnEnabledProvider = { Config.acousticEndOfTurnEnabled }
+        transcriptionService.acousticDetectorFactory = { SileroSpeechActivityDetector() }
+
         // TTS borrows the wake-word service so it can pause/resume other audio via the
         // same reference-counted hold that the active-listening flow uses.
         speechService.wakeWordService = wakeWordService
