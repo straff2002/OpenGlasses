@@ -96,4 +96,23 @@ final class FieldAssistLocalToolSetTests: XCTestCase {
         XCTAssertEqual(OfflineKeywordRouter.fieldToolHints("good morning, how are you"), [])
         XCTAssertEqual(OfflineKeywordRouter.fieldToolHints(""), [])
     }
+
+    // MARK: - The fixed render order (Plan MQ)
+
+    func testATurnsToolsRenderInOneFixedOrderWhateverTheirPriority() {
+        XCTAssertEqual(FieldAssistLocalToolSet.renderOrder(["table_lookup", "get_weather", "reading", "field_session", "calendar"]),
+                       ["field_session", "reading", "table_lookup", "calendar", "get_weather"],
+                       "Field Assist tools by their priority, then the rest by name")
+        let parameters: [String: Any] = ["type": "object", "properties": ["value": ["type": "number"]]]
+        let reading = OnDeviceToolSchema.localToolSpec(name: "reading", description: "Log a value.", parameters: parameters)
+        let session = OnDeviceToolSchema.localToolSpec(name: "field_session", description: "Open the job.", parameters: parameters)
+        let a = LocalToolTurn(history: [], turn: [], tools: [reading, session], thinkingOff: true, fallbackInstructions: "")
+        let b = LocalToolTurn(history: [], turn: [], tools: [session, reading], thinkingOff: true, fallbackInstructions: "")
+        let names = { (turn: LocalToolTurn) in turn.specs(kept: 2, detail: .standard).compactMap(LocalToolFit.name(of:)) }
+        XCTAssertEqual(names(a), ["field_session", "reading"], "both runtimes render what specs(kept:) returns")
+        XCTAssertEqual(names(a), names(b))
+        // The fit still keeps a priority prefix: one kept is the turn's first, not the render's.
+        XCTAssertEqual(a.specs(kept: 1, detail: .standard).compactMap(LocalToolFit.name(of:)), ["reading"])
+        XCTAssertEqual(a.toolNames, ["reading", "field_session"], "the offer keeps its priority order")
+    }
 }

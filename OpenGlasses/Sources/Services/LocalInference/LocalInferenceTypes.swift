@@ -591,10 +591,26 @@ struct LocalToolTurn: @unchecked Sendable {
     /// The offered tools' names, in priority order.
     var toolNames: [String] { tools.compactMap(LocalToolFit.name(of:)) }
 
-    /// The first `kept` tools at `detail`.
+    /// The first `kept` tools at `detail` (the fit keeps a priority prefix), in the fixed render
+    /// order (`FieldAssistLocalToolSet.renderOrder`, Plan MQ): what both runtimes hand the template,
+    /// so the same tools render the same way whatever order the turn offered them in.
     func specs(kept: Int, detail: LocalToolFit.Detail) -> [[String: Any]] {
         let source = detail == .compact && !compactTools.isEmpty ? compactTools : tools
-        return Array(source.prefix(max(0, kept)))
+        return Self.inRenderOrder(Array(source.prefix(max(0, kept))))
+    }
+
+    /// `specs` sorted by name into `FieldAssistLocalToolSet.renderOrder`; a spec without a name
+    /// keeps its place after the named ones.
+    static func inRenderOrder(_ specs: [[String: Any]]) -> [[String: Any]] {
+        let names = specs.map { LocalToolFit.name(of: $0) ?? "" }
+        let order = FieldAssistLocalToolSet.renderOrder(names.filter { !$0.isEmpty })
+        var remaining = Array(zip(names, specs))
+        var sorted: [[String: Any]] = []
+        for name in order {
+            guard let index = remaining.firstIndex(where: { $0.0 == name }) else { continue }
+            sorted.append(remaining.remove(at: index).1)
+        }
+        return sorted + remaining.map(\.1)
     }
 
     /// This turn with only the first `kept` tools at `detail`, and `history` in place of its own.
