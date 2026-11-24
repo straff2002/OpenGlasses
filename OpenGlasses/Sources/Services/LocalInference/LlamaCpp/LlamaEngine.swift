@@ -100,6 +100,9 @@ struct LlamaSamplerOptions: Hashable, Sendable {
     var minP: Float
     var penaltyWindow: Int32
     var penaltyRepeat: Float
+    /// Subtracted once from every token already in the penalty window (llama.cpp's
+    /// `penalty_present`); 0 is off, the default when an entry names none.
+    var penaltyPresence: Float
 
     init(seed: UInt32 = LlamaSamplerOptions.randomSeed,
          temperature: Float = 0.7,
@@ -107,7 +110,8 @@ struct LlamaSamplerOptions: Hashable, Sendable {
          topP: Float = 0.9,
          minP: Float = LlamaSamplerOptions.defaultMinP,
          penaltyWindow: Int32 = LlamaSamplerOptions.defaultPenaltyWindow,
-         penaltyRepeat: Float = LlamaSamplerOptions.defaultRepeatPenalty) {
+         penaltyRepeat: Float = LlamaSamplerOptions.defaultRepeatPenalty,
+         penaltyPresence: Float = 0) {
         self.seed = seed
         self.temperature = temperature
         self.topK = topK
@@ -115,6 +119,7 @@ struct LlamaSamplerOptions: Hashable, Sendable {
         self.minP = minP
         self.penaltyWindow = penaltyWindow
         self.penaltyRepeat = penaltyRepeat
+        self.penaltyPresence = penaltyPresence
     }
 
     /// Translate the seam's request-level configuration, filling every value the caller left open
@@ -129,7 +134,8 @@ struct LlamaSamplerOptions: Hashable, Sendable {
                   topP: sampling.topP,
                   minP: sampling.minP ?? Self.defaultMinP,
                   penaltyWindow: Self.defaultPenaltyWindow,
-                  penaltyRepeat: sampling.repetitionPenalty ?? Self.defaultRepeatPenalty)
+                  penaltyRepeat: sampling.repetitionPenalty ?? Self.defaultRepeatPenalty,
+                  penaltyPresence: sampling.presencePenalty ?? 0)
     }
 }
 

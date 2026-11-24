@@ -443,7 +443,7 @@ struct LocalSamplingConfiguration: Codable, Hashable, Sendable {
     var topK: Int?
     var minP: Float?
     var repetitionPenalty: Float?
-    /// MLX only: the GGUF wrapper has no presence penalty, and a GGUF entry may not set one.
+    /// MLX's presence penalty, and llama.cpp's `penalty_present` on GGUF (over its penalty window).
     var presencePenalty: Float?
     /// Fixed seed for deterministic tests. `nil` in production.
     var seed: UInt64?

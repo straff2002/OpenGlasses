@@ -272,6 +272,7 @@ final class LlamaCppEngine: LlamaEngine, @unchecked Sendable {
         native.min_p = options.minP
         native.penalty_last_n = options.penaltyWindow
         native.penalty_repeat = options.penaltyRepeat
+        native.penalty_presence = options.penaltyPresence
 
         var handle: OpaquePointer?
         let status = withUnsafePointer(to: &native) { optionsPointer in

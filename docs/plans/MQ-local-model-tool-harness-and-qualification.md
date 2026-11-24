@@ -635,7 +635,8 @@ for GGUF at all). Nothing changes with either flag off.
   sizes and SHA-256 digests, text only, `fileMetadataOnly`, Apache 2.0 (the base models' licence;
   decision 7): Gemma 4 E2B and E4B at Q4_0 (the only 4-bit quantisation published there), Qwen 3.5
   4B at Q4_K_M. The Gemma entries carry the same sampling as the MLX entries. Qwen 3.5's card asks
-  for a presence penalty the GGUF sampler does not take yet, so its entry carries none.
+  for a presence penalty the GGUF sampler did not take yet, so its entry carried none (it does since
+  2026-11-25: see [Qwen 3.5 sampling](#qwen-35-sampling-2026-11-25)).
 - **The device app.** `--gguf <catalog id>` runs a GGUF entry on the production GGUF backend
   through the same loop and graders (`LiveEnvironments.backend`, over any backend behind the seam),
   with Gemma 4 E2B's fixture prompt, the record naming llama.cpp's revision and the mapped backing.
@@ -694,6 +695,19 @@ Server-side context checkpoints are in `tools/server`, which is not linked.
 - **Verified** headless: the GGUF suites (LlamaCppToolTurnTests, LlamaToolChatTests,
   LlamaCppRuntimeTests, LlamaCppBackendTests, LlamaRuntimePackageTests) 102 tests, 0 failures,
   2 skipped (the Qwen 3 bridge tests, as before). Not run on a phone.
+
+## Qwen 3.5 sampling (2026-11-25)
+
+The first Qwen 3.5 4B GGUF phone run (v0.3.0) sampled with the GGUF defaults (min-p 0.05,
+repetition penalty 1.1, no presence penalty) and missed the restraint floor (31/36 Field Assist):
+it called tools on turns that ask for none. The entry now carries its card's set for instruct
+(non-thinking) mode, which a tool turn runs: temperature 0.7, top-p 0.8, top-k 20, min-p 0, presence
+penalty 1.5, repetition penalty 1.0 ("Qwen3.5-4B model card, Best Practices", read 2026-11-24). The
+GGUF sampler takes a presence penalty now (`LlamaSamplerOptions.penaltyPresence` → llama.cpp's
+`penalty_present`, applied over the penalties sampler's 64-token window rather than the whole
+reply), so the GGUF catalog no longer refuses one; min-p and the repetition penalty already went
+through. An entry that names none keeps today's GGUF defaults, so Gemma GGUF is unchanged; MLX is
+unchanged. The device app's `--gguf` run reads the entry's set by id and records it.
 
 ## What the local path does today (read from the code, 2026-11-20)
 
