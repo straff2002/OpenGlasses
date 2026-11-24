@@ -47,6 +47,16 @@ import Foundation
 /// denied or asked for besides. A question ("can you log…"), two values, a correction ("not 140")
 /// and a log with a calculation after it go to the model.
 ///
+/// ### Log it, then work out the voltage drop
+/// "Line voltage at the control is 115. Log it, then work out the voltage drop at 15 amps over 50
+/// feet of 14 gauge copper" asks for two calls, and Gemma made both right on most runs but not all:
+/// prose with no call, a call in a form nothing reads, a resistance it made up. When the part before
+/// "then" is a reading logged in one breath and the part after it asks for a voltage drop with one
+/// current and one length said with their units, both are routed in order: the reading, then
+/// `domain_calc` with the operation, the current and the length as said. The loop completes the
+/// calculation as it does a model's (`LocalArgumentCompletion`): the wire, the metal and the supply
+/// come from the technician's words, never from the router. The model says the result.
+///
 /// ### What is not routed
 /// Error codes through `table_lookup`: it needs a real table id, which only the passages give.
 enum LocalTurnRouter {
@@ -86,7 +96,7 @@ enum LocalTurnRouter {
 
     enum Kind: String, CaseIterable, Sendable {
         case errorCode, modelNumber, procedureStart, procedureNext, procedureRepeat, procedureAnswer
-        case jobCommand, evidence, readingFollowUp, readingLogged
+        case jobCommand, evidence, readingFollowUp, readingLogged, voltageDrop
     }
 
     /// How a routed call's result reaches the wearer.
@@ -108,7 +118,8 @@ enum LocalTurnRouter {
 
         var speech: Speech {
             switch kind {
-            case .errorCode, .modelNumber, .jobCommand, .evidence, .readingFollowUp, .readingLogged: return .model
+            case .errorCode, .modelNumber, .jobCommand, .evidence, .readingFollowUp, .readingLogged, .voltageDrop:
+                return .model
             case .procedureStart, .procedureNext, .procedureRepeat, .procedureAnswer: return .result
             }
         }
@@ -116,7 +127,19 @@ enum LocalTurnRouter {
 
     // MARK: - Routing
 
-    /// The call `turn` asks for, or nil when the model should decide.
+    /// Every call `turn` asks for, in order, or none when the model should decide: a reading logged
+    /// then a voltage drop worked out (`loggedReadingThenVoltageDrop`), else `route(turn:…)`'s one.
+    static func routes(turn: String, history: [LocalToolLoop.Message], context: Context) -> [Route] {
+        let text = turn.trimmingCharacters(in: .whitespacesAndNewlines)
+        if context.offered.isSuperset(of: ["reading", "domain_calc"]),
+           let pair = loggedReadingThenVoltageDrop(text) {
+            return [Route(kind: .readingLogged, tool: "reading", arguments: pair.reading),
+                    Route(kind: .voltageDrop, tool: "domain_calc", arguments: pair.voltageDrop)]
+        }
+        return route(turn: turn, history: history, context: context).map { [$0] } ?? []
+    }
+
+    /// The one call `turn` asks for, or nil when the model should decide.
     static func route(turn: String, history: [LocalToolLoop.Message], context: Context) -> Route? {
         let text = turn.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
@@ -881,6 +904,58 @@ enum LocalTurnRouter {
         var arguments = ["action": "record_reading", "quantity": quantity, "value": value.text]
         if let unit { arguments["unit"] = unit }
         return arguments
+    }
+
+    /// The reading and the voltage drop of "<what> is <value>. Log it, then work out the voltage
+    /// drop at <current> amps over <length> feet …", or nil. The part before "then" must route as
+    /// `loggedReading`; the part after it must ask for a voltage drop (`voltageDropAsks`), say one
+    /// current and one length with their units, and defer nothing.
+    static func loggedReadingThenVoltageDrop(_ text: String) -> (reading: [String: String], voltageDrop: [String: String])? {
+        guard !text.contains("?"),
+              let split = thenPattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let range = Range(split.range, in: text) else { return nil }
+        let head = String(text[..<range.lowerBound]), tail = String(text[range.upperBound...])
+        guard let reading = loggedReading(head) else { return nil }
+        let words = normalised(tail).split(separator: " ").map(String.init)
+        guard !defers(words, text: tail), voltageDropAsks(words),
+              let current = onlyMatch(currentPattern, in: tail) else { return nil }
+        // Every number after "then" is the current, the length or the wire's size: "15 or 20 amps"
+        // is not one current.
+        let sizes = wireSizePattern.numberOfMatches(in: tail, range: NSRange(tail.startIndex..., in: tail))
+        guard statedValues(in: tail).count == 2 + sizes else { return nil }
+        var arguments = ["operation": "voltage_drop", "current_a": current]
+        let feet = onlyMatch(feetPattern, in: tail), metres = onlyMatch(metresPattern, in: tail)
+        switch (feet, metres) {
+        case (let ft?, nil): arguments["length_ft"] = ft
+        case (nil, let m?): arguments["length_m"] = m
+        default: return nil
+        }
+        return (reading, arguments)
+    }
+
+    /// "work out the voltage drop", "calculate the voltage drop", "figure out the drop", "what's
+    /// the voltage drop" at the front of the clause.
+    static func voltageDropAsks(_ words: [String]) -> Bool {
+        var rest = ArraySlice(words)
+        while let first = rest.first, logOpeners.contains(first) { rest = rest.dropFirst() }
+        let joined = rest.joined(separator: " ")
+        guard ["work out ", "calculate ", "figure out ", "what's ", "whats ", "give me ", "check "]
+                .contains(where: joined.hasPrefix) else { return false }
+        return joined.contains("voltage drop") || joined.contains(" the drop")
+    }
+
+    private static let thenPattern = try! NSRegularExpression(pattern: #"(?i)[,;.]?\s*(?:and\s+)?\bthen\b\s*"#)
+    private static let currentPattern = try! NSRegularExpression(pattern: #"(?i)(?<![\w.])(\d+(?:\.\d+)?)\s*(?:amps?|amperes?|a)\b"#)
+    private static let feetPattern = try! NSRegularExpression(pattern: #"(?i)(?<![\w.])(\d+(?:\.\d+)?)\s*(?:feet|foot|ft)\b"#)
+    private static let wireSizePattern = try! NSRegularExpression(pattern:
+        #"(?i)(?<![\w.])\d+(?:\.\d+)?\s*(?:gauge|awg|ga|mm²|mm2|mm|sq|square)\b|(?:#|number\s+)\d+\b"#)
+    private static let metresPattern = try! NSRegularExpression(pattern: #"(?i)(?<![\w.])(\d+(?:\.\d+)?)\s*(?:metres?|meters?|m)\b(?!\s*m)"#)
+
+    /// The number of `pattern`'s one match in `text`, or nil for none or more than one.
+    private static func onlyMatch(_ pattern: NSRegularExpression, in text: String) -> String? {
+        let matches = pattern.matches(in: text, range: NSRange(text.startIndex..., in: text))
+        guard matches.count == 1, let range = Range(matches[0].range(at: 1), in: text) else { return nil }
+        return String(text[range])
     }
 
     static let logVerbs: Set<String> = ["log", "record"]

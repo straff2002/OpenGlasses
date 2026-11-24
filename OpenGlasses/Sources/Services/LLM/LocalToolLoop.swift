@@ -413,24 +413,31 @@ enum LocalToolLoop {
             return outcome
         }
 
-        // A routed call runs first, through the same dispatcher a model's call goes through.
-        if cap > 0, let context = configuration.routing,
-           let route = LocalTurnRouter.route(turn: userMessage, history: history, context: context) {
-            let call = Call(id: "call_1", name: route.tool, arguments: route.arguments)
-            try Task.checkCancellation()
-            transcript.append(.assistant("", calling: call))
-            let result = try await execute(call)
-            try Task.checkCancellation()
-            transcript.append(.toolResult(result.text, for: call))
-            grounding.add(result.text)
-            executed.append(Executed(call: call, result: result, routed: true))
-            seen.insert(call.signature)
-            routed = 1
-            if route.speech == .result, let spoken = LocalTurnRouter.spokenProcedureResult(result) {
-                transcript.append(.assistant(spoken))
-                return Outcome(text: spoken, endReason: .routedResult, transcript: transcript, executed: executed,
-                               generations: 0, usedCorrection: false, callsFromReasoning: 0, callsNotRun: 0,
-                               routedCalls: routed)
+        // Routed calls run first, in order, through the same dispatcher a model's call goes through.
+        // Each is completed from what the technician said, as a model's is: the router passes only
+        // what it read, so a voltage drop it made gets its wire, metal and supply here.
+        if cap > 0, let context = configuration.routing {
+            for route in LocalTurnRouter.routes(turn: userMessage, history: history, context: context)
+                where executed.count < cap {
+                let completed = LocalArgumentCompletion.complete(name: route.tool, arguments: route.arguments,
+                                                                 context: completion)
+                let call = Call(id: "call_\(executed.count + 1)", name: route.tool, arguments: completed.arguments)
+                try Task.checkCancellation()
+                transcript.append(.assistant("", calling: call))
+                let result = try await execute(call)
+                try Task.checkCancellation()
+                transcript.append(.toolResult(result.text, for: call))
+                grounding.add(result.text)
+                executed.append(Executed(call: call, result: result, routed: true))
+                seen.insert(call.signature)
+                routed += 1
+                completedArguments += completed.changes
+                if route.speech == .result, let spoken = LocalTurnRouter.spokenProcedureResult(result) {
+                    transcript.append(.assistant(spoken))
+                    return Outcome(text: spoken, endReason: .routedResult, transcript: transcript, executed: executed,
+                                   generations: 0, usedCorrection: false, callsFromReasoning: 0, callsNotRun: 0,
+                                   routedCalls: routed)
+                }
             }
         }
 

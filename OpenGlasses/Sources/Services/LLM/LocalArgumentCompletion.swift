@@ -8,8 +8,9 @@ import Foundation
 /// became a call with the metal and no size, the tool refused for a missing conductor, and the model
 /// asked the technician for a resistance per foot they had already given as a gauge. `LocalToolLoop`
 /// runs every model-made call through `complete(name:arguments:context:)` after
-/// `LocalArgumentGrounding`'s filter and before it runs; a call `LocalTurnRouter` made is not
-/// completed. Each rule names the calls it applies to; `rules` is the one place to add another.
+/// `LocalArgumentGrounding`'s filter and before it runs, and every call `LocalTurnRouter` made
+/// (whose arguments are all what was said) before it runs: a voltage drop the router made carries
+/// the current and length it read, and the wire, metal and supply come from here. Each rule names the calls it applies to; `rules` is the one place to add another.
 ///
 /// ### The operation rule (`voltage_drop`)
 /// On the phone Gemma 4 E2B also sent a voltage drop with no operation at all (`{current_a, length_ft,

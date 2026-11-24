@@ -423,6 +423,48 @@ final class LocalTurnRouterTests: XCTestCase {
                      "a step with no expected reply, or one already answered, asks for none")
     }
 
+    // MARK: - Log it, then work out the voltage drop
+
+    private let calcTools: Set<String> = ["reading", "domain_calc", "field_session"]
+
+    func testALoggedReadingThenAVoltageDropRoutesBothInOrder() {
+        let cases: [(String, [String: String])] = [
+            ("Line voltage at the 090XV36C control is 115. Log it, then work out the voltage drop at 15 amps over 50 feet of 14 gauge copper.",
+             ["operation": "voltage_drop", "current_a": "15", "length_ft": "50"]),
+            ("Supply reads 230 volts, log it, and then calculate the voltage drop at 32 A over 25 metres of 6 mm² copper",
+             ["operation": "voltage_drop", "current_a": "32", "length_m": "25"]),
+        ]
+        for (turn, calc) in cases {
+            let routed = R.routes(turn: turn, history: [], context: R.Context(offered: calcTools, procedureActive: false))
+            XCTAssertEqual(routed.map(\.kind), [.readingLogged, .voltageDrop], turn)
+            XCTAssertEqual(routed.map(\.tool), ["reading", "domain_calc"], turn)
+            XCTAssertEqual(routed.last?.arguments, calc, turn)
+            XCTAssertEqual(routed.last?.speech, .model, turn)
+        }
+        let first = R.routes(turn: cases[0].0, history: [], context: R.Context(offered: calcTools, procedureActive: false))
+        XCTAssertEqual(first.first?.arguments, ["action": "record_reading", "quantity": "Line voltage at the 090XV36C control",
+                                                "value": "115"])
+    }
+
+    func testATwoStepTurnThatIsNotPlainIsLeftToTheModel() {
+        for turn in [
+            "Line voltage is 115. Log it, then work out the voltage drop over 50 feet of 14 gauge copper",   // no current
+            "Line voltage is 115. Log it, then work out the voltage drop at 15 amps",                         // no length
+            "Line voltage is 115. Log it, then work out the voltage drop at 15 or 20 amps over 50 feet",      // two currents
+            "Line voltage is 115. Log it, then can you work out the voltage drop at 15 amps over 50 feet?",   // a question
+            "Line voltage is 115. Log it, then take a photo of the nameplate",                                 // not a drop
+            "Line voltage is 115. Log it, then work out the voltage drop at 15 amps over 50 feet later",      // deferred
+            "Line voltage is 115 and 118. Log it, then work out the voltage drop at 15 amps over 50 feet",    // two values
+        ] {
+            XCTAssertEqual(R.routes(turn: turn, history: [], context: R.Context(offered: calcTools, procedureActive: false))
+                .map(\.kind).filter { $0 == .voltageDrop }, [], turn)
+        }
+        let turn = "Line voltage is 115. Log it, then work out the voltage drop at 15 amps over 50 feet of 14 gauge copper"
+        XCTAssertEqual(R.routes(turn: turn, history: [], context: R.Context(offered: ["reading", "field_session"],
+                                                                          procedureActive: false)), [],
+                       "not without domain_calc offered")
+    }
+
     // MARK: - A reading logged in one breath
 
     func testALogCommandWithOneValueAndWhatWasMeasuredIsRecorded() {
@@ -559,11 +601,12 @@ final class LocalTurnRouterTests: XCTestCase {
     /// The turn shapes the router exists for, by case id.
     private enum Target: String, CaseIterable {
         case errorCode, modelNumber, procedureStart, procedureNextRepeat, procedureAnswer
-        case jobCommand, evidence, readingFollowUp, readingLogged
+        case jobCommand, evidence, readingFollowUp, readingLogged, twoStep
 
         init?(id: String) {
             if id.hasPrefix("code-"), id.hasSuffix("-lookup") || id.hasSuffix("-followup") { self = .errorCode }
             else if id.hasPrefix("job-") { self = .jobCommand }
+            else if id.hasPrefix("twostep-") { self = .twoStep }
             else if id.hasPrefix("evidence-") { self = .evidence }
             else if id.hasPrefix("sv-"), id.hasSuffix("-followup") { self = .readingFollowUp }
             else if id.hasPrefix("sv-"), id.hasSuffix("-log-in") || id.hasSuffix("-log-out") { self = .readingLogged }
@@ -578,7 +621,7 @@ final class LocalTurnRouterTests: XCTestCase {
             switch self {
             case .errorCode, .modelNumber: return 0.9
             case .procedureStart, .procedureNextRepeat, .procedureAnswer, .jobCommand, .evidence, .readingFollowUp,
-                 .readingLogged: return 1.0
+                 .readingLogged, .twoStep: return 1.0
             }
         }
     }
@@ -593,26 +636,30 @@ final class LocalTurnRouterTests: XCTestCase {
         for testCase in loaded.cases {
             let target = Target(id: testCase.id)
             if let target { totals[target, default: 0] += 1 }
-            guard let route = R.route(turn: testCase.turn, history: testCase.loopHistory,
-                                      context: R.Context(offered: Set(testCase.offered),
-                                                         procedureActive: testCase.procedureActive ?? false,
-                                                         procedures: testCase.procedures ?? [],
-                                                         stepReplies: testCase.stepReplies ?? [])) else {
-                continue
-            }
+            let routes = R.routes(turn: testCase.turn, history: testCase.loopHistory,
+                                  context: R.Context(offered: Set(testCase.offered),
+                                                     procedureActive: testCase.procedureActive ?? false,
+                                                     procedures: testCase.procedures ?? [],
+                                                     stepReplies: testCase.stepReplies ?? []))
+            guard !routes.isEmpty else { continue }
             if let target { routedByTarget[target, default: 0] += 1 } else { routedElsewhere += 1 }
-            guard let expected = testCase.expect.calls.first else {
-                wrong.append("\(testCase.id): routed a case that expects no call")
+            guard routes.count <= testCase.expect.calls.count else {
+                wrong.append("\(testCase.id): routed \(routes.count) calls, expects \(testCase.expect.calls.count)")
                 continue
             }
-            guard let variant = expected.variant(for: route.tool) else {
-                wrong.append("\(testCase.id): routed \(route.tool), not an expected tool")
-                continue
-            }
-            let missing = variant.required.filter { route.arguments[$0] == nil }
-            let unmatched = variant.values.filter { !LocalToolEval.matches(route.arguments[$0.key], expected: $0.value) }
-            if !missing.isEmpty || !unmatched.isEmpty {
-                wrong.append("\(testCase.id): arguments missing \(missing.sorted()), wrong \(unmatched.keys.sorted())")
+            // Each routed call is the expected call at its place, with what the router passed. A
+            // voltage drop's wire and supply are the loop's completion, so only the router's own
+            // arguments are checked against the case.
+            for (route, expected) in zip(routes, testCase.expect.calls) {
+                guard let variant = expected.variant(for: route.tool) else {
+                    wrong.append("\(testCase.id): routed \(route.tool), not an expected tool")
+                    continue
+                }
+                let missing = variant.required.filter { route.arguments[$0] == nil }
+                let unmatched = variant.values.filter { !LocalToolEval.matches(route.arguments[$0.key], expected: $0.value) }
+                if !missing.isEmpty || !unmatched.isEmpty {
+                    wrong.append("\(testCase.id): arguments missing \(missing.sorted()), wrong \(unmatched.keys.sorted())")
+                }
             }
         }
         // Counts only, by kind: never a turn.
