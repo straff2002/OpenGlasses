@@ -80,6 +80,14 @@ struct ConfigProfile: Codable, Equatable, Sendable {
     /// pointer, never content; absent on every profile without company vaults, which then applies
     /// exactly as before.
     var companyVaults: CompanyVaultsReference?
+    /// Plan ND — rises with every re-sign of this `profileId`, whoever made the change. The phone keeps
+    /// the highest it has applied and refuses a lower one (`ProfileGenerationGate`), so a stale or
+    /// replayed copy can neither renew the lease nor undo a newer policy. Absent on profiles from
+    /// before ND, which apply as they always did until the phone has seen one with a generation.
+    var profileGeneration: Int?
+    /// Plan ND — the assistants a person may choose when `aiModel` names none (`chatgpt`, `local`,
+    /// `appleOnDevice`). Absent means the full provider list, as before ND. Decoded without failing.
+    var aiChoices: AIChoices?
     /// The settings, keyed by the raw `SettingKey` name. Raw on purpose: see `RawSetting`.
     var settings: [String: RawSetting]
 
@@ -212,6 +220,23 @@ struct ConfigProfile: Codable, Equatable, Sendable {
         }
     }
 
+    /// A list of `LLMProvider` raw values, decoded without failing: anything but a string list reads
+    /// as empty, which offers nothing a person could be stuck on — the full list is shown instead.
+    struct AIChoices: Codable, Equatable, Sendable {
+        var providers: [String]
+
+        init(_ providers: [String]) { self.providers = providers }
+
+        init(from decoder: Decoder) throws {
+            providers = (try? decoder.singleValueContainer().decode([String].self)) ?? []
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            try container.encode(providers)
+        }
+    }
+
     struct VaultPackReference: Codable, Equatable, Sendable {
         let packId: String
         /// An organisation-hosted location for its own documents. A pointer, never bytes.
@@ -228,6 +253,8 @@ struct ConfigProfile: Codable, Equatable, Sendable {
          officeAuthority: OfficeAuthority? = nil,
          credentials: SealedCredentials? = nil,
          companyVaults: CompanyVaultsReference? = nil,
+         profileGeneration: Int? = nil,
+         aiChoices: AIChoices? = nil,
          settings: [String: RawSetting] = [:],
          format: String = ConfigProfile.formatId,
          schemaVersion: Int = 1) {
@@ -253,6 +280,8 @@ struct ConfigProfile: Codable, Equatable, Sendable {
         self.officeAuthority = officeAuthority
         self.credentials = credentials
         self.companyVaults = companyVaults
+        self.profileGeneration = profileGeneration
+        self.aiChoices = aiChoices
         self.settings = settings
     }
 }

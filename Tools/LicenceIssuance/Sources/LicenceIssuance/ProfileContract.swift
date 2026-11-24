@@ -94,12 +94,19 @@ public enum ProfileContract {
         public var credentials: [String: String]?
         /// Plan LR: the company vault catalog. Absent on every profile without company vaults.
         public var companyVaults: CompanyVaults?
+        /// Plan ND: rises with every re-sign of this `profileId`; the signer sets it
+        /// (`nextGeneration(after:)`), never the person editing. Absent on profiles from before ND.
+        public var profileGeneration: Int?
+        /// Plan ND: what a person may choose when `aiModel` names none (`knownAssistantChoices`).
+        /// Absent means the phone's full provider list, as before ND.
+        public var aiChoices: [String]?
         public init(profileId: String, organizationName: String, leaseDays: Int, policyExpiry: String? = nil,
                     eraseAfterLapseDays: Int? = nil, undeliveredEraseDays: Int? = nil, licenceCode: String? = nil,
                     vaultPack: VaultPack? = nil, skillPacks: [String]? = nil, revokedEnrolmentIds: [String]? = nil,
                     settings: [String: Setting]? = nil, aiModel: AIModel? = nil, edition: String? = nil,
                     adminCard: String? = nil, lockdown: Lockdown? = nil, officeAuthority: OfficeAuthority? = nil,
-                    credentials: [String: String]? = nil, companyVaults: CompanyVaults? = nil) {
+                    credentials: [String: String]? = nil, companyVaults: CompanyVaults? = nil,
+                    profileGeneration: Int? = nil, aiChoices: [String]? = nil) {
             self.profileId = profileId; self.organizationName = organizationName; self.leaseDays = leaseDays
             self.policyExpiry = policyExpiry; self.eraseAfterLapseDays = eraseAfterLapseDays
             self.undeliveredEraseDays = undeliveredEraseDays; self.licenceCode = licenceCode; self.vaultPack = vaultPack
@@ -107,6 +114,7 @@ public enum ProfileContract {
             self.aiModel = aiModel; self.edition = edition; self.adminCard = adminCard; self.lockdown = lockdown
             self.officeAuthority = officeAuthority; self.credentials = credentials
             self.companyVaults = companyVaults
+            self.profileGeneration = profileGeneration; self.aiChoices = aiChoices
         }
     }
 
@@ -135,6 +143,10 @@ public enum ProfileContract {
         public let credentials: [String: String]?
         /// Optional and omitted when nil, so a profile without company vaults is the bytes it was.
         public let companyVaults: CompanyVaults?
+        /// Plan ND. Optional and omitted when nil, like `companyVaults`.
+        public let profileGeneration: Int?
+        /// Plan ND. Optional and omitted when nil.
+        public let aiChoices: [String]?
         public let settings: [String: Setting]
     }
 
@@ -157,34 +169,214 @@ public enum ProfileContract {
     /// `AdminSecrets.iterationRange` in the app: fewer is too cheap to brute-force, more stalls the phone.
     public static let passcodeIterationRange = 10_000...5_000_000
 
-    /// SettingKey, by kind. "owned" ignores the disposition; "ceiling:<Bool>" may only be pinned that
-    /// way; "default:<type>" is a starting value.
+    /// SettingKey, by kind — every case, in SettingKey's order. "owned" ignores the disposition;
+    /// "ceiling:<Bool>" may only be pinned that way; "stringCeiling:<String>" may only be pinned to that
+    /// string; "default:<type>" is a starting value. `ProfileContractParityTests` (in the app's test bundle)
+    /// fails on any key, kind or direction that differs from the app.
     public static let allowList: [String: String] = [
+        // Organisation identity
+        "organizationFieldServiceRoute": "stringCeiling:office",
+        "workizEnabled": "owned:bool",
+        "workizReportFieldName": "owned:string",
+        "workizClientNotes": "owned:bool",
         "organizationDisplayName": "owned:string",
         "organizationJobSigningKey": "owned:string",
         "organizationJobReportChannel": "owned:string",
         "organizationReportRecipients": "owned:strings",
+        "organizationReportTranscriptInternal": "owned:string",
+        "capturedManualsPolicy": "owned:string",
+        "organizationAccentColor": "owned:string",
+        "technicianFullName": "owned:string",
+        "technicianID": "owned:string",
+        "technicianDisplayName": "owned:string",
+        "organizationToolDefinitionsMode": "owned:string",
+        "organizationManualSearchModel": "owned:string",
+        "organizationExperts": "owned:string",
+        "expertHandoverTranscript": "owned:string",
+        "expertHandoverIncludesAddress": "owned:bool",
+        "expertHandoverRetentionDays": "owned:string",
+        "customerReportShowsExpertTime": "owned:bool",
+        // Organisation policy — tighten only
         "organizationAllowsUnsignedVaults": "ceiling:false",
         "organizationRequiresSignedJobFiles": "ceiling:true",
         "organizationRequiresCustomerSignOff": "ceiling:true",
+        "organizationForbidsCustomerTranscript": "ceiling:true",
+        "organizationForbidsJobRecording": "ceiling:true",
+        "organizationForbidsVanStock": "ceiling:true",
+        "organizationStockPlace": "owned:string",
+        "organizationStockClinical": "owned:bool",
+        "stockSystemEnabled": "owned:bool",
+        "stockSystemConnector": "owned:string",
+        "stockSystemSendBack": "owned:bool",
+        "stockSystemAdjustmentReason": "owned:string",
+        "organizationForbidsAddOns": "ceiling:true",
+        "organizationForbidsCommunityAddOns": "ceiling:true",
+        "organizationAllowsOnlyOrganisationAddOns": "ceiling:true",
+        "organizationForbidsSelfBuiltAddOns": "ceiling:true",
+        "organizationRequiresBlurBeforeOfficeSync": "ceiling:true",
+        "organizationForbidsRecordingSyncOnCellular": "ceiling:true",
+        "organizationRequiresTableChecks": "ceiling:true",
+        "organizationRunsProceduresWithoutAssistant": "ceiling:true",
+        // Capability ceilings — tighten only
         "privacyFilterEnabled": "ceiling:true",
         "remoteInvokeObserveEnabled": "ceiling:false",
         "remoteInvokeOutputEnabled": "ceiling:false",
         "remoteInvokeCaptureEnabled": "ceiling:false",
         "mcpServerEnabled": "ceiling:false",
         "agentModeEnabled": "ceiling:false",
+        "interpreterEnabled": "ceiling:false",
+        "instantReplayEnabled": "ceiling:false",
+        "aiConnectionCueEnabled": "ceiling:true",
+        "teamLearningReviewerDevice": "ceiling:false",
+        "cloudDictationEnabled": "ceiling:false",
+        "preparedCardCustomerTexts": "ceiling:false",
+        "conversationDigestsEnabled": "ceiling:false",
+        "privateConversationsAllowed": "ceiling:false",
+        // Starting values the person may change
         "fieldAssistEnabled": "default:bool",
-        "workizEnabled": "owned:bool",
         "fieldAssistDefaultVaultId": "default:string",
         "fieldAssistDefaultMode": "default:string",
+        "pilotReportsEnabled": "default:bool",
+        "pilotReportRecipients": "default:strings",
         "supportReportEmail": "default:string",
-        "organizationAccentColor": "owned:string",
-        "organizationToolDefinitionsMode": "owned:string",
-        "organizationManualSearchModel": "owned:string",
         "accentColorName": "default:string",
         "refrigerationUnits": "default:string",
         "fieldAssistDefaultTrades": "default:strings",
     ]
+
+    // MARK: - Plan ND — what a company's administrator may edit
+
+    /// The settings a company's administrator may set in the portal: every starting value and the company's
+    /// own values. Never a ceiling (they only subtract, and some protect the wearer or a bystander), never a
+    /// key (`organizationJobSigningKey` decides which job files a phone trusts), never an engineering setting
+    /// (`organizationToolDefinitionsMode`), and never a per-person value (`technician*`), which on a
+    /// company-wide profile would name every technician after one person. A preset may narrow this, never
+    /// widen it.
+    public static let administratorEditableSettings: Set<String> = [
+        // starting values
+        "fieldAssistEnabled", "fieldAssistDefaultVaultId", "fieldAssistDefaultMode", "pilotReportsEnabled",
+        "pilotReportRecipients", "supportReportEmail", "accentColorName", "refrigerationUnits", "fieldAssistDefaultTrades",
+        // the company's own values
+        "organizationDisplayName", "organizationJobReportChannel", "organizationReportRecipients",
+        "organizationReportTranscriptInternal", "organizationAccentColor", "organizationExperts",
+        "expertHandoverTranscript", "expertHandoverIncludesAddress", "expertHandoverRetentionDays",
+        "customerReportShowsExpertTime", "capturedManualsPolicy", "organizationManualSearchModel",
+        "organizationStockPlace", "organizationStockClinical", "stockSystemEnabled", "stockSystemConnector",
+        "stockSystemSendBack", "stockSystemAdjustmentReason", "workizEnabled", "workizReportFieldName",
+        "workizClientNotes",
+    ]
+
+    /// The top-level profile fields an administrator's edit may change, besides `settings` (checked key by key
+    /// against `administratorEditableSettings`). Everything else is the vendor's or the signer's.
+    public static let administratorEditableFields: Set<String> = ["aiModel", "aiChoices", "lockdown.open", "lockdown.lock"]
+
+    /// What a person may pick when the profile pins no model: their own ChatGPT sign-in, or a model that runs
+    /// on the phone. `LLMProvider` raw values; never a provider that needs a key typed.
+    public static let knownAssistantChoices: Set<String> = ["chatgpt", "local", "appleOnDevice"]
+
+    /// The generation a re-sign of `previous` carries: one more, never reused. A profile from before ND
+    /// (no generation) re-signs as 1.
+    public static func nextGeneration(after previous: Int?) -> Int { (previous ?? 0) + 1 }
+
+    /// Refuses an administrator's edit that changes anything outside `administratorEditableFields` and
+    /// `administratorEditableSettings`. The signer runs this against the input in force, then `check`, then
+    /// sets `profileGeneration` with `nextGeneration(after:)`. A preset's own narrower list is the service's.
+    public static func checkAdministratorEdit(from before: Input, to after: Input) throws {
+        func vendorOnly(_ field: String) -> Invalid {
+            Invalid(message: "\(field) is set by the vendor, not the company's administrator")
+        }
+        if before.profileId != after.profileId { throw vendorOnly("profileId") }
+        if before.organizationName != after.organizationName { throw vendorOnly("organizationName") }
+        if before.leaseDays != after.leaseDays { throw vendorOnly("leaseDays") }
+        if before.policyExpiry != after.policyExpiry { throw vendorOnly("policyExpiry") }
+        if before.eraseAfterLapseDays != after.eraseAfterLapseDays { throw vendorOnly("eraseAfterLapseDays") }
+        if before.undeliveredEraseDays != after.undeliveredEraseDays { throw vendorOnly("undeliveredEraseDays") }
+        if before.licenceCode != after.licenceCode { throw vendorOnly("licenceCode") }
+        if before.vaultPack != after.vaultPack { throw vendorOnly("vaultPack") }
+        if before.skillPacks != after.skillPacks { throw vendorOnly("skillPacks") }
+        if before.revokedEnrolmentIds != after.revokedEnrolmentIds { throw vendorOnly("revokedEnrolmentIds") }
+        if before.edition != after.edition { throw vendorOnly("edition") }
+        if before.adminCard != after.adminCard { throw vendorOnly("adminCard") }
+        if before.officeAuthority != after.officeAuthority { throw vendorOnly("officeAuthority") }
+        if before.credentials != after.credentials { throw vendorOnly("credentials") }
+        if before.companyVaults != after.companyVaults { throw vendorOnly("companyVaults") }
+        if before.profileGeneration != after.profileGeneration { throw vendorOnly("profileGeneration") }
+        if (before.lockdown == nil) != (after.lockdown == nil) { throw vendorOnly("lockdown") }
+        if before.lockdown?.closedTools != after.lockdown?.closedTools { throw vendorOnly("lockdown.closedTools") }
+        let old = before.settings ?? [:], new = after.settings ?? [:]
+        for key in Set(old.keys).union(new.keys).sorted() where old[key] != new[key] {
+            guard administratorEditableSettings.contains(key) else {
+                throw Invalid(message: "\(key) is set by the vendor's preset, not the company's administrator")
+            }
+        }
+    }
+
+    /// Keys whose value only the phone can judge: it depends on what is installed there (a vault id) or on
+    /// rules the contract does not repeat (the expert list's codec, a technician's name and ID, address
+    /// plausibility). The signer checks their type and direction; the phone names a value it cannot use.
+    public static let phoneCheckedSettings: Set<String> = [
+        "organizationExperts", "technicianFullName", "technicianDisplayName", "technicianID",
+        "fieldAssistDefaultVaultId", "supportReportEmail", "pilotReportRecipients",
+    ]
+
+    /// The values the app's enumerations accept, mirrored. Each is checked against the app's own type in
+    /// `ProfileContractParityTests`.
+    public static let knownDeliveryChannels: Set<String> = ["email", "messages", "whatsapp", "telegram", "share_sheet", "endpoint"]
+    public static let knownToolDefinitionsModes: Set<String> = ["automatic", "always", "never"]
+    public static let knownExpertTranscriptRules: Set<String> = ["include", "ask", "never"]
+    public static let knownInternalTranscriptRules: Set<String> = ["always", "never"]
+    public static let knownStockPlaces: Set<String> = ["van", "truck", "store", "warehouse", "stock"]
+    public static let knownStockConnectors: Set<String> = ["square"]
+    public static let knownStockAdjustmentReasons: Set<String> = ["internal_use", "waste", "damage"]
+    public static let knownCapturedManualsPolicies: Set<String> = ["off", "jobOnly", "reviewToPool"]
+    public static let knownFieldAssistModes: Set<String> = ["ai_only", "human_assisted"]
+
+    /// Why a value of the right type is refused, or nil. At least as strict as the app's
+    /// `SettingKey.contentProblem` for every key outside `phoneCheckedSettings`, so the portal refuses
+    /// what a phone would drop (CT: an organisation should find out here, not at enrolment).
+    public static func contentProblem(_ key: String, _ value: Value) -> String? {
+        func printable(_ text: String) -> Bool {
+            !text.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
+        }
+        func oneOf(_ known: Set<String>, _ text: String) -> String? {
+            known.contains(text) ? nil : "\(key) is \(text), which is not one of \(known.sorted().joined(separator: ", "))"
+        }
+        switch (key, value) {
+        case ("workizReportFieldName", .string(let name)):
+            return name.isEmpty || name.count > 120 || !printable(name) ? "\(key) must be 1–120 printable characters" : nil
+        case ("organizationDisplayName", .string(let name)):
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty || trimmed.count > 120 ? "\(key) must be 1–120 characters" : nil
+        case ("organizationJobReportChannel", .string(let raw)): return oneOf(knownDeliveryChannels, raw)
+        case ("organizationToolDefinitionsMode", .string(let raw)): return oneOf(knownToolDefinitionsModes, raw)
+        case ("organizationManualSearchModel", .string(let raw)): return oneOf(knownManualSearchModels, raw)
+        case ("expertHandoverTranscript", .string(let raw)): return oneOf(knownExpertTranscriptRules, raw)
+        case ("organizationReportTranscriptInternal", .string(let raw)): return oneOf(knownInternalTranscriptRules, raw)
+        case ("organizationStockPlace", .string(let raw)): return oneOf(knownStockPlaces, raw)
+        case ("stockSystemConnector", .string(let raw)): return oneOf(knownStockConnectors, raw)
+        case ("stockSystemAdjustmentReason", .string(let raw)): return oneOf(knownStockAdjustmentReasons, raw)
+        case ("capturedManualsPolicy", .string(let raw)): return oneOf(knownCapturedManualsPolicies, raw)
+        case ("fieldAssistDefaultMode", .string(let raw)): return oneOf(knownFieldAssistModes, raw)
+        case ("expertHandoverRetentionDays", .string(let raw)):
+            guard !raw.isEmpty, raw.count <= 2, raw.unicodeScalars.allSatisfy({ (48...57).contains($0.value) }),
+                  let days = Int(raw), (1...30).contains(days) else { return "\(key) must be a whole number of days from 1 to 30" }
+            return nil
+        case ("organizationReportRecipients", .strings(let recipients)):
+            if recipients.isEmpty || recipients.count > 20 { return "\(key) needs 1–20 recipients" }
+            let bad = recipients.contains { $0.isEmpty || $0.count > 254 || $0.rangeOfCharacter(from: .whitespacesAndNewlines) != nil || !printable($0) }
+            return bad ? "\(key): a recipient is empty, too long, or contains whitespace" : nil
+        case ("organizationAccentColor", .string(let colour)), ("accentColorName", .string(let colour)):
+            let digits = colour.dropFirst()
+            return colour.first == "#" && digits.count == 6 && digits.allSatisfy(\.isHexDigit) ? nil : "\(key) must be a colour written as #RRGGBB"
+        case ("refrigerationUnits", .string(let raw)):
+            let parts = raw.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+            guard parts.count == 3, ["kPa", "bar", "psi"].contains(parts[0]), ["C", "F"].contains(parts[1]),
+                  ["kg", "lb"].contains(parts[2]) else { return "\(key) must be pressure,temperature,mass (for example kPa,C,kg)" }
+            return nil
+        default:
+            return nil
+        }
+    }
 
     /// One setting against the allow-list and the direction it may move.
     public static func checkSetting(_ key: String, _ setting: Setting) throws {
@@ -197,6 +389,10 @@ public enum ProfileContract {
             guard setting.disposition == "ceiling" else { throw Invalid(message: "\(key) may only be a ceiling") }
             guard case .bool(let flag) = setting.value else { throw Invalid(message: "\(key) takes a bool") }
             if String(flag) != parts[1] { throw Invalid(message: "\(key) may only be pinned to \(parts[1])") }
+        case "stringCeiling":
+            guard setting.disposition == "ceiling" else { throw Invalid(message: "\(key) may only be a ceiling") }
+            guard case .string(let text) = setting.value else { throw Invalid(message: "\(key) takes a string") }
+            if text != parts[1] { throw Invalid(message: "\(key) may only be pinned to \(parts[1])") }
         default:
             guard setting.disposition == "default" else { throw Invalid(message: "\(key) may only be a default") }
             if setting.value.typeName != parts[1] { throw Invalid(message: "\(key) takes a \(parts[1])") }
@@ -210,6 +406,7 @@ public enum ProfileContract {
                 throw Invalid(message: "fieldAssistDefaultTrades names \(trade), which is not a trade (\(knownTrades.sorted().joined(separator: ", ")))")
             }
         }
+        if let problem = contentProblem(key, setting.value) { throw Invalid(message: problem) }
         if key == "organizationJobSigningKey", case .string(let text) = setting.value {
             guard let data = Data(base64Encoded: text), (try? Curve25519.Signing.PublicKey(rawRepresentation: data)) != nil else {
                 throw Invalid(message: "organizationJobSigningKey is not a Curve25519 public key (use make-job-file.swift keygen)")
@@ -230,6 +427,16 @@ public enum ProfileContract {
             }
         } else if model.provider == "custom" {
             throw Invalid(message: "a custom aiModel needs its baseURL")
+        }
+    }
+
+    /// Plan ND: the assistants a person may pick when the profile pins none.
+    public static func checkAIChoices(_ choices: [String], pinnedModel: Bool) throws {
+        if pinnedModel { throw Invalid(message: "aiChoices only applies when aiModel names no model") }
+        if choices.isEmpty { throw Invalid(message: "aiChoices is empty; leave it out to offer the full list") }
+        if Set(choices).count != choices.count { throw Invalid(message: "aiChoices names a choice twice") }
+        for choice in choices where !knownAssistantChoices.contains(choice) {
+            throw Invalid(message: "aiChoices names \(choice), which is not one of \(knownAssistantChoices.sorted().joined(separator: ", "))")
         }
     }
 
@@ -280,6 +487,10 @@ public enum ProfileContract {
             }
         }
         if let model = input.aiModel { try checkAIModel(model) }
+        if let generation = input.profileGeneration, generation < 1 {
+            throw Invalid(message: "profileGeneration must be 1 or more (got \(generation))")
+        }
+        if let choices = input.aiChoices { try checkAIChoices(choices, pinnedModel: input.aiModel != nil) }
         if let boxes = input.credentials { try Credential.checkBoxes(boxes) }
         if let vaults = input.companyVaults { try checkCompanyVaults(vaults) }
         for (key, setting) in input.settings ?? [:] { try checkSetting(key, setting) }
@@ -311,6 +522,7 @@ public enum ProfileContract {
                  aiModel: input.aiModel, edition: input.edition, adminPasscode: adminPasscode,
                  adminCard: input.adminCard?.lowercased(), lockdown: input.lockdown,
                  officeAuthority: input.officeAuthority, credentials: input.credentials,
-                 companyVaults: input.companyVaults, settings: input.settings ?? [:])
+                 companyVaults: input.companyVaults, profileGeneration: input.profileGeneration,
+                 aiChoices: input.aiChoices, settings: input.settings ?? [:])
     }
 }

@@ -2209,6 +2209,10 @@ enum PrivacyLog {
         /// the company's own words, so both are fingerprinted; the reason, the hold and the error
         /// are closed vocabularies, and sizes are byte counts.
         case companyVault
+        /// The company's profile (Plan ND): a copy older than the one applied refused, a conditional
+        /// fetch that found nothing new, a new generation held for an open job. `version` is the
+        /// generation, a number the signer assigns; nothing else is recorded.
+        case companyProfile
     }
 
     enum TransferEvent: String {
@@ -2229,6 +2233,9 @@ enum PrivacyLog {
         case held
         /// One manual downloaded, checked and opened, or not (`error` says why).
         case manualArrived, manualFailed
+        /// Plan ND: a profile copy older than the generation applied was refused; the profile's
+        /// address answered that its copy is the generation asked about.
+        case staleRefused, notModified
     }
 
     /// `operation` is a queued op's kind — `OfflineQueue.OpKind`, a fixed enum — and never its

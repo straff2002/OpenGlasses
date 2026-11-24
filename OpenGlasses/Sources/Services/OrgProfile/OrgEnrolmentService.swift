@@ -457,4 +457,21 @@ final class OrgEnrolmentService: ObservableObject {
         guard (200...299).contains(response.statusCode) else { throw URLError(.badServerResponse) }
         return data
     }
+
+    /// Plan ND — the same client, one hop, asking whether the copy at `url` is still `generation`
+    /// (`If-None-Match`). A `304` is the cheap answer; a `200` is a document to verify; anything else,
+    /// a redirect included, is `.unavailable`, and the daily full fetch follows redirects as before.
+    nonisolated static func boundedConditionalFetch(_ url: URL, generation: Int) async -> ProfileConditionalFetch {
+        var body = Data()
+        let request = BoundedHTTPClient.OutboundRequest(
+            url: url, headers: ["If-None-Match": ProfileRefreshPolicy.entityTag(for: generation)])
+        guard let response = try? await BoundedHTTPClient().send(request, profile: .orgProfile, bodySink: { body.append($0) }) else {
+            return .unavailable
+        }
+        switch response.statusCode {
+        case 304: return .notModified
+        case 200...299: return .document(body)
+        default: return .unavailable
+        }
+    }
 }
