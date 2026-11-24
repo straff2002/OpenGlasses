@@ -254,9 +254,10 @@ final class LocalToolEvalCorpusTests: XCTestCase {
 
     private func runCase(_ id: String, script: [String]) async throws -> LocalToolEval.Run {
         let testCase = try XCTUnwrap(try corpus().first { $0.id == id })
-        return await LocalToolEval.run(testCase, environment: environment { _, _, index in
-            index < script.count ? script[index] : ""
-        })
+        // The model's own calls are what these grade, so the router does not make them first.
+        var unrouted = environment { _, _, index in index < script.count ? script[index] : "" }
+        unrouted.routesTurns = false
+        return await LocalToolEval.run(testCase, environment: unrouted)
     }
 
     func testTheWrongToolFailsToolName() async throws {

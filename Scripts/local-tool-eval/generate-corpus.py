@@ -576,7 +576,8 @@ def job_flow():
     add({"id": "clean-job-3", "category": "cleanOutput", "source": src, "turn": "How long before I read manifold pressure?",
          "offered": ["table_lookup"], "expect": {"calls": []},
          "reference": ["<think>The vault says five minutes on low heat.</think>Run low heat for five minutes, then read it."]})
-    add({"id": "cancel-job-1", "category": "cancellation", "source": src, "turn": "Log 0.6 on low fire",
+    # A question, so the model decodes the call: the router records a plain "Log …" before decoding.
+    add({"id": "cancel-job-1", "category": "cancellation", "source": src, "turn": "Can you log 0.6 on low fire?",
          "offered": ["reading"], "cancel": "decode", "expect": {"calls": []},
          "reference": [call("reading", {"action": "record_reading", "value": "0.6"}), "Logged."]})
     add({"id": "cancel-job-2", "category": "cancellation", "source": src, "turn": "Start the no ignition procedure",

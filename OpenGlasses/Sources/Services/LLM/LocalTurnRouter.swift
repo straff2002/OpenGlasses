@@ -39,6 +39,14 @@ import Foundation
 /// model's. All three hand their result to the model: `field_session` writes for a model, and the
 /// others' short results are spoken by the loop if the model says nothing.
 ///
+/// ### A reading logged in one breath
+/// Asked to "Log manifold, natural gas, Low at 0.68 in. w.c.", Gemma asked back which model or
+/// what was measured (6 of 9 failed on the phone), though the turn said both. A turn that is the
+/// log command and nothing else — "Log <what> at <value> [unit]", or "<what> reads <value>, log
+/// it" — is routed with exactly one number in it, what was measured said, and nothing deferred,
+/// denied or asked for besides. A question ("can you log…"), two values, a correction ("not 140")
+/// and a log with a calculation after it go to the model.
+///
 /// ### What is not routed
 /// Error codes through `table_lookup`: it needs a real table id, which only the passages give.
 enum LocalTurnRouter {
@@ -73,7 +81,7 @@ enum LocalTurnRouter {
 
     enum Kind: String, CaseIterable, Sendable {
         case errorCode, modelNumber, procedureStart, procedureNext, procedureRepeat, procedureAnswer
-        case jobCommand, evidence, readingFollowUp
+        case jobCommand, evidence, readingFollowUp, readingLogged
     }
 
     /// How a routed call's result reaches the wearer.
@@ -95,7 +103,7 @@ enum LocalTurnRouter {
 
         var speech: Speech {
             switch kind {
-            case .errorCode, .modelNumber, .jobCommand, .evidence, .readingFollowUp: return .model
+            case .errorCode, .modelNumber, .jobCommand, .evidence, .readingFollowUp, .readingLogged: return .model
             case .procedureStart, .procedureNext, .procedureRepeat, .procedureAnswer: return .result
             }
         }
@@ -127,6 +135,9 @@ enum LocalTurnRouter {
         }
         if context.offered.contains("reading"), let arguments = readingFollowUp(text, history: history) {
             return Route(kind: .readingFollowUp, tool: "reading", arguments: arguments)
+        }
+        if context.offered.contains("reading"), let arguments = loggedReading(text) {
+            return Route(kind: .readingLogged, tool: "reading", arguments: arguments)
         }
         let lookup = context.offered.contains("equipment_lookup") && !asksAnotherTool(text)
         if lookup, let code = askedErrorCode(text) {
@@ -774,6 +785,83 @@ enum LocalTurnRouter {
         return arguments
     }
 
+    /// The `reading` call for a turn that logs one value and says what it was: "Log <what> at
+    /// <value> [unit] [qualifier]" (the command first, after "OK", "right"…), or "<what> reads
+    /// <value> [unit], log it" (the command last, alone in its clause). Nil for anything else:
+    /// no number or more than one, nothing said of what was measured, a turn that defers, denies
+    /// or conditions, asks a question, or asks another tool for something too. A qualifier said
+    /// after the value ("7 inches natural", "0.6 on low fire") joins the quantity, or is the
+    /// quantity when nothing was said before the value.
+    static func loggedReading(_ text: String) -> [String: String]? {
+        guard !text.contains("?") else { return nil }
+        let values = statedValues(in: text)
+        guard values.count == 1, let value = values.first else { return nil }
+        let words = normalised(text).split(separator: " ").map(String.init)
+        guard !defers(words, text: text) else { return nil }
+
+        var leading = ArraySlice(words)
+        while let first = leading.first, logOpeners.contains(first) { leading = leading.dropFirst() }
+        let commandFirst = leading.first.map(logVerbs.contains) ?? false
+
+        let unit = unit(after: value.range.upperBound, in: text)
+        var rest = String(text[value.range.upperBound...])
+        if let unit, let said = rest.range(of: unit) { rest = String(rest[said.upperBound...]) }
+        var restClauses = clauseWords(rest)
+        let qualifierFollows = rest.first(where: { !$0.isWhitespace }).map { $0.isLetter } ?? false
+        var qualifier: [String] = []
+        if qualifierFollows, let first = restClauses.first {
+            qualifier = first
+            restClauses.removeFirst()
+            while let word = qualifier.first, qualifierLinks.contains(word) { qualifier.removeFirst() }
+            guard !qualifier.isEmpty, qualifier.count <= 4,
+                  qualifier.allSatisfy({ !otherRequests.contains($0) && !logVerbs.contains($0) }) else { return nil }
+        }
+
+        if commandFirst {
+            let before = clauseWords(String(text[..<value.range.lowerBound])).flatMap { $0 }
+            guard before.filter(logVerbs.contains).count == 1, before.allSatisfy({ !otherRequests.contains($0) || logVerbs.contains($0) }),
+                  restClauses.allSatisfy({ isAside($0) }) else { return nil }
+        } else {
+            // The command last, alone: "…, log it".
+            guard let last = restClauses.last, isLogItClause(last) else { return nil }
+            restClauses.removeLast()
+            let before = clauseWords(String(text[..<value.range.lowerBound])).flatMap { $0 }
+            guard restClauses.isEmpty, before.allSatisfy({ !otherRequests.contains($0) }),
+                  let opener = before.first, !requestOpeners.contains(opener) else { return nil }
+        }
+        guard !asksAnotherTool(rest.replacingOccurrences(of: "log", with: "", options: .caseInsensitive)
+                                .replacingOccurrences(of: "record", with: "", options: .caseInsensitive)) else { return nil }
+
+        // The command first is one sentence, whatever its full stops ("in. w.c."); the command
+        // last follows what was measured in its own sentence.
+        let saidBefore = quantitySaid(before: value.range.lowerBound, in: text, maxWords: 14, cuttingSentences: !commandFirst)
+        let qualifierText = qualifier.joined(separator: " ")
+        let quantity: String
+        switch (saidBefore, qualifierText.isEmpty) {
+        case (let said?, true): quantity = said
+        case (let said?, false): quantity = said + ", " + qualifierText
+        case (nil, false): quantity = qualifierText
+        case (nil, true): return nil
+        }
+        var arguments = ["action": "record_reading", "quantity": quantity, "value": value.text]
+        if let unit { arguments["unit"] = unit }
+        return arguments
+    }
+
+    static let logVerbs: Set<String> = ["log", "record"]
+    private static let logOpeners: Set<String> = ["ok", "okay", "right", "so", "now", "and", "alright", "please", "then", "um"]
+    private static let qualifierLinks: Set<String> = ["on", "at", "for", "in", "with"]
+
+    /// "log it", "log that", "record it please", "log" — the whole clause.
+    static func isLogItClause(_ clause: [String]) -> Bool {
+        var words = ArraySlice(clause)
+        while let first = words.first, logOpeners.contains(first) { words = words.dropFirst() }
+        while let last = words.last, ["please", "thanks", "mate", "now", "too"].contains(last) { words = words.dropLast() }
+        guard let verb = words.first, logVerbs.contains(verb) else { return false }
+        let object = Array(words.dropFirst())
+        return object.isEmpty || [["it"], ["that"], ["this"], ["that", "one"], ["this", "one"], ["that", "reading"]].contains(object)
+    }
+
     /// "and the other one?", "the second one", "log the other", "the rest" — the whole turn, with
     /// no number in it.
     static func isOtherOneFollowUp(_ text: String) -> Bool {
@@ -826,7 +914,7 @@ enum LocalTurnRouter {
     }
 
     private static let unitPattern = try! NSRegularExpression(pattern:
-        #"(?i)^\s*(in\.?\s?w\.?\s?c\.?|inches of water(?: column)?|inwc|iwc|psig|psi|kpa|mbar|°\s?[fc]|degrees(?: [fc])?"#
+        #"(?i)^\s*(in\.?\s?w\.?\s?c\.?|inches of water(?: column)?|inch(?:es)?|inwc|iwc|psig|psi|kpa|mbar|°\s?[fc]|degrees(?: [fc])?"#
         + #"|volts?|vac|v|millivolts?|mv|amps?|milliamps?|microamps?|µa|ohms?|Ω|hz|%|percent|cfm|rpm)(?![\w°])"#)
 
     /// The unit a reply or a `reading` result logged `value` in.
@@ -841,10 +929,11 @@ enum LocalTurnRouter {
 
     /// What was measured: the words of the first value's sentence before it, without "reads",
     /// "is", "at" and the like at the end or "log" at the front ("Manifold, natural gas reads 0.68"
-    /// → "Manifold, natural gas"). Nil when that leaves nothing, or more than eight words.
-    static func quantitySaid(before index: String.Index, in text: String) -> String? {
+    /// → "Manifold, natural gas"). Nil when that leaves nothing, or more than `maxWords` words.
+    static func quantitySaid(before index: String.Index, in text: String, maxWords: Int = 8,
+                             cuttingSentences: Bool = true) -> String? {
         var sentence = String(text[..<index])
-        if let cut = sentence.range(of: #"[.!?]\s"#, options: [.regularExpression, .backwards]) {
+        if cuttingSentences, let cut = sentence.range(of: #"[.!?]\s"#, options: [.regularExpression, .backwards]) {
             sentence = String(sentence[cut.upperBound...])
         }
         var words = sentence.split(whereSeparator: { $0.isWhitespace }).map(String.init)
@@ -856,7 +945,7 @@ enum LocalTurnRouter {
         }
         if let last = words.last, last.lowercased().hasSuffix("'s") { words[words.count - 1] = String(last.dropLast(2)) }
         let quantity = words.joined(separator: " ").trimmingCharacters(in: trim.union(.whitespaces))
-        guard !quantity.isEmpty, words.count <= 8, quantity.contains(where: \.isLetter) else { return nil }
+        guard !quantity.isEmpty, words.count <= maxWords, quantity.contains(where: \.isLetter) else { return nil }
         return quantity
     }
 

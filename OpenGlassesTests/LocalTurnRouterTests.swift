@@ -389,6 +389,53 @@ final class LocalTurnRouterTests: XCTestCase {
                      "not without reading offered")
     }
 
+    // MARK: - A reading logged in one breath
+
+    func testALogCommandWithOneValueAndWhatWasMeasuredIsRecorded() {
+        let cases: [(String, [String: String])] = [
+            ("Log manifold, natural gas, Low, all models except 090XV60C at 0.68 in. w.c.",
+             ["quantity": "manifold, natural gas, Low, all models except 090XV60C", "value": "0.68", "unit": "in. w.c."]),
+            ("Log line pressure, in. w.c., Natural at 7.5 in. w.c.",
+             ["quantity": "line pressure, in. w.c., Natural", "value": "7.5", "unit": "in. w.c."]),
+            ("Log high fire co2 % natural, -070, -090XV36C/48C, -110, -135 at 7.8 %",
+             ["quantity": "high fire co2 % natural, -070, -090XV36C/48C, -110, -135", "value": "7.8", "unit": "%"]),
+            ("Log manifold pressure on low fire, 0.6 inches",
+             ["quantity": "manifold pressure on low fire", "value": "0.6", "unit": "inches"]),
+            ("Log line pressure 7 inches natural", ["quantity": "line pressure, natural", "value": "7", "unit": "inches"]),
+            ("OK, log supply air at 140, it's running a bit warm", ["quantity": "supply air", "value": "140"]),
+            ("Log 0.6 on low fire", ["quantity": "low fire", "value": "0.6"]),
+            ("Flame signal reads 2.9 microamps, log it", ["quantity": "Flame signal", "value": "2.9", "unit": "microamps"]),
+            ("Return air is 72 degrees, record that please", ["quantity": "Return air", "value": "72", "unit": "degrees"]),
+        ]
+        for (turn, said) in cases {
+            let routed = route(turn, offered: ["reading", "field_session", "table_lookup", "domain_calc"])
+            XCTAssertEqual(routed?.kind, .readingLogged, turn)
+            XCTAssertEqual(routed?.tool, "reading", turn)
+            XCTAssertEqual(routed?.arguments, said.merging(["action": "record_reading"]) { a, _ in a }, turn)
+            XCTAssertEqual(routed?.speech, .model, turn)
+        }
+    }
+
+    func testALogTurnThatIsNotJustTheCommandIsLeftToTheModel() {
+        let offered: Set<String> = ["reading", "field_session", "domain_calc"]
+        for turn in [
+            "Can you log 0.6 on low fire?",                                   // a question
+            "Log supply air at 140 and return air at 72",                     // two values
+            "Don't log anything yet, I'm just looking",                       // denied
+            "Log supply at 140 once it settles",                              // conditioned
+            "Log 140",                                                        // nothing said of what
+            "Supply air was 135, not 140",                                    // a correction
+            "Line voltage at the control is 115. Log it, then work out the voltage drop",
+            "Log supply air at 140 and take a photo",                         // another tool too
+            "Supply air reads 140",                                           // no command
+            "What should manifold pressure be at 0.6?",                       // a question
+        ] {
+            XCTAssertNil(route(turn, offered: offered), turn)
+        }
+        XCTAssertNil(route("Log manifold pressure at 0.6 inches", offered: ["field_session", "table_lookup"]),
+                     "not without reading offered")
+    }
+
     // MARK: - Speaking a step's result
 
     func testAStepResultIsSaidWithoutTheLinesForTheModel() {
@@ -478,13 +525,14 @@ final class LocalTurnRouterTests: XCTestCase {
     /// The turn shapes the router exists for, by case id.
     private enum Target: String, CaseIterable {
         case errorCode, modelNumber, procedureStart, procedureNextRepeat, procedureAnswer
-        case jobCommand, evidence, readingFollowUp
+        case jobCommand, evidence, readingFollowUp, readingLogged
 
         init?(id: String) {
             if id.hasPrefix("code-"), id.hasSuffix("-lookup") || id.hasSuffix("-followup") { self = .errorCode }
             else if id.hasPrefix("job-") { self = .jobCommand }
             else if id.hasPrefix("evidence-") { self = .evidence }
             else if id.hasPrefix("sv-"), id.hasSuffix("-followup") { self = .readingFollowUp }
+            else if id.hasPrefix("sv-"), id.hasSuffix("-log-in") || id.hasSuffix("-log-out") { self = .readingLogged }
             else if id.hasPrefix("model-"), id.hasSuffix("-lookup") { self = .modelNumber }
             else if id.hasPrefix("proc-"), id.hasSuffix("-start") { self = .procedureStart }
             else if id.hasPrefix("proc-"), id.hasSuffix("-next") || id.hasSuffix("-repeat") { self = .procedureNextRepeat }
@@ -495,7 +543,7 @@ final class LocalTurnRouterTests: XCTestCase {
         var floor: Double {
             switch self {
             case .errorCode, .modelNumber, .procedureAnswer: return 0.9
-            case .procedureStart, .procedureNextRepeat, .jobCommand, .evidence, .readingFollowUp: return 1.0
+            case .procedureStart, .procedureNextRepeat, .jobCommand, .evidence, .readingFollowUp, .readingLogged: return 1.0
             }
         }
     }

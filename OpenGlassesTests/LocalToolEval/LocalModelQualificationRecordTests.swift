@@ -49,11 +49,16 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         return schemas
     }
 
-    private func environment(_ generate: @escaping (LocalToolEval.Case, LocalToolLoop.GenerationRequest, Int)
+    /// `routed: false` when the model's own call is what a test grades, so the router does not
+    /// make it first.
+    private func environment(routed: Bool = true,
+                             _ generate: @escaping (LocalToolEval.Case, LocalToolLoop.GenerationRequest, Int)
                                 async throws -> LocalToolLoop.Generation) -> LocalToolEval.Environment {
         let frozen = schemas()
-        return LocalToolEval.Environment(generateTurn: generate, schema: { frozen[$0] },
-                                         referenceModelID: "mlx-community/gemma-4-e2b-it-4bit")
+        var environment = LocalToolEval.Environment(generateTurn: generate, schema: { frozen[$0] },
+                                                    referenceModelID: "mlx-community/gemma-4-e2b-it-4bit")
+        environment.routesTurns = routed
+        return environment
     }
 
     private func stats(tokens: Int, cap: Int = 512, stoppedAtCap: Bool = false) -> LocalGenerationStats {
@@ -88,7 +93,7 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         let testCase = try XCTUnwrap(try corpus().first { $0.id == "sv-001-log-in" })
         let call = #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "#
             + #""quantity": "line pressure, in. w.c., Natural", "value": "7.5", "unit": "inWC"}}</tool_call>"#
-        let run = await LocalToolEval.run(testCase, environment: environment { _, _, index in
+        let run = await LocalToolEval.run(testCase, environment: environment(routed: false) { _, _, index in
             index == 0 ? .init(text: call, stats: self.stats(tokens: 40)) : .init(text: "", stats: self.stats(tokens: 0))
         })
         XCTAssertEqual(run.grades[.toolName], true)
@@ -403,7 +408,7 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         let kept = testCase.offered.filter { $0 != expected }
         let reference = testCase.reference ?? []
         // The model calls the expected tool anyway (as the scripted reference does): it was dropped.
-        let dropped = await LocalToolEval.run(testCase, environment: environment { _, request, index in
+        let dropped = await LocalToolEval.run(testCase, environment: environment(routed: false) { _, request, index in
             .init(text: index < reference.count ? reference[index] : "",
                   stats: self.stats(tokens: 20),
                   toolFit: request.toolsOffered
@@ -419,7 +424,7 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         XCTAssertEqual(dropped.measurements.promptTokens.first, 900)
 
         // Everything kept: the reference passes, and nothing is marked.
-        let whole = await LocalToolEval.run(testCase, environment: environment { _, request, index in
+        let whole = await LocalToolEval.run(testCase, environment: environment(routed: false) { _, request, index in
             .init(text: index < reference.count ? reference[index] : "",
                   toolFit: request.toolsOffered
                       ? .init(offered: testCase.offered.count, keptNames: testCase.offered, compact: false,
