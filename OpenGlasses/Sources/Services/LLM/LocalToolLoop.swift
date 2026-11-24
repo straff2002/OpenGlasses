@@ -591,16 +591,17 @@ enum LocalToolLoop {
         return first.uppercased() + rest.dropFirst()
     }
 
-    /// A `reading` record or correction whose `value` holds no number, as digits or as a number
+    /// A `reading` record or correction whose `value` is there but holds no number, as digits or as a number
     /// word ("seven", "twelve point five"): the tool takes "the number alone", so a value like
     /// "outside" or "not applicable" is the model filling a slot, not a reading.
     static func isReadingWithoutNumber(_ call: Call) -> Bool {
         guard call.name == "reading" else { return false }
         let action = (call.arguments["action"] as? String)?.lowercased() ?? "record_reading"
         guard action == "record_reading" || action == "correct_reading" else { return false }
-        if call.arguments["value"] is NSNumber { return false }
-        let value = (call.arguments["value"] as? String) ?? ""
-        if value.contains(where: \.isNumber) { return false }
+        // A missing or blank value is the tool's to ask about ("Say what was measured and the
+        // value"), as when the grounding filter took off a number nobody said.
+        guard let value = (call.arguments["value"] as? String)?.trimmingCharacters(in: .whitespaces),
+              !value.isEmpty, !value.contains(where: \.isNumber) else { return false }
         let words = value.lowercased().split(whereSeparator: { !$0.isLetter })
         return !words.contains { numberWords.contains(String($0)) }
     }

@@ -170,7 +170,7 @@ final class LocalToolLoopTests: XCTestCase {
             let call = LocalToolLoop.Call(id: "call_1", name: "reading", arguments: ["action": "record_reading", "value": value])
             XCTAssertFalse(LocalToolLoop.isReadingWithoutNumber(call), value)
         }
-        for value in ["outside", "not applicable", "", "N/A"] {
+        for value in ["outside", "not applicable", "N/A"] {
             let call = LocalToolLoop.Call(id: "call_1", name: "reading", arguments: ["action": "record_reading", "value": value])
             XCTAssertTrue(LocalToolLoop.isReadingWithoutNumber(call), value)
         }
@@ -178,6 +178,10 @@ final class LocalToolLoopTests: XCTestCase {
             LocalToolLoop.Call(id: "call_1", name: "reading", arguments: ["action": "record_reading", "value": NSNumber(value: 7)])))
         XCTAssertFalse(LocalToolLoop.isReadingWithoutNumber(
             LocalToolLoop.Call(id: "call_1", name: "evidence", arguments: ["value": "outside"])), "only reading")
+        for arguments in [["action": "record_reading"], ["action": "record_reading", "value": "  "]] as [[String: Any]] {
+            XCTAssertFalse(LocalToolLoop.isReadingWithoutNumber(LocalToolLoop.Call(id: "call_1", name: "reading", arguments: arguments)),
+                           "a missing or blank value is the tool's to ask about")
+        }
     }
 
     func testARepeatWithReorderedArgumentsEndsTheLoop() async throws {
