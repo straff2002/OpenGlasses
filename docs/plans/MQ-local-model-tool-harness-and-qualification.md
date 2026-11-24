@@ -666,6 +666,35 @@ time to first token on turn 1 and turn 8 of a long job with the cache kept, and 
 per token inside a call. The GGUF runtime still offloads every layer to Metal by default, so the
 locked-phone case the plan names needs a CPU-only load before it can be measured.
 
+## llama.cpp v1.0.0 (2026-11-25)
+
+The GGUF engine moved from v0.3.0 to **v1.0.0** (tag `v1.0.0`, commit `b1b770d9`, build b12359,
+published 2026-11-13, 1,738 commits on), for Qwen 3.5's gated delta-net fixes (#28068, #32078),
+the on-device state copy sizes for quantized KV caches (#30541) and the newer `common/chat`.
+Server-side context checkpoints are in `tools/server`, which is not linked.
+
+- **Build.** `chat/CMakeLists.txt` adds `chat-tts-norm`, `json-schema` and the per-family handlers
+  v1 moved to `common/parsers/` (upstream's own `parsers/sources.cmake`); `file-lock` joins the
+  excluded downloader code; `json-schema.h` ships with the chat headers. The no-network check
+  passes. No new third-party code is compiled (nlohmann/json stays 3.12.0, now with llama.cpp's
+  deep-nesting patch).
+- **API.** `common_chat_params.prompt` is now parts (template text and user input); the bridge
+  joins them, as before. The family's parser became an in-memory PEG arena with no text form, so
+  `og_llama_chat_parser_create` now takes the templates and the request and renders it again
+  (one extra render a generation), and the render's JSON lost its `parser` key. The parse input is a
+  `common_chat_input`. The core `llama.h` calls the wrapper uses are unchanged. The
+  `catch (std::exception)` probe still reads false in the app image, so Qwen 3-style templates still
+  fall back to Hermes.
+- **Size.** Device slice 15,621,800 → 21,778,656 bytes (a local Xcode 27.2 build; the committed
+  engine bytes are the CI runner's, recorded by hand through the Engine Reproducibility workflow).
+  Linked and dead-stripped into a minimal arm64 executable with the wrapper: 8.44 → 13.09 MB, 6.94 →
+  11.41 MB stripped. 3.54 MB of that is the embedded Metal kernel source (`__ggml_metallib`, 1.78 →
+  5.32 MB: v1 keeps one source per kernel kind, each with the shared headers copied in), about
+  0.73 MB code.
+- **Verified** headless: the GGUF suites (LlamaCppToolTurnTests, LlamaToolChatTests,
+  LlamaCppRuntimeTests, LlamaCppBackendTests, LlamaRuntimePackageTests) 102 tests, 0 failures,
+  2 skipped (the Qwen 3 bridge tests, as before). Not run on a phone.
+
 ## What the local path does today (read from the code, 2026-11-20)
 
 1. **The prompt lists tool names, not schemas.** `LLMService.localToolInstructions` appends

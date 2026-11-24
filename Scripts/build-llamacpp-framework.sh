@@ -195,6 +195,7 @@ COMMON_HEADERS=(
   "common/chat.h"
   "common/common.h"
   "common/json.h"
+  "common/json-schema.h"
   "common/log.h"
   "common/peg-parser.h"
   "common/jinja/caps.h"

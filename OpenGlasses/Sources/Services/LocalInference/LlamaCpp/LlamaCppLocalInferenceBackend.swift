@@ -433,6 +433,8 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
     }
 
     private struct PreparedChat {
+        /// The request that was rendered: the family's parser is built from it (llama.cpp v1.0.0).
+        let requestJSON: String
         let renderJSON: String
         let render: LlamaToolChat.Render
         /// Control tokens the family's parser reads as text: its call markers.
@@ -558,7 +560,9 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
             } else {
                 engine.clearGrammar(sampler)
             }
-            parser = try? engine.createChatParser(renderJSON: chat.renderJSON)
+            if let templates = resources.chatTemplates {
+                parser = try? engine.createChatParser(templates, requestJSON: chat.requestJSON)
+            }
             noteChatFormat(chat.render.formatName, model: resources.installation.id)
         } else {
             engine.clearGrammar(sampler)
@@ -690,15 +694,17 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                              toolTurn: LocalToolTurn?, resources: Resources,
                              budget: Int) throws -> PreparedPrompt {
         func rendered(_ messages: [LocalToolLoop.Message],
-                      tools: [[String: Any]]) throws -> (json: String, render: LlamaToolChat.Render, tokens: [LlamaToken]) {
-            let json = try engine.renderChat(templates, requestJSON: LlamaToolChat.requestJSON(
-                system: system, messages: messages, tools: tools, thinkingOff: toolTurn?.thinkingOff ?? true))
+                      tools: [[String: Any]]) throws -> (request: String, json: String, render: LlamaToolChat.Render,
+                                                        tokens: [LlamaToken]) {
+            let request = LlamaToolChat.requestJSON(
+                system: system, messages: messages, tools: tools, thinkingOff: toolTurn?.thinkingOff ?? true)
+            let json = try engine.renderChat(templates, requestJSON: request)
             let render = try LlamaToolChat.render(json)
             let addSpecial = LlamaCppChatTemplate.shouldAddSpecialTokens(
                 rendered: render.prompt, bosPiece: resources.bosPiece, vocabularyAddsBOS: resources.vocabularyAddsBOS)
             let tokens = try engine.tokenize(resources.model, text: render.prompt,
                                              addSpecial: addSpecial, parseSpecial: true)
-            return (json, render, tokens)
+            return (request, json, render, tokens)
         }
 
         // The definitions first, measured with no history (`LocalToolFit`, as MLX).
@@ -730,7 +736,8 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
             if ids.count == 1 { preserved.insert(ids[0]) }
         }
         return PreparedPrompt(tokens: final.tokens,
-                              chat: PreparedChat(renderJSON: final.json, render: final.render, preserved: preserved),
+                              chat: PreparedChat(requestJSON: final.request, renderJSON: final.json,
+                                                 render: final.render, preserved: preserved),
                               fit: fit)
     }
 

@@ -338,21 +338,25 @@ OGLlamaStatus og_llama_chat_templates_from_source(const char *source,
 
 void og_llama_chat_templates_free(OGLlamaChatTemplates *templates);
 
-/// Renders a request:
+/// Renders a request (Plan MQ P2; the `parser` key went with v1.0.0, whose parser has no text form):
 ///   {"messages": [OpenAI-style messages, tool calls and `tool` results included],
 ///    "tools": [OpenAI-style function specs], "tool_choice": "auto" | "required" | "none",
 ///    "parallel_tool_calls": bool, "enable_thinking": bool, "add_generation_prompt": bool,
 ///    "reasoning_format": "auto" | "none", "now": seconds since 1970 (optional)}
 /// into:
 ///   {"prompt", "format", "format_name", "grammar", "grammar_lazy", "grammar_triggers": [{"type",
-///    "value"}], "preserved_tokens", "additional_stops", "generation_prompt", "parser",
+///    "value"}], "preserved_tokens", "additional_stops", "generation_prompt",
 ///    "reasoning_format", "supports_thinking", "tools_rendered"}.
 OGLlamaStatus og_llama_chat_render(const OGLlamaChatTemplates *templates,
                                    const char *request_json,
                                    char **out_json);
 
-/// A parser for completions of one render, from that render's JSON.
-OGLlamaStatus og_llama_chat_parser_create(const char *render_json, OGLlamaChatParser **out_parser);
+/// A parser for the completions of one request: `request_json` is the request that was rendered
+/// (the same JSON `og_llama_chat_render` took). It is rendered again here, because llama.cpp
+/// v1.0.0 keeps the family's parser only in memory.
+OGLlamaStatus og_llama_chat_parser_create(const OGLlamaChatTemplates *templates,
+                                          const char *request_json,
+                                          OGLlamaChatParser **out_parser);
 void og_llama_chat_parser_free(OGLlamaChatParser *parser);
 
 /// Parses `length` bytes of completion into {"content", "reasoning_content", "tool_calls":

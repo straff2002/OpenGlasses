@@ -259,7 +259,9 @@ protocol LlamaEngine: Sendable {
     func freeChatTemplates(_ templates: LlamaChatTemplatesHandle)
     /// `LlamaChatRequest` JSON in, `LlamaChatRender` JSON out.
     func renderChat(_ templates: LlamaChatTemplatesHandle, requestJSON: String) throws -> String
-    func createChatParser(renderJSON: String) throws -> LlamaChatParserHandle
+    /// A parser for the completions of `requestJSON`'s render. The request, not the render: since
+    /// llama.cpp v1.0.0 the family's parser exists only in memory, so it is built from a render.
+    func createChatParser(_ templates: LlamaChatTemplatesHandle, requestJSON: String) throws -> LlamaChatParserHandle
     func freeChatParser(_ parser: LlamaChatParserHandle)
     /// A completion as `LlamaChatParsed` JSON; throws `parseFailed` when it is not the family's format.
     func parseChat(_ parser: LlamaChatParserHandle, text: String, partial: Bool) throws -> String
@@ -294,7 +296,7 @@ extension LlamaEngine {
         throw LlamaEngineError.templateFailed
     }
 
-    func createChatParser(renderJSON: String) throws -> LlamaChatParserHandle {
+    func createChatParser(_ templates: LlamaChatTemplatesHandle, requestJSON: String) throws -> LlamaChatParserHandle {
         throw LlamaEngineError.templateFailed
     }
 

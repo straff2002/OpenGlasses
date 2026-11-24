@@ -8,7 +8,7 @@ digests of the built artefact live in [`SHA256SUMS`](SHA256SUMS) and what produc
 ## llama.cpp (and ggml)
 
 - **Upstream:** https://github.com/ggml-org/llama.cpp
-- **Revision:** `c1d0e7a004015f23bc0233470b747b596f29b264` (release `v0.3.0`)
+- **Revision:** `b1b770d90d94cad9e9ea5b993bdbc383a522fb28` (release `v1.0.0`, build b12359)
 - **Licence:** MIT — Copyright (c) 2023-2026 The ggml authors
 
 > Permission is hereby granted, free of charge, to any person obtaining a copy of this software
@@ -39,7 +39,7 @@ upstream sources ship in the binary:
 | SHA-256 | Public domain | 2010-06-11, Igor Pavlov |
 | SHA-1 | Public domain | Steve Reid |
 | rotate-bits | MIT | Copyright (c) 2021 William Casarin |
-| JSON for Modern C++ (nlohmann/json) 3.12.0 | MIT | Copyright (c) 2013-2025 Niels Lohmann |
+| JSON for Modern C++ (nlohmann/json) 3.12.0, with llama.cpp's deep-nesting patch | MIT | Copyright (c) 2013-2025 Niels Lohmann |
 
 Nothing else under llama.cpp's `vendor/` is compiled: cpp-httplib, miniaudio, sheredom and stb
 belong to the server, the downloader, tools and multimodal targets, all of which are off.
@@ -52,14 +52,20 @@ llama.cpp) and the PEG parser it uses. It is built by [`chat/CMakeLists.txt`](ch
 from the same pinned checkout, as the smallest set of `common/` sources that links — **not**
 upstream's `llama-common` target, which also carries the model downloader, the Hugging Face cache,
 the argument parser and cpp-httplib. Left out by name: `arg`, `console`, `debug`, `download`,
-`hf-cache`, `http`, `imatrix-loader`, `llguidance`, `preset`, `subproc`. Its headers ship under
+`file-lock`, `hf-cache`, `http`, `imatrix-loader`, `llguidance`, `preset`, `subproc`. Since v1.0.0 it
+also compiles `chat-tts-norm`, `json-schema` and the per-family handlers in `common/parsers/` (taken
+from upstream's own `parsers/sources.cmake`), all llama.cpp's own MIT code. Its headers ship under
 `Headers/llama-common/` for the wrapper's chat bridge (`Sources/LlamaCppWrapper/LlamaCppChat.mm`);
 Swift sees only the bridge's C functions. Its logger, which writes template text and model output
 to stderr from its own thread, is switched off by the bridge (`common_log_set_verbosity_thold(-1)`).
 
 Size, device slice (`ios-arm64/libllama.a`): 10,322,800 bytes at v0.3.0 without it (Xcode 26.6),
 15,621,800 bytes with it (Xcode 26.6, recorded on the CI runner); the chat library alone is about
-a 5.3 MB archive.
+a 5.3 MB archive. At v1.0.0, 21,778,656 bytes (a local build, Xcode 27.2; the committed bytes come
+from the CI runner). Linked and dead-stripped into a minimal arm64 executable with the wrapper,
+v1.0.0 is 4.47 MB larger stripped than v0.3.0 (6.94 → 11.41 MB): 3.54 MB of it is the embedded
+Metal kernel source (`__ggml_metallib`, 1.78 → 5.32 MB, now one source per kernel kind with the
+shared headers copied into each), about 0.73 MB code.
 
 ## Telemetry posture
 

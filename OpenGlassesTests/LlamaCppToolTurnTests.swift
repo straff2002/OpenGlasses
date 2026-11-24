@@ -135,8 +135,8 @@ final class LlamaCppToolTurnTests: XCTestCase {
             lock.lock(); _requests.append(requestJSON); lock.unlock()
             return try real.renderChat(templates, requestJSON: requestJSON)
         }
-        func createChatParser(renderJSON: String) throws -> LlamaChatParserHandle {
-            try real.createChatParser(renderJSON: renderJSON)
+        func createChatParser(_ templates: LlamaChatTemplatesHandle, requestJSON: String) throws -> LlamaChatParserHandle {
+            try real.createChatParser(templates, requestJSON: requestJSON)
         }
         func freeChatParser(_ parser: LlamaChatParserHandle) { real.freeChatParser(parser) }
         func parseChat(_ parser: LlamaChatParserHandle, text: String, partial: Bool) throws -> String {

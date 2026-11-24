@@ -336,9 +336,9 @@ final class LlamaCppEngine: LlamaEngine, @unchecked Sendable {
         }
     }
 
-    func createChatParser(renderJSON: String) throws -> LlamaChatParserHandle {
+    func createChatParser(_ templates: LlamaChatTemplatesHandle, requestJSON: String) throws -> LlamaChatParserHandle {
         var handle: OpaquePointer?
-        let status = og_llama_chat_parser_create(renderJSON, &handle)
+        let status = og_llama_chat_parser_create(OpaquePointer(bitPattern: templates.bits), requestJSON, &handle)
         guard status == OGLlamaStatusOK, let handle else { throw Self.error(status) }
         return LlamaChatParserHandle(bits: UInt(bitPattern: handle))
     }
