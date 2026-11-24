@@ -174,7 +174,7 @@ struct ConversationClassifier {
         // "New topic" — a bare conversation-reset command clears context without an LLM turn.
         // Bare-query gated: "new topic" inside a longer sentence ("write about a new topic for
         // my essay") must reach the LLM as content, not wipe the conversation.
-        if let matched = matchedPattern(text, patterns: newTopicPatterns), isBareQuery(text, matched: matched) {
+        if isTier0NewTopic(text) {
             return DirectToolCall(toolName: "new_topic", arguments: [:])
         }
 
@@ -246,6 +246,26 @@ struct ConversationClassifier {
         "clear the conversation", "clear conversation", "clear our conversation",
         "forget this conversation", "forget that", "reset the conversation", "fresh start"
     ]
+
+    /// Tier 0's own reset test, on text already lowercased and trimmed the way `classify` does it.
+    private func isTier0NewTopic(_ lower: String) -> Bool {
+        guard let matched = matchedPattern(lower, patterns: newTopicPatterns) else { return false }
+        return isBareQuery(lower, matched: matched)
+    }
+
+    private static let shared = ConversationClassifier()
+
+    /// Whether `text` is a bare "new topic" command, by exactly the test Tier 0 routes on: the
+    /// same phrases, the same bare-query filler, the same normalisation. For the live-mode backstop
+    /// (`LiveNewTopicBackstop`), which has to agree with Direct about what a reset command is and
+    /// must not keep a phrase list of its own.
+    ///
+    /// Narrower than `isBareResetRequest(_:)`, which also accepts the tool-only phrasings: those
+    /// are fragments a model has to have read the whole sentence to choose, and a backstop that
+    /// resets without a model's choice gets no more licence than Tier 0 has.
+    static func isBareNewTopicCommand(_ text: String) -> Bool {
+        shared.isTier0NewTopic(text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines))
+    }
 
     /// Reset phrasings that exist for the **tool** path only.
     ///

@@ -42,19 +42,38 @@ enum SavedNotesStore {
         defaults.set(Array(notes.suffix(50)), forKey: storageKey)
     }
 
+    /// `extra` carries a meeting summary's own fields (Plan MX P5: its meeting id, its action
+    /// items as a string, whose notes they are); the three canonical keys win over it.
     static func append(
         title: String,
         content: String,
         date: String,
+        extra: [String: String] = [:],
         defaults: UserDefaults = .standard
     ) {
         var notes = load(defaults: defaults)
-        notes.append([
-            "title": title,
-            "content": content,
-            "date": date,
-        ])
+        var note = extra
+        note["title"] = title
+        note["content"] = content
+        note["date"] = date
+        notes.append(note)
         save(notes, defaults: defaults)
+    }
+
+    /// Change the note whose `key` is `value` (a meeting summary's id). False when there is none,
+    /// which is how a note the wearer deleted stays deleted.
+    @discardableResult
+    static func update(
+        whereKey key: String,
+        is value: String,
+        defaults: UserDefaults = .standard,
+        _ change: (inout [String: String]) -> Void
+    ) -> Bool {
+        var notes = load(defaults: defaults)
+        guard let index = notes.firstIndex(where: { $0[key] == value }) else { return false }
+        change(&notes[index])
+        save(notes, defaults: defaults)
+        return true
     }
 
     private static func migrate(_ legacyNote: String) -> [String: String] {

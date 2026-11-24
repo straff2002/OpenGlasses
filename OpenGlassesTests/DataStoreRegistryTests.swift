@@ -382,6 +382,7 @@ final class DataStoreRegistryTests: XCTestCase {
             (.writingStyle, WritingStyleStore.fileProtection),
             (.activityTrail, ActivityStore.fileProtection),
             (.captionSessions, CaptionSessionStore.fileProtection),
+            (.owedMeetingNotes, MeetingNotesOwedStore.fileProtection),
         ]
         for (store, protection) in declared {
             XCTAssertEqual(protection, .completeUntilFirstUserAuthentication,
@@ -433,6 +434,17 @@ final class DataStoreRegistryTests: XCTestCase {
                                      turns: [.init(at: began, said: "Registry probe")])
         XCTAssertEqual(store.keep(session), .kept)
         try assertAttributes(of: XCTUnwrap(store.fileURL(for: session)), match: .captionSessions)
+    }
+
+    /// Plan MX P6: owed meeting notes hold other people's speech, out of backup.
+    @MainActor
+    func testOwedMeetingNotesAttributesMatchTheRegistry() throws {
+        let store = MeetingNotesOwedStore(directory: workspace, isEnabled: { true }, hipaaMode: { false })
+        let began = Date()
+        XCTAssertTrue(store.hold(OwedMeetingNotes(id: UUID(), startedAt: began, endedAt: began,
+                                                  lines: [.init(text: "Registry probe", at: began)],
+                                                  state: .owed, reason: .appInBackground)))
+        try assertAttributes(of: store.fileURL, match: .owedMeetingNotes)
     }
 
     /// Instant Replay: a buffer segment is protected the way the registry says, and out of backup.

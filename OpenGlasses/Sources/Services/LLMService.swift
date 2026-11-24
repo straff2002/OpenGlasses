@@ -2468,8 +2468,14 @@ class LLMService: ObservableObject {
     /// routing rule, as a Direct turn resolves it. Nil with no model, or when the rule refuses every
     /// model. Live hints reads it before sending a job's manual passages (Plan MO §5a).
     func statelessModelProvider() -> LLMProvider? {
+        statelessModel()?.llmProvider
+    }
+
+    /// The model `completeStateless` would send to now, as `statelessModelProvider` reads it, for a
+    /// caller that also needs its window (the meeting notes' budget, Plan MX P4).
+    func statelessModel() -> ModelConfig? {
         guard let requested = Config.activeModel else { return nil }
-        return (try? medicalInferenceModel(requested: requested))?.llmProvider
+        return try? medicalInferenceModel(requested: requested)
     }
 
     /// A stateless, tools-off completion against the user's active provider (honors on-device

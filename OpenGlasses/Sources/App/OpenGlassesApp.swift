@@ -820,6 +820,9 @@ struct OpenGlassesApp: App {
                 // A recorded job waiting to have faces blurred is prepared now: the blur runs only
                 // while the app is in front.
                 appState.prepareWaitingRecordings()
+                // Plan MX P6: meeting notes the on-device model could not write while the app was
+                // away (or that a kill interrupted) are written now, once no turn is running.
+                Task { await MeetingNotesService.shared.writeOwed(trigger: "active") }
                 // A press of the "Ask Avenkin" control that brought the app forward.
                 appState.takePendingAskRequest(trigger: "active")
                 appState.takePendingLiveHintsCommand(trigger: "active")
@@ -2080,6 +2083,20 @@ class AppState: ObservableObject, AppStateProtocol {
     private lazy var bridgeResetAdapter = BridgeSessionResetAdapter(bridge: hermesBridge)
     private lazy var hermesAPIResetAdapter = ResponseChainResetAdapter(chain: hermesAgent)
 
+    /// The live new-topic backstop on a finished wearer turn. The model's own `new_topic` call for
+    /// the same words is absorbed by the coordinator (`requestLiveBackstopReset(turnGeneration:)`).
+    private func applyLiveNewTopicBackstop(_ turn: LiveWearerTurn, interpreting: Bool) {
+        guard LiveNewTopicBackstop.applies(turn, jobActive: FieldSessionService.shared.activeSession != nil,
+                                           interpreting: interpreting) else { return }
+        let generation = turn.resetGeneration ?? conversationReset.currentGeneration
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let report = await self.conversationReset.requestLiveBackstopReset(turnGeneration: generation)
+            PrivacyLog.app(.liveNewTopicBackstop,
+                           state: PrivacyToken(report == nil ? "absorbed" : "requested"))
+        }
+    }
+
     /// The backends that own this conversation's context *right now*, in reset order. Only live
     /// owners are listed: a gateway or bridge that is not currently part of the conversation has
     /// no context to retire, and listing it would let something the wearer isn't using veto their
@@ -2903,6 +2920,8 @@ class AppState: ObservableObject, AppStateProtocol {
         erasure.assistingHandovers = AssistingHandoverStore.shared
         // Plan KP P5: a kept caption session is other people's speech.
         erasure.captionSessions = CaptionSessionStore.shared
+        // Plan MX P6: owed meeting notes hold a meeting's transcript until the model writes them.
+        erasure.owedMeetingNotes = MeetingNotesOwedStore.shared
         // Instant Replay: the rolling buffer has bystanders in it, and is cleared whole.
         erasure.instantReplay = instantReplay
         return MemoryFactServices(
@@ -3387,6 +3406,8 @@ class AppState: ObservableObject, AppStateProtocol {
             // The same for a live expert stream, in all of the mode.
             self?.enforceExpertStreamRules()
             if Config.hipaaMode {
+                // Plan MX P6: owed meeting notes are never held in Medical Compliance mode.
+                MeetingNotesOwedStore.shared.prune()
                 // Entering compliance mode revokes every outstanding clinical export: a file
                 // created under the looser regime must not survive into the stricter one.
                 self?.medicalExportService.leases.revokeAll()
@@ -3473,6 +3494,9 @@ class AppState: ObservableObject, AppStateProtocol {
         scheduler.runIfDue()
         // Plan KP P5: kept caption sessions go seven days after they began, counted at launch too.
         CaptionSessionStore.shared.pruneExpired()
+        // Plan MX P6: owed meeting notes under the same rule; opening the store turns a write the
+        // last run did not finish into notes owed for the next foreground.
+        MeetingNotesOwedStore.shared.prune()
 
         // W03.5: replay completed erasures. Free when nothing has ever been erased, which is the
         // ordinary case — the guard is an empty-array check on a file that is usually absent.
@@ -3498,6 +3522,7 @@ class AppState: ObservableObject, AppStateProtocol {
             erasureStores.tableChecks = TableCheckStore()
             erasureStores.assistingHandovers = AssistingHandoverStore.shared
             erasureStores.captionSessions = CaptionSessionStore.shared
+            erasureStores.owedMeetingNotes = MeetingNotesOwedStore.shared
             erasureStores.instantReplay = instantReplay
             replaySources.subjects = SubjectErasureCoordinator(stores: erasureStores)
             replaySources.keyring = .shared
@@ -4091,6 +4116,28 @@ class AppState: ObservableObject, AppStateProtocol {
             isLocked: conversationStore.isLocked,
             legacyDirectory: conversationStore.storageDirectory
         )
+        // Plan MX P4: the meeting summary's notes are written by the model, through the same
+        // stateless completion the meeting assistant's rounds use (so HIPAA mode, Medical Local Only
+        // and the active model apply exactly as there), off the turn's own accounting. It never
+        // runs inside a turn: the turn that asked waits on nothing, the notes are written once it
+        // is over, and P6's owed notes when the app is in front again. (The call works in a
+        // history of its own, so a turn beside it is safe; the timing keeps the reply quick.)
+        let notesLLM = llmService
+        MeetingNotesService.shared.configure(.init(
+            complete: { system, user in
+                try await TurnRecorder.offTurn { try await notesLLM.completeStateless(user, system: system) }
+            },
+            route: { [weak self] in
+                let model = notesLLM.statelessModel()
+                return MeetingNotesRoutePolicy.Inputs(
+                    provider: model?.llmProvider,
+                    contextTokens: model.flatMap(MeetingNotesService.contextTokens(for:)),
+                    isOnline: self?.reachability.isOnline ?? true,
+                    appActive: UIApplication.shared.applicationState == .active)
+            },
+            turnInFlight: { notesLLM.isTurnInFlight || notesLLM.isProcessing },
+            completeNote: { record, notes in MeetingSummaryTool.completeSavedNote(record, with: notes) }))
+
         RecallService.shared.configure(coordinator: conversationRecallCoordinator) { [weak self] question, hits in
             guard let self else { return RecallService.fallbackSummary(hits) }
             let prompt = RecallService.summarizationPrompt(question: question, hits: hits)
@@ -7877,6 +7924,15 @@ class AppState: ObservableObject, AppStateProtocol {
         openAIRealtimeSession.onSaidGoodbye = { [weak self] in
             guard let self else { return }
             self.stopLiveSession(self.openAIRealtimeSession.sessionMode, source: .voice)
+        }
+        // A bare "new topic" in a live session resets the conversation even when the model forgets
+        // its `new_topic` tool, by Direct's own Tier-0 test (`LiveNewTopicBackstop`).
+        for session in [geminiLiveSession as RealtimeSessionManager, openAIRealtimeSession] {
+            session.resetGeneration = { [weak self] in self?.conversationReset.currentGeneration ?? 0 }
+            session.onWearerTurnFinished = { [weak self, weak session] turn in
+                guard let self, let session else { return }
+                self.applyLiveNewTopicBackstop(turn, interpreting: session.interpreterPair != nil)
+            }
         }
         geminiLiveSession.onInterpreterEnded = { [weak self] in
             Task { @MainActor in
