@@ -102,4 +102,16 @@ For a company that deploys with an MDM. The dictionary iOS keeps at
 Any other key is ignored and named once in the app's log. With the address form the lease renews
 like a link. With the inline form it runs from each push. The phone leaves the company only after
 `orgProfile` has been absent at two reads at least 10 minutes apart, or across a relaunch
-(`ManagedConfigAbsence`). The reader that observes the dictionary is Plan ND P3.
+(`ManagedConfigAbsence`). The app reads the dictionary at launch, on every foreground and whenever it changes
+(`ManagedConfigIngress`). A profile delivered this way applies without a review sheet. The same company's
+profile keeps a phone's enrolment, and another company's replaces the one in force.
+
+The app writes this back for the company's own MDM console at `com.apple.feedback.managed`, and sends none of
+it to the vendor:
+
+| Key | Value |
+|---|---|
+| `profileId` | The profile in force. Absent when none is. |
+| `profileGeneration` | The highest generation applied (integer). Absent before the first versioned profile. |
+| `enrolmentState` | `notEnrolled`, `enrolled`, `waitingForJob` (a newer generation is waiting for an open job), `awaitingModelKey`, `lapsed`, `revoked` or `notVerified`. |
+| `build` | The app's build number. |

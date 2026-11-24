@@ -2218,8 +2218,10 @@ enum PrivacyLog {
         /// are closed vocabularies, and sizes are byte counts.
         case companyVault
         /// The company's profile (Plan ND): a copy older than the one applied refused, a conditional
-        /// fetch that found nothing new, a new generation held for an open job. `version` is the
-        /// generation, a number the signer assigns; nothing else is recorded.
+        /// fetch that found nothing new, a new generation held for an open job, and what device
+        /// management delivered (P3). `version` is the generation, a number the signer assigns;
+        /// `operation` is a closed vocabulary; `count` is how many keys were ignored, never their
+        /// names. Nothing else is recorded.
         case companyProfile
     }
 
@@ -2244,6 +2246,13 @@ enum PrivacyLog {
         /// Plan ND: a profile copy older than the generation applied was refused; the profile's
         /// address answered that its copy is the generation asked about.
         case staleRefused, notModified
+        /// Plan ND P3, device management: a delivered profile enrolled the phone, renewed the one in
+        /// force, or replaced another company's (`managedMoved`); `orgProfile` was missing once
+        /// (`managedAbsent`) or confirmed gone and the phone left (`managedLeft`); the dictionary
+        /// carried keys this build does not read (`count`), or values it could not (`operation`
+        /// names which); the address could not be fetched, or the delivery was refused.
+        case managedEnrolled, managedRenewed, managedMoved, managedAbsent, managedLeft
+        case managedIgnoredKeys, managedUnreadable, managedFetchFailed, managedRefused
     }
 
     /// `operation` is a queued op's kind — `OfflineQueue.OpKind`, a fixed enum — and never its

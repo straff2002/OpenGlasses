@@ -1182,14 +1182,17 @@ enum SensitiveStore: String, CaseIterable {
             // is kept after it only until the firm's records have gone. Plan LR: the record also
             // holds which company vaults and manual revisions are installed and the catalog it
             // planned from (names, versions, hashes), and the departure lists the vaults to erase.
+            // Plan ND P3: when the profile came from an MDM, when its removal was first seen, and
+            // what the app reports to that MDM (profile id, version, enrolment state, build).
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
                           protection: .platformDefault, backupExcluded: false, retention: .none,
                           deleteAll: .api("OrgProfileManager.remove()"),
                           deleteSubject: .notSubjectLinked,
                           owner: "OrgProfileManager",
                           ownerPaths: ["OpenGlasses/Sources/Services/OrgProfile/OrgProfileManager.swift",
-                                       "OpenGlasses/Sources/Services/OrgProfile/OrgDeparture.swift"],
-                          location: "preferences keys `orgProfileEnrolment` and `orgDeparture`")
+                                       "OpenGlasses/Sources/Services/OrgProfile/OrgDeparture.swift",
+                                       "OpenGlasses/Sources/Services/OrgProfile/ManagedConfigIngress.swift"],
+                          location: "preferences keys `orgProfileEnrolment`, `orgDeparture` and `managedConfigAbsence`, and the MDM feedback dictionary `com.apple.feedback.managed`")
 
         case .safetyAssessments:
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .none,
