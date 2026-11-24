@@ -145,9 +145,13 @@ final class LlamaCppBackendTests: XCTestCase {
 
         // Context lifecycle
 
+        /// The options the last context was created with.
+        var lastContextOptions: LlamaContextOptions?
+
         func createContext(_ model: LlamaModelHandle,
                            options: LlamaContextOptions) throws -> LlamaContextHandle {
             note(.createContext(tokens: options.contextTokens, batch: options.batchTokens))
+            lastContextOptions = options
             if failures.contains(.contextCreate) { throw LlamaEngineError.contextCreateFailed }
             contextTokensOverride = contextTokensOverride ?? options.contextTokens
             batchTokensOverride = batchTokensOverride ?? options.batchTokens
@@ -406,6 +410,32 @@ final class LlamaCppBackendTests: XCTestCase {
                                    configuration: LocalLoadConfiguration(contextLength: 16_384,
                                                                          batchSize: 512))
         XCTAssertTrue(engine.calls.contains(.createContext(tokens: 2048, batch: 512)))
+    }
+
+    /// Plan MQ: the device app's `--gguf-batch` sets the physical batch too; the app's own load
+    /// leaves it to the engine (512), as before.
+    func testThePhysicalBatchIsTheEnginesUnlessALoadNamesOne() async throws {
+        let plain = FakeLlamaEngine()
+        plain.trainingContext = 4096
+        _ = try await makeBackend(plain).load(try makeInstallation(contextLength: 4096),
+                                              configuration: LocalLoadConfiguration(contextLength: 4096))
+        XCTAssertEqual(plain.lastContextOptions?.batchTokens, LlamaCppLocalInferenceBackend.defaultBatchTokens)
+        XCTAssertNil(plain.lastContextOptions?.physicalBatchTokens)
+
+        let named = FakeLlamaEngine()
+        named.trainingContext = 4096
+        _ = try await makeBackend(named).load(try makeInstallation(contextLength: 4096),
+                                              configuration: LocalLoadConfiguration(contextLength: 4096, batchSize: 2048,
+                                                                                    physicalBatchSize: 2048))
+        XCTAssertEqual(named.lastContextOptions?.batchTokens, 2048)
+        XCTAssertEqual(named.lastContextOptions?.physicalBatchTokens, 2048)
+
+        let over = FakeLlamaEngine()
+        over.trainingContext = 1024
+        _ = try await makeBackend(over).load(try makeInstallation(contextLength: 1024),
+                                             configuration: LocalLoadConfiguration(contextLength: 1024, batchSize: 4096,
+                                                                                   physicalBatchSize: 4096))
+        XCTAssertEqual(over.lastContextOptions?.physicalBatchTokens, 1024, "never past the context")
     }
 
     func testTheBatchNeverExceedsTheContext() async throws {

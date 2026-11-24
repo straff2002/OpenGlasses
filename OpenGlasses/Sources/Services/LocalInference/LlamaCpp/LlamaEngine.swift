@@ -82,12 +82,15 @@ struct LlamaModelOptions: Hashable, Sendable {
 struct LlamaContextOptions: Hashable, Sendable {
     let contextTokens: Int
     let batchTokens: Int
+    /// The physical batch (`n_ubatch`), capped at `batchTokens`; nil keeps the engine's default.
+    let physicalBatchTokens: Int?
     /// Keep the KV cache on the GPU. Off trades speed for headroom.
     let offloadKVCache: Bool
 
-    init(contextTokens: Int, batchTokens: Int, offloadKVCache: Bool = true) {
+    init(contextTokens: Int, batchTokens: Int, physicalBatchTokens: Int? = nil, offloadKVCache: Bool = true) {
         self.contextTokens = contextTokens
         self.batchTokens = batchTokens
+        self.physicalBatchTokens = physicalBatchTokens
         self.offloadKVCache = offloadKVCache
     }
 }

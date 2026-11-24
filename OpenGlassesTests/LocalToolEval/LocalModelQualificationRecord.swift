@@ -116,6 +116,9 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         var reason: String
         /// The prompt budget on that window.
         var toolTurnPromptBudget: Int
+        /// A GGUF run's prefill batch, logical and physical (`--gguf-batch`, Plan MQ); nil for MLX
+        /// and Apple runs and in older records. Part of the window, so a run resumes only with the same.
+        var ggufBatchTokens: Int? = nil
     }
 
     struct Gate: Codable, Equatable {

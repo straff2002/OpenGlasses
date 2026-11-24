@@ -60,7 +60,7 @@ xcrun devicectl device process launch --device <device-id> --terminate-existing 
 
 Arguments: `--model <id>`, `--apple`, `--gguf <id>`, `--repeats <n>` (3), `--groups fieldAssist,everyday` or
 `all`, `--limit <n>`, `--settle <s>` (120), `--cap <s>` (1200), `--allow-battery`,
-`--cancel-probes <n>` (6), `--fresh`.
+`--cancel-probes <n>` (6), `--fresh`, `--gguf-batch <n>` (a GGUF run only; below).
 
 ### A GGUF model (Plan MQ P2)
 
@@ -79,6 +79,18 @@ xcrun devicectl device copy to --device <device-id> --domain-type appDataContain
 xcrun devicectl device process launch --device <device-id> --terminate-existing \
   com.openglasses.localmodelqualification --gguf "ggml-org/gemma-4-E2B-it-GGUF#gemma-4-E2B-it-Q4_0.gguf"
 ```
+
+`--gguf-batch <n>` sets the run's prefill batch, logical and physical (llama.cpp's `n_batch` and
+`n_ubatch`), to compare 512, 1024 and 2048 on a phone; without it the run loads as the app does
+(512 logical, the engine's 512 physical). The record names it (`window.ggufBatchTokens`), and a run
+resumes only with the same batch.
+
+Each generation's record says where its prompt was read from (`promptSources`: `fromStart`,
+`trimmedPrefix` — the KV cache's shared prefix, Gemma — or `restoredSnapshot` — a saved state of
+the prompt's system and tools section, for a model whose cache cannot be cut back, Qwen 3.5), with
+the tokens that saved (`reusedPromptTokens`) and a snapshot's size when one was saved
+(`snapshotBytes`); `timing.promptSources` counts them, and `timing.firstTokenSecondsBySource` gives
+time to first token for each.
 
 Not yet for GGUF: the cancel-latency probes (they drive the MLX service), and a run with the phone
 locked, which is the reason GGUF matters (CPU, no Metal in the background) and needs the app's

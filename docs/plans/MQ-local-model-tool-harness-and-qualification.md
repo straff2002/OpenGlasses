@@ -709,6 +709,55 @@ reply), so the GGUF catalog no longer refuses one; min-p and the repetition pena
 through. An entry that names none keeps today's GGUF defaults, so Gemma GGUF is unchanged; MLX is
 unchanged. The device app's `--gguf` run reads the entry's set by id and records it.
 
+## Qwen prefix snapshot (2026-11-25)
+
+The first Qwen 3.5 4B GGUF phone run read a median 3,147-token prompt in 17.2 s (181 tok/s), 76% of
+a 22 s case, because Qwen 3.5 is hybrid (gated delta-net layers beside full attention) and its cache
+cannot be cut back: P2's prefix reuse cleared it and re-read the whole prompt every generation.
+Gemma 4 E2B's 2,871 tokens took 0.78 s through the same reuse. Built, headless:
+
+- **A prefix state snapshot**, only for a cache that cannot be cut back
+  (`og_llama_model_memory_can_trim`: not recurrent, not hybrid). Once the prefill reaches the
+  prompt's **stable start** the backend copies sequence 0's whole state (`llama_state_seq_get_data`,
+  host memory, in the wrapper); a later prompt that begins with exactly those tokens restores it
+  (`llama_state_seq_set_data`) and prefills only the rest. The stable start is where the render of
+  the same system prompt and tools over a one-character probe message (U+E000) parts from the real
+  prompt: the template's system/tools section, up to the first message's own words. One snapshot,
+  keyed by its exact tokens (`LlamaPromptCache.snapshotStep`): restored when the prompt begins with
+  it, saved afresh at the stable start when it does not (or when the start runs past it), the old
+  one freed before the new is taken, none under 64 tokens or over 512 MiB, and forgotten on a
+  cancel, an error, an unload or another model, as the trimmed prefix is. Gemma's trim path is
+  untouched. The size is logged as kilobytes (`promptSnapshot`) and recorded in bytes; from Qwen
+  3.5 4B's published configuration (8 full-attention layers, 4 KV heads of 256, f16; 24 delta-net
+  layers) it should be about 32 KB a token of KV plus about 50 MB of recurrent state, so roughly
+  130–150 MB for a 2,500–3,000-token start.
+- **One render order for a turn's tools** (`FieldAssistLocalToolSet.renderOrder`: the Field Assist
+  tools by priority, then the rest by name), in `LocalToolTurn.specs(kept:detail:)`, so MLX and GGUF
+  both render it. Which tools a turn offers, and which the fit drops first, still follow the turn's
+  words. The fixture is unchanged (it holds no tool order).
+- **Where each prompt was read from**: `LocalGenerationStats` carries `promptSource` (`fromStart`,
+  `trimmedPrefix`, `restoredSnapshot`), the tokens that saved and a saved snapshot's bytes; the
+  qualification record keeps them per generation and counts and times them per source
+  (`timing.promptSources`, `firstTokenSecondsBySource`, `largestSnapshotBytes`).
+- **`--gguf-batch <n>`** in the device app sets a GGUF run's logical and physical prefill batch
+  (`n_batch`, `n_ubatch`; the app's own default, 512, is unchanged), named in the record's window.
+- **Found while testing:** the backend finished a generation's stream before it recorded the
+  result, so a round started the moment the last ended could be refused as "already generating".
+  The stream now ends after the backend's state does, and a generation id stops a cancelled one that
+  finishes late from clearing a newer one's slot.
+
+What sits at the start of a job tool turn (the qualification app's job prompt and five Field Assist
+tools, character offsets in the render): **Qwen 3.5** renders the tools first — the tools block to
+7,928 (3,285 compact), its call instructions to 8,755, then the system prompt: its head, the
+`<field_assist_context>` job tier (11,626–13,317), the rules, the `CURRENT DATE & TIME` line at
+14,422, its last line and the native tool guide, ending at about 15,330, where the user turn begins.
+**Gemma 4** renders the system prompt first (job tier 2,890–4,581, date line 5,686, tool guide
+5,885) and the tools after it (6,587–14,524). Neither puts per-turn content before its tools except
+inside the system prompt itself: the job tier and the minute-precise date line sit inside the stable
+start on Qwen (the date about 900 characters before its end) and before the tools on Gemma. Not
+moved: moving the date line would reorder what the model is told on both runtimes, so it is left to
+the owner (see the lead's report).
+
 ## What the local path does today (read from the code, 2026-11-20)
 
 1. **The prompt lists tool names, not schemas.** `LLMService.localToolInstructions` appends

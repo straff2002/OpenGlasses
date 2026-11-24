@@ -212,6 +212,7 @@ final class LlamaCppEngine: LlamaEngine, @unchecked Sendable {
         native.n_batch = UInt32(max(1, options.batchTokens))
         // The physical batch never exceeds the logical one; a larger ubatch would allocate compute
         // buffers for work that can never arrive.
+        if let physical = options.physicalBatchTokens { native.n_ubatch = UInt32(max(1, physical)) }
         native.n_ubatch = min(native.n_ubatch, native.n_batch)
         native.offload_kqv = options.offloadKVCache
 

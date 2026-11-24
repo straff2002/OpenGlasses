@@ -285,7 +285,8 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                                              : Self.defaultBatchTokens
             let context = try engine.createContext(model, options: LlamaContextOptions(
                 contextTokens: plan.contextTokens,
-                batchTokens: min(requestedBatch, plan.contextTokens)))
+                batchTokens: min(requestedBatch, plan.contextTokens),
+                physicalBatchTokens: configuration.physicalBatchSize.map { min($0, plan.contextTokens) }))
             partial.context = context
 
             let samplerOptions = LlamaSamplerOptions(.conservative)

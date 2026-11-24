@@ -715,12 +715,17 @@ struct LocalLoadConfiguration: Hashable, Sendable {
     let contextLength: Int
     /// Maximum prompt tokens submitted in one decode call.
     let batchSize: Int
+    /// The chunk the GGUF engine computes at once (llama.cpp's `n_ubatch`), at most `batchSize`.
+    /// Nil keeps the engine's default (512). Set only by the device qualification app's
+    /// `--gguf-batch` (Plan MQ), to compare prefill batches on a phone.
+    let physicalBatchSize: Int?
     /// Whether the caller wants the multimodal path attached, when the model has one.
     let wantsVision: Bool
 
-    init(contextLength: Int, batchSize: Int = 512, wantsVision: Bool = false) {
+    init(contextLength: Int, batchSize: Int = 512, physicalBatchSize: Int? = nil, wantsVision: Bool = false) {
         self.contextLength = contextLength
         self.batchSize = batchSize
+        self.physicalBatchSize = physicalBatchSize
         self.wantsVision = wantsVision
     }
 }
