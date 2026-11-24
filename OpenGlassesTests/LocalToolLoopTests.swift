@@ -180,6 +180,18 @@ final class LocalToolLoopTests: XCTestCase {
             XCTAssertFalse(LocalToolLoop.screened(end, turn: turn, routed: []), turn)
         }
         XCTAssertFalse(LocalToolLoop.screened(c("field_session", ["action": "status"]), turn: "Thanks, that's all", routed: []))
+        XCTAssertTrue(LocalToolLoop.screened(c("field_session", ["action": "start"]), turn: "Call my boss and tell them I'm running late", routed: []))
+        XCTAssertTrue(LocalToolLoop.screened(c("field_session", ["action": "set_job_reference", "job_reference": "1005"]),
+                                             turn: "The pressure switch looks fine to me", routed: []))
+        XCTAssertFalse(LocalToolLoop.screened(c("field_session", ["action": "set_job_reference", "job_reference": "2231"]),
+                                              turn: "The work order number is 2231", routed: []))
+        XCTAssertFalse(LocalToolLoop.screened(c("field_session", ["action": "next_unit"]),
+                                              turn: "Moving on to the second furnace in the plant room", routed: []))
+        XCTAssertTrue(LocalToolLoop.screened(c("table_lookup", ["table": "error_codes.md", "row": "E331"]),
+                                             turn: "and if it's E331 instead?", routed: ["equipment_lookup"]),
+                      "any lookup after a routed one")
+        XCTAssertTrue(LocalToolLoop.screened(c("show_source", ["which": "first"]),
+                                             turn: "I've seen that E223 code loads of times, I know what it is", routed: []))
         let lookup = c("equipment_lookup", ["query": "SLP99 E228 procedure"])
         XCTAssertTrue(LocalToolLoop.screened(lookup, turn: "The control's showing E228. What do I check?", routed: ["equipment_lookup"]),
                       "the router already looked it up")

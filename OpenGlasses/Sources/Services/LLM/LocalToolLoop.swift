@@ -601,13 +601,19 @@ enum LocalToolLoop {
     /// - a reading on a question about numbers the technician said, with no word asking to log
     ///   them ("The suction was 118 and superheat came out at 12, so that's fine, right?"); a
     ///   question that states no number ("and the other one?") is left alone;
-    /// - closing the job on a turn that says nothing of ending it ("Thanks, that's all for this one");
-    /// - another call to a tool the router already ran this turn (the router's turn is one request,
-    ///   answered), or opening a source the turn did not ask to see (`TechnicianRequest.asksToSee`).
+    /// - a change to the job on a turn that says nothing of the job: closing it on "Thanks, that's
+    ///   all for this one", starting one on "Call my boss and tell them I'm running late", a job
+    ///   reference on "The pressure switch looks fine to me" (the next unit and the status are left
+    ///   alone; the router makes those);
+    /// - after a routed call, another call to that tool or any lookup (the router's turn is one
+    ///   request, already answered: Qwen looked a routed E271 up again as E223, and a routed E331
+    ///   up in a table);
+    /// - opening a source on a turn that does not ask to see one ("I've seen that E223 code loads
+    ///   of times").
     /// A call the router made is never screened: its arguments are what the turn said.
     static func screened(_ call: Call, turn: String, routed: Set<String>) -> Bool {
         if isReadingWithoutNumber(call) { return true }
-        if routed.contains(call.name) { return true }
+        if !routed.isEmpty, routed.contains(call.name) || lookupTools.contains(call.name) { return true }
         let words = Set(LocalTurnRouter.normalised(turn).split(separator: " ").map(String.init))
         switch call.name {
         case "reading":
@@ -615,17 +621,31 @@ enum LocalToolLoop {
                 && !LocalTurnRouter.statedValues(in: turn).isEmpty
         case "field_session":
             let action = (call.arguments["action"] as? String)?.lowercased() ?? ""
-            return ["end", "close", "end_session", "close_job"].contains(action) && words.isDisjoint(with: endWords)
+            guard !["status", "query", "next_unit", ""].contains(action) else { return false }
+            return words.isDisjoint(with: jobWords)
         case "show_source":
-            return !TechnicianRequest.asksToSee(turn) && !routed.contains("show_source")
-                && LocalArgumentCompletion.sourcesSaid(in: turn).isEmpty
+            return !asksToSee(turn, words: words) && LocalArgumentCompletion.sourcesSaid(in: turn).isEmpty
         default:
             return false
         }
     }
 
+    /// Whether the turn asks to see a page or a source: "show", "see", "open", "view", "display",
+    /// "where does it say".
+    static func asksToSee(_ turn: String, words: Set<String>) -> Bool {
+        if !words.isDisjoint(with: ["show", "see", "open", "view", "display"]) { return true }
+        let spoken = " " + LocalTurnRouter.normalised(turn) + " "
+        return [" where does it say ", " where is that written ", " let me look ", " can i look "].contains { spoken.contains($0) }
+    }
+
+    static let lookupTools: Set<String> = ["equipment_lookup", "table_lookup", "manual_lookup", "manual_figure", "show_source"]
     static let logWords: Set<String> = ["log", "logged", "record", "recorded", "note", "save", "enter", "write"]
-    static let endWords: Set<String> = ["end", "close", "closed", "finish", "finished", "wrap", "complete", "completed", "done"]
+    /// Words a turn about the job uses: the job itself, opening, closing, pausing and resuming it,
+    /// and its reference.
+    static let jobWords: Set<String> = [
+        "job", "jobs", "work", "order", "session", "start", "open", "begin", "new", "end", "close", "closed", "finish",
+        "finished", "wrap", "complete", "completed", "done", "pause", "resume", "back", "reference", "ref", "number",
+    ]
 
     /// A `reading` record or correction whose `value` is there but holds no number, as digits or as a number
     /// word ("seven", "twelve point five"): the tool takes "the number alone", so a value like
