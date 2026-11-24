@@ -373,6 +373,22 @@ final class LocalArgumentCompletionTests: XCTestCase {
         }
     }
 
+    func testWhatTheTurnNamesReplacesTheModelsWhich() {
+        for (given, turn, which) in [
+            ("first", "Show me the page that table came from", "table"),
+            ("table", "Show me the last source you used", "last"),
+            ("first", "Open Table 99", "Table 99"),
+            ("first", "Show me all the pages", "all"),
+        ] {
+            let completed = complete(["which": given], name: "show_source", turn)
+            XCTAssertEqual(completed.arguments["which"] as? String, which, turn)
+            XCTAssertEqual(completed.filled.map { $0.name }, ["which"], turn)
+        }
+        XCTAssertNil(complete(["which": "first"], name: "show_source",
+                              "Show me that table and the last source").filled.first,
+                     "two sources named: the model's stands")
+    }
+
     func testShowSourceIsNeverGuessed() {
         for turn in ["Show me the page for the second burner", "Show me where it says that",
                      "Show me the first source and the last one", "Show me that"] {
@@ -380,9 +396,11 @@ final class LocalArgumentCompletionTests: XCTestCase {
             XCTAssertNil(completed.arguments["which"], turn)
             XCTAssertEqual(completed.changes, 0, turn)
         }
-        let given = complete(["which": "table"], name: "show_source", "Show me the last source you used")
-        XCTAssertEqual(given.arguments["which"] as? String, "table", "the model's which stands")
+        let given = complete(["which": "table"], name: "show_source", "Show me that")
+        XCTAssertEqual(given.arguments["which"] as? String, "table", "with nothing said, the model's which stands")
         XCTAssertEqual(given.changes, 0)
+        XCTAssertEqual(complete(["which": "last"], name: "show_source", "Show me the last source you used").changes, 0,
+                       "the same which is no change")
         XCTAssertEqual(complete([:], name: "table_lookup", "Show me the last source you used").changes, 0)
         XCTAssertEqual(LocalArgumentCompletion.modelNote(filled: [("which", "last")], notUsed: []),
                        "Filled from what the technician said: which last.")
