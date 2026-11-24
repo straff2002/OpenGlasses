@@ -1,0 +1,120 @@
+name: LocalModelQualification
+# Plan MQ P3: an on-phone runner that measures a downloaded model (and Apple's on-device model as
+# the baseline) against the committed local tool corpus. It compiles the PRODUCTION local runtime,
+# loop, parser, coercion, output policy and graders by path; nothing below is a copy. See README.md.
+options:
+  deploymentTarget:
+    iOS: '26.0'
+packages:
+  mlx-swift-lm:
+    url: https://github.com/ml-explore/mlx-swift-lm.git
+    # The app's own pin (project.base.yml). LocalModelQualificationFixtureTests fails when they differ.
+    revision: 4c21c84ba239583d6448dc38bbc9001e2df714a6
+  swift-huggingface:
+    url: https://github.com/huggingface/swift-huggingface.git
+    version: "0.9.0"
+  swift-transformers:
+    url: https://github.com/huggingface/swift-transformers.git
+    from: "1.0.0"
+  # Plan MQ P2: the app's vendored llama.cpp engine, for a GGUF run (--gguf).
+  LlamaCpp:
+    path: ../../Vendor/LlamaCpp
+targets:
+  LocalModelQualification:
+    type: application
+    platform: iOS
+    sources:
+      - App.swift
+      - QualificationRunner.swift
+      - LiveEnvironments.swift
+      - DeviceFacts.swift
+      - DebugTranscript.swift
+      - Stubs.swift
+      - path: ../../Scripts/local-tool-eval/corpus/local-tool-corpus.v2.jsonl
+        buildPhase: resources
+      - path: Fixture/qualification-fixture.json
+        buildPhase: resources
+      # The eval core CI runs, compiled here unchanged.
+      - ../../OpenGlassesTests/LocalToolEval/LocalToolEvalCore.swift
+      - ../../OpenGlassesTests/LocalToolEval/QualificationRunGate.swift
+      - ../../OpenGlassesTests/LocalToolEval/LocalModelQualificationRecord.swift
+      - ../../OpenGlassesTests/LocalToolEval/LocalModelQualificationFixture.swift
+      - ../../OpenGlassesTests/RetrievalEval/EvalIntervals.swift
+      # The production local path.
+      - ../../OpenGlasses/Sources/Services/LocalLLMService.swift
+      - ../../OpenGlasses/Sources/Services/LocalModelBudget.swift
+      - ../../OpenGlasses/Sources/Services/MemoryHeadroom.swift
+      - ../../OpenGlasses/Sources/Services/LocalMemoryBudget.swift
+      - ../../OpenGlasses/Sources/Services/LocalMemoryReadings.swift
+      - ../../OpenGlasses/Sources/Services/ThinkStreamFilter.swift
+      - ../../OpenGlasses/Sources/Services/AttemptToolLedger+CanonicalArguments.swift
+      - ../../OpenGlasses/Sources/Services/PromptInjectionPolicy+ToolOutput.swift
+      - ../../OpenGlasses/Sources/Services/LLM/LocalToolLoop.swift
+      - ../../OpenGlasses/Sources/Services/LLM/LocalArgumentGrounding.swift
+      - ../../OpenGlasses/Sources/Services/LLM/LocalArgumentCompletion.swift
+      # The conductor file the completion sizes a wire against, loaded as the app loads it.
+      - ../../OpenGlasses/Sources/Services/FieldAssist/Electrical/ConductorTable.swift
+      - ../../OpenGlasses/Sources/Services/FieldAssist/Electrical/VoltageDrop.swift
+      - path: ../../OpenGlasses/Sources/Resources/Electrical/conductors.json
+        buildPhase: resources
+      - ../../OpenGlasses/Sources/Services/LLM/LocalTurnRouter.swift
+      - ../../OpenGlasses/Sources/Services/LLM/LocalToolFit.swift
+      - ../../OpenGlasses/Sources/Services/LLM/LocalNativeToolPolicy.swift
+      - ../../OpenGlasses/Sources/Services/LLM/FieldAssistLocalToolSet.swift
+      - ../../OpenGlasses/Sources/Services/Offline/Handoff/OfflineToolPolicy.swift
+      - ../../OpenGlasses/Sources/Services/Offline/Handoff/OfflineKeywordRouter.swift
+      - ../../OpenGlasses/Sources/Services/LLM/OnDeviceToolSchema.swift
+      - ../../OpenGlasses/Sources/Services/LLM/LocalOutputPolicy.swift
+      - ../../OpenGlasses/Sources/Services/LLM/LocalToolTranscript.swift
+      - ../../OpenGlasses/Sources/Services/LLM/LLMService+LocalTurnText.swift
+      - ../../OpenGlasses/Sources/Services/LocalInference/LocalInferenceTypes.swift
+      - ../../OpenGlasses/Sources/Services/LocalInference/LocalModelCatalog.swift
+      - ../../OpenGlasses/Sources/Services/LocalInference/LocalModelGGUFCatalog.swift
+      - ../../OpenGlasses/Sources/Services/LocalInference/LocalModelSampling.swift
+      - ../../OpenGlasses/Sources/Services/LocalInference/LocalStreamRouter.swift
+      - ../../OpenGlasses/Sources/Services/LocalInference/MLXLocalInferenceBackend.swift
+      - ../../OpenGlasses/Sources/Services/LocalInference/LocalInferenceBackend.swift
+      - ../../OpenGlasses/Sources/Services/LocalInference/LocalModelPreparationPhase.swift
+      # Plan MQ P2: the GGUF runtime and the bundled GGUF catalog it loads from.
+      - ../../OpenGlasses/Sources/Services/LocalInference/LlamaCpp
+      - ../../OpenGlasses/Sources/Services/LocalInference/LlamaRuntimeAvailability.swift
+      - ../../OpenGlasses/Sources/Services/LocalInference/LocalRuntimeDiagnostics.swift
+      - path: ../../OpenGlasses/Sources/Resources/LocalModelCatalog.json
+        buildPhase: resources
+      - ../../OpenGlasses/Sources/Services/FieldAssist/ManualReadingCheck.swift
+      - ../../OpenGlasses/Sources/Services/AppleIntelligence/AppleToolBridge.swift
+      - ../../OpenGlasses/Sources/Services/AppleIntelligence/AppleToolSchema.swift
+      - ../../OpenGlasses/Sources/Services/Persistence/JSONStore.swift
+    dependencies:
+      - package: mlx-swift-lm
+        product: MLXLLM
+      - package: mlx-swift-lm
+        product: MLXLMCommon
+      - package: mlx-swift-lm
+        product: MLXVLM
+      - package: mlx-swift-lm
+        product: MLXHuggingFace
+      - package: swift-huggingface
+        product: HuggingFace
+      - package: swift-transformers
+        product: Tokenizers
+      - package: LlamaCpp
+        product: LlamaCppWrapper
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.localmodelqualification
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: LocalModelQualification.entitlements
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: Qualify
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIRequiresFullScreen: YES
+        CURRENT_PROJECT_VERSION: '1'
+        MARKETING_VERSION: '1.0'
+        AVENKIN_SOURCE_COMMIT: "${AVENKIN_SOURCE_COMMIT}"
+        SWIFT_VERSION: '5.0'
+        TARGETED_DEVICE_FAMILY: '1'
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) LOCAL_MODEL_QUALIFICATION

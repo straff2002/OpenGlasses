@@ -560,7 +560,7 @@ The same calculation without a chain is the assistant's voltage-drop calculator:
 
 ### The electrical starter
 
-The app ships an **Electrical Service** vault, offered beside the refrigeration and IT vaults in Settings › Field Assist. It holds a `safety.md` (isolate, lock off, prove dead, never guess a rating), an `error_codes.md` and a `parts.md` with nothing in them yet, and a `chains.md` holding the step vocabulary and the worked example above, renamed "Example: …" and commented, so the first chain file an electrician opens already parses. It declares the `electrical` trade. It ships no standard's text, no table and no rule, and it lists its example chains as needing Tables 90, 98, 99 and 97 until a book that prints tables with those labels is loaded.
+The app ships an **Electrical Service** vault, offered beside the refrigeration and IT vaults in Settings › Field Assist. It holds a `safety.md` (isolate, lock off, prove dead, never guess a rating), an `error_codes.md` and a `parts.md` with nothing in them yet, and a `chains.md` holding the step vocabulary and the worked example above, renamed "Example: …" and commented, so the first chain file an electrician opens already parses, and a `conductors.md` saying that conductor areas and factors come from `domain_calc`, never from memory, and that the organisation's own book wins. It declares the `electrical` trade. It ships no standard's text, no table and no rule, and it lists its example chains as needing Tables 90, 98, 99 and 97 until a book that prints tables with those labels is loaded.
 
 To make it your organisation's vault with your own code books, start from its folder in the app's public repository, which also holds a `manifest.json` and a `documents/` folder with a note:
 

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Merged into the generated Info.plist. The commit the project was generated at, as the app
+	     stamps it (Scripts/generate-xcodeproj.sh exports AVENKIN_SOURCE_COMMIT); the record names it. -->
+	<key>AvenkinSourceCommit</key>
+	<string>$(AVENKIN_SOURCE_COMMIT)</string>
+</dict>
+</plist>

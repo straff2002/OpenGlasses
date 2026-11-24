@@ -160,7 +160,6 @@ struct DisplayHUDSettingsScreen: View {
 /// behind Devices & Privacy › Glasses now, for someone with display glasses (`DisplaySettingsPlacement`).
 struct DisplayHUDSections: View {
     @ObservedObject var appState: AppState
-    @AppStorage("hudMirrorEnabled") private var hudMirrorEnabled = false
     @AppStorage(LensHighlightColour.storageKey) private var highlightColour: LensHighlightColour = .standard
     @AppStorage(LensAnswerStyle.storageKey) private var answerStyle: LensAnswerStyle = .scroll
     @AppStorage(LensAnswerLifetime.storageKey) private var answerLifetime: LensAnswerLifetime = .untilClosed
@@ -268,7 +267,7 @@ struct DisplayHUDSections: View {
         } header: {
             Text("In-Lens Display")
         } footer: {
-            Text("Highlight colour is used for the marks on a manual page, the walking turn arrow, and the text on the Web HUD Mirror. Answers, captions and buttons on the display stay white and grey: the glasses set those colours.")
+            Text("Highlight colour is used for the marks on a manual page and the walking turn arrow. Answers, captions and buttons on the display stay white and grey: the glasses set those colours.")
         }
         #endif
 
@@ -278,18 +277,6 @@ struct DisplayHUDSections: View {
                 HUDMirrorView(router: appState.hudRouter)
             } label: {
                 Label("HUD Mirror (phone preview)", systemImage: "eyeglasses")
-            }
-
-            NavigationLink {
-                WebHUDMirrorSettingsView()
-            } label: {
-                HStack {
-                    Label("Web HUD Mirror", systemImage: "globe.desk")
-                    Spacer()
-                    Text(LocalServiceExposurePolicy.current.permitsListener(for: .webHUDMirror)
-                         ? (hudMirrorEnabled ? "On" : "Off") : "Unavailable")
-                        .foregroundStyle(.secondary)
-                }
             }
             #endif
 

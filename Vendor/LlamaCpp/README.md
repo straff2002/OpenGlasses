@@ -35,9 +35,12 @@ a message when it is not, so a clean clone still passes the suite).
 
 ## The wrapper
 
-`Sources/LlamaCppWrapper` is a single Objective-C++ file behind a deliberately small C ABI
+`Sources/LlamaCppWrapper` is two Objective-C++ files behind a deliberately small C ABI
 (`include/LlamaCppWrapper.h`): model and context lifecycle, GGUF metadata lookup, tokenization,
-chat-template application, batched decode, sampling, detokenization, cancellation, and accelerator
-synchronization. Nothing from llama.cpp's own headers reaches Swift — the engine is C++ whose
+chat-template application, batched decode, KV-cache prefix reuse, sampling, detokenization,
+cancellation, and accelerator synchronization (`LlamaCppWrapper.mm`); and the chat bridge over
+llama.cpp's `common/chat` for tool turns — render a conversation with tools in the model family's
+own format, apply its lazy call grammar, parse calls back — as JSON text in and out
+(`LlamaCppChat.mm`, Plan MQ P2; see NOTICES.md for what of `common/` is built). Nothing from llama.cpp's own headers reaches Swift — the engine is C++ whose
 types move between releases, so an engine bump should be a rebuild here rather than a source break
 across the app.

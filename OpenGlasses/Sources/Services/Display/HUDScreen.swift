@@ -223,8 +223,7 @@ struct HUDScreen {
     var picture: HUDPicture?
 
     /// Plan KP P1: on an answer card's page, every page the card can show, each as its own
-    /// screen, so a surface that turns pages by itself (the web mirror, which is read-only and
-    /// cannot send a press back) has them all. Nil on every other screen. Not part of
+    /// screen, and which card it is (`HUDPageSet.card`). Nil on every other screen. Not part of
     /// `renderKey`: the key is what this frame shows.
     var pageSet: HUDPageSet?
 
@@ -233,11 +232,6 @@ struct HUDScreen {
     /// `resolvedFocusItemID` choose. Set by a builder where the likeliest next press is not the
     /// first prominent button. Part of `renderKey` only when set, so default screens keep their keys.
     var focusItemID: String?
-
-    /// Plan KT §6.6: what the web mirror (Plan BP), a LAN page someone else could open, may show of
-    /// this screen. Nil shows all of it. The lens and the phone's own preview are unaffected. Not
-    /// part of `renderKey`: the key is what the lens shows.
-    var mirror: HUDMirrorRedaction?
 
     /// Plan MG §2: the column after the screen's lines and before its picture and button row: the
     /// reading view's rows, a page's tiles.
@@ -295,7 +289,7 @@ struct HUDScreen {
     func block(id: String) -> HUDBlock? { allBlocks.first { $0.id == id } }
 
     /// Every text line in column order — the screen's own, then the flow's, then (after the
-    /// buttons) the trailing flow's — for a backend that draws text only (Even, the web mirror).
+    /// buttons) the trailing flow's — for a backend that draws text only (Even).
     var linesBeforeItems: [HUDLine] { lines + flow.flatMap(\.lines) }
     var linesAfterItems: [HUDLine] { trailingFlow.flatMap(\.lines) }
 
@@ -349,14 +343,6 @@ struct HUDScreen {
         copy.trailingFlow = strip(trailingFlow)
         return copy
     }
-}
-
-/// Plan KT §6.6: how the web mirror redacts a screen. The mirror is the strictest surface.
-enum HUDMirrorRedaction: Equatable {
-    /// The screen's title and buttons, with these lines in place of its own (a draft's text).
-    case lines([HUDLine])
-    /// Nothing of the screen but this one line (a card with health content).
-    case hidden(placeholder: String)
 }
 
 /// Plan LC §2.3: the ids and labels that let the wearer leave a screen from the screen itself.

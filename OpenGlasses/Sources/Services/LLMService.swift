@@ -373,10 +373,41 @@ class LLMService: ObservableObject {
     }
     #endif
 
+    /// What one request path writes as it runs: the history it reads and appends to, and the
+    /// per-request scratch beside it. A conversation turn works in the service's own
+    /// (`sharedWorkspace`); a `completeStateless` call works in a copy of its own, scoped to its
+    /// task (`StatelessScope`), so it never reads or writes the conversation. A stateless call used to
+    /// empty the shared history and put a snapshot back when it ended: a wearer's turn that started
+    /// meanwhile ran over no history, and lost its exchange to the snapshot put back over it.
+    @MainActor final class TurnWorkspace {
+        var history: [[String: Any]] = []
+        var turnHistoryStart = 0
+        var lastRequestOmittedMessages = 0
+        var pendingTimeline: TimelineRequestBlock.Request?
+        var pendingTimelineSkip: TimelineRequestBlock.Skip?
+        var lastLocalTurnMissed = false
+        var lastChatRequestShape: (bodyBytes: Int, outputCap: Int)?
+    }
+
+    /// The workspace of the `completeStateless` call the calling task is in; nil in a
+    /// conversation turn. A task-local, so a turn running beside the call never sees it.
+    enum StatelessScope {
+        @TaskLocal static var workspace: TurnWorkspace?
+    }
+
+    private let sharedWorkspace = TurnWorkspace()
+    private var workspace: TurnWorkspace { StatelessScope.workspace ?? sharedWorkspace }
+    /// Whether the calling task is in a `completeStateless` call.
+    private var isStatelessCall: Bool { StatelessScope.workspace != nil }
+
     /// Conversation history for multi-turn context.
     /// No artificial turn limit — history persists for the full conversation session.
     /// Context window is managed by token-aware compaction, not a fixed turn count.
-    private var conversationHistory: [[String: Any]] = []
+    /// Inside a `completeStateless` call it is that call's own (`TurnWorkspace`).
+    private var conversationHistory: [[String: Any]] {
+        get { workspace.history }
+        set { workspace.history = newValue }
+    }
     /// Plan LE P2: a short, content-free note for the wearer's next turn — something the app said
     /// outside any turn that the wearer may now be answering. Nil when there is none.
     var turnNote: (@MainActor () -> String?)?
@@ -387,17 +418,19 @@ class LLMService: ObservableObject {
     /// Plan GB P5: where the current job's conversation starts in `conversationHistory`, and the
     /// index of the current turn's user message — the request-copy budget's two anchors.
     private var jobHistoryFloor = JobHistoryFloor()
-    private var turnHistoryStart = 0
+    private var turnHistoryStart: Int {
+        get { workspace.turnHistoryStart }
+        set { workspace.turnHistoryStart = newValue }
+    }
     /// Older messages the last request copy left out (`APIHistoryBudget`), for its note.
-    private var lastRequestOmittedMessages = 0
+    private var lastRequestOmittedMessages: Int {
+        get { workspace.lastRequestOmittedMessages }
+        set { workspace.lastRequestOmittedMessages = newValue }
+    }
     /// Plan KK P2: what the last cloud request of the current turn carried, for the timeline pass.
     /// Nil until a turn builds a request copy, and reset at each turn's start, so a turn answered
     /// on the phone never hands the pass an older turn's counts.
     private(set) var lastTimelineReading: TimelineRequestReading?
-
-    /// `completeStateless` calls in flight. Their requests run over an emptied history and say
-    /// nothing about the conversation, so they never set the reading.
-    private var statelessCallDepth = 0
 
     /// Record what a request kept, read from the copy actually sent. `omitted` is how many of the
     /// history's leading messages the copy left out (the copy is always a suffix of the history on
@@ -405,7 +438,8 @@ class LLMService: ObservableObject {
     @discardableResult
     private func noteTimelineReading(kept: [[String: Any]], omitted: Int = 0) -> TimelineRequestReading {
         let reading = timelineReading(kept: kept, omitted: omitted)
-        if statelessCallDepth == 0 { lastTimelineReading = reading }
+        // A `completeStateless` request says nothing about the conversation: never the reading.
+        if !isStatelessCall { lastTimelineReading = reading }
         return reading
     }
 
@@ -427,9 +461,15 @@ class LLMService: ObservableObject {
 
     /// The request copy `requestHistory` last built, for `requestSystemParts` to settle its block.
     /// Reset by every `requestHistory`, so a block never outlives the copy it was counted for.
-    private var pendingTimeline: TimelineRequestBlock.Request?
+    private var pendingTimeline: TimelineRequestBlock.Request? {
+        get { workspace.pendingTimeline }
+        set { workspace.pendingTimeline = newValue }
+    }
     /// Why the copy `requestHistory` last built may carry no block, before any counting.
-    private var pendingTimelineSkip: TimelineRequestBlock.Skip?
+    private var pendingTimelineSkip: TimelineRequestBlock.Skip? {
+        get { workspace.pendingTimelineSkip }
+        set { workspace.pendingTimelineSkip = newValue }
+    }
 
     /// Plan KK P3: what the last conversation request did with the timeline, for the on-device
     /// Prompt Inspector only. Holds the block's text; never logged, never in a support report.
@@ -439,8 +479,8 @@ class LLMService: ObservableObject {
     /// read only once the settings allow a block.
     private func timelineThread(for provider: LLMProvider) -> (thread: TimelineRequestBlock.Thread?,
                                                                  skip: TimelineRequestBlock.Skip?) {
-        // A summary or planner call runs over an emptied history: it never carries a block.
-        guard statelessCallDepth == 0 else { return (nil, .noThread) }
+        // A summary or planner call runs over an empty history of its own: it never carries a block.
+        guard !isStatelessCall else { return (nil, .noThread) }
         let enabled = Config.conversationTimelineEnabled
         let hipaa = Config.hipaaMode
         let thread = enabled && !hipaa ? timelineThreadSource?() : nil
@@ -462,7 +502,7 @@ class LLMService: ObservableObject {
     /// Settle a request's block and leave a record of it: the Prompt Inspector's copy, and a
     /// privacy-log line of counts and a reason (never the text) whenever something was left out.
     private func recordTimeline(_ decision: TimelineRequestBlock.Decision, omitted: Int) {
-        guard statelessCallDepth == 0 else { return }
+        guard !isStatelessCall else { return }
         // Every tool round settles one; publish only a change, so an open view is not redrawn
         // for each round of the same turn.
         if lastTimelineDecision != decision { lastTimelineDecision = decision }
@@ -975,8 +1015,8 @@ class LLMService: ObservableObject {
             prompt += "\n\n\(skillContext)"
         }
         closeBlock("installed skills")
-        // Plan KP P2: the follow-up tail, asked for only while answers are shown on a display (or
-        // the mirror) and its setting is on. In the volatile tail: the display comes and goes, and
+        // Plan KP P2: the follow-up tail, asked for only while answers are shown on a display and
+        // its setting is on. In the volatile tail: the display comes and goes, and
         // the cacheable head must not move with it. Cloud prompts only (`offersFollowUps`).
         if offersFollowUps, let clause = FollowUpPrompt.clauseForPrompt() {
             prompt += "\n\n" + clause
@@ -999,10 +1039,7 @@ class LLMService: ObservableObject {
     /// envelope so injected instructions inside it are visibly framed as data, not commands.
     private func wrapToolResultForModel(toolName: String, content: String) -> String {
         let isKnownNative = nativeToolRouter?.registry.tool(named: toolName) != nil
-        guard PromptInjectionPolicy.isUntrustedOutput(toolName: toolName, isKnownNativeTool: isKnownNative) else {
-            return content
-        }
-        return PromptInjectionPolicy.wrap(toolName: toolName, content: content)
+        return PromptInjectionPolicy.resultForModel(toolName: toolName, content: content, isKnownNativeTool: isKnownNative)
     }
 
     // MARK: - On-demand tool schemas (Plan IU)
@@ -1755,6 +1792,52 @@ class LLMService: ObservableObject {
         return history
     }
 
+    /// Plan NA §4: the reply check withheld or corrected sentences of the reply; the history entry
+    /// that recorded it is rewritten to match, so the model's next turn sees the line the wearer
+    /// heard, not the assurance it wrote.
+    func applyReplyCheckReplacements(_ replacements: [(original: String, replacement: String)]) {
+        guard !replacements.isEmpty else { return }
+        conversationHistory = Self.replacingSentencesInLastAssistant(conversationHistory,
+                                                                     replacements: replacements)
+    }
+
+    /// The history with each `original` sentence of its last assistant message replaced, first
+    /// occurrence after the previous one, in plain text or the text parts of Gemini's `parts` and
+    /// Anthropic's content blocks — the shapes `removingFollowUpTailFromLastAssistant` handles. A
+    /// sentence not found is left alone. Pure.
+    nonisolated static func replacingSentencesInLastAssistant(_ history: [[String: Any]],
+                                                              replacements: [(original: String, replacement: String)]) -> [[String: Any]] {
+        guard !replacements.isEmpty,
+              let index = history.lastIndex(where: { $0["role"] as? String == "assistant" }) else {
+            return history
+        }
+        func rewrite(_ text: String) -> String {
+            var done = ""
+            var rest = Substring(text)
+            for (original, replacement) in replacements where !original.isEmpty {
+                guard let range = rest.range(of: original) else { continue }
+                done += rest[rest.startIndex..<range.lowerBound] + replacement
+                rest = rest[range.upperBound...]
+            }
+            return done + rest
+        }
+        var history = history
+        var message = history[index]
+        if let content = message["content"] as? String {
+            message["content"] = rewrite(content)
+        } else {
+            for key in ["content", "parts"] {
+                guard var blocks = message[key] as? [[String: Any]] else { continue }
+                for block in blocks.indices {
+                    if let text = blocks[block]["text"] as? String { blocks[block]["text"] = rewrite(text) }
+                }
+                message[key] = blocks
+            }
+        }
+        history[index] = message
+        return history
+    }
+
     /// The final reply joins the job's log beside the turn that asked for it (Plan GB P0), so a
     /// job's transcript has both sides. Direct mode only; no-op with no job open.
     private func recordFieldAssistantReply(_ reply: String) {
@@ -1773,8 +1856,12 @@ class LLMService: ObservableObject {
     /// (broken tool markup, or a promise to look something up that it never kept). On a turn the
     /// offline handoff put on the phone, `AppState` holds the question for the cloud instead of
     /// asking the wearer to repeat it, since repeating it without signal gets the same miss. Reset
-    /// by `sendLocal` and by `AppState` when it routes a turn to the phone.
-    var lastLocalTurnMissed = false
+    /// by `sendLocal` and by `AppState` when it routes a turn to the phone. A `completeStateless`
+    /// call on the phone model keeps its own (`TurnWorkspace`).
+    var lastLocalTurnMissed: Bool {
+        get { workspace.lastLocalTurnMissed }
+        set { workspace.lastLocalTurnMissed = newValue }
+    }
 
     /// The outcome of every cloud model attempt (nil on success), for the offline handoff.
     var onCloudAttempt: ((Error?) -> Void)?
@@ -1961,8 +2048,12 @@ class LLMService: ObservableObject {
     /// Whether the last attempt's request carried tools, for the line said about it.
     private var lastAttemptCarriedTools = true
     /// The last Chat Completions request's body size and output cap, as sent: the app's estimate
-    /// of a refused request, which a refusal's own count calibrates.
-    private var lastChatRequestShape: (bodyBytes: Int, outputCap: Int)?
+    /// of a refused request, which a refusal's own count calibrates. A `completeStateless`
+    /// request's is its own (`TurnWorkspace`): it says nothing about the conversation's size.
+    private var lastChatRequestShape: (bodyBytes: Int, outputCap: Int)? {
+        get { workspace.lastChatRequestShape }
+        set { workspace.lastChatRequestShape = newValue }
+    }
     /// What the last failed attempt of the turn said about the allowance, with the error it was
     /// read from — matched as `lastAttemptCredentialGap` is.
     private var lastAttemptPerMinute: (notice: PerMinuteNotice, error: String)?
@@ -2373,11 +2464,6 @@ class LLMService: ObservableObject {
         return result.summary
     }
 
-    /// A stateless, tools-off completion for the planner: it sees only the system prompt + the
-    /// request, never the live conversation history (planning must use trusted context only, and
-    /// must not pollute the chat). History is snapshotted and restored even on error.
-    /// Stateless, tool-free completion against the user's active provider (honors on-device
-    /// models). Used by lightweight features like recall summarization.
     /// The provider `completeStateless` would send to now: the active model through the medical
     /// routing rule, as a Direct turn resolves it. Nil with no model, or when the rule refuses every
     /// model. Live hints reads it before sending a job's manual passages (Plan MO §5a).
@@ -2386,35 +2472,36 @@ class LLMService: ObservableObject {
         return (try? medicalInferenceModel(requested: requested))?.llmProvider
     }
 
+    /// A stateless, tools-off completion against the user's active provider (honors on-device
+    /// models), for the planner, the complexity classifier and lightweight features like recall
+    /// summarization. It sees only the system prompt and the request, never the live conversation
+    /// (planning must use trusted context only, and must not pollute the chat).
+    ///
+    /// The provider's send path runs in a workspace of its own (`TurnWorkspace`, through
+    /// `StatelessScope`): it starts empty and is dropped when the call ends, so the call never
+    /// reads or writes the conversation. A wearer's turn, a scheduled run or a cleared history
+    /// running beside it is left alone, and the call does not have to stop one first.
     func completeStateless(_ text: String, system: String) async throws -> String {
-        // It empties and restores the history, so a scheduled run must not be going under it.
-        await yieldOffConversationRun()
         guard let requested = Config.activeModel else {
             throw LLMError.missingAPIKey(String(localized: "No model configured"))
         }
         let config = try medicalInferenceModel(requested: requested)
-        let snapshot = conversationHistory
-        conversationHistory = []
-        statelessCallDepth += 1
-        defer {
-            conversationHistory = snapshot
-            statelessCallDepth -= 1
-        }
-
-        switch config.llmProvider {
-        case .anthropic:
-            return try await sendAnthropic(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
-        case .chatgpt:
-            return try await sendChatGPT(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
-        case .gemini, .geminiVertex:
-            return try await sendGemini(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
-        case .local:
-            return try await sendLocal(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
-        case .appleOnDevice:
-            return try await sendAppleOnDevice(text, systemPrompt: system,
-                                               includeTools: false, carryHistory: false)
-        case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
-            return try await sendOpenAICompatible(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+        return try await StatelessScope.$workspace.withValue(TurnWorkspace()) {
+            switch config.llmProvider {
+            case .anthropic:
+                return try await sendAnthropic(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+            case .chatgpt:
+                return try await sendChatGPT(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+            case .gemini, .geminiVertex:
+                return try await sendGemini(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+            case .local:
+                return try await sendLocal(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+            case .appleOnDevice:
+                return try await sendAppleOnDevice(text, systemPrompt: system,
+                                                   includeTools: false, carryHistory: false)
+            case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
+                return try await sendOpenAICompatible(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+            }
         }
     }
 
@@ -2685,9 +2772,8 @@ class LLMService: ObservableObject {
     /// a cheaper one, which would be a new destination for the wearer's words), and counted in
     /// Usage like every turn.
     ///
-    /// Unlike `completeStateless` it never touches `conversationHistory`: the pass runs after a
-    /// reply while the next turn may already be under way, and emptying and restoring the history
-    /// around the call would wipe whatever that turn added meanwhile. Each provider gets one
+    /// Like `completeStateless` it never touches `conversationHistory`: the pass runs after a
+    /// reply while the next turn may already be under way. Each provider gets one
     /// buffered request built here, and the reply is read with how it ended, because a note cut off
     /// at the allowance must not be kept.
     ///
@@ -5910,15 +5996,6 @@ class LLMService: ObservableObject {
         trimHistory()
     }
 
-    /// "Tuesday, 15 July 2026, 6:41 pm (Pacific/Auckland)" — injected into every system
-    /// prompt. Pure and injectable for tests.
-    nonisolated static func currentDateTimeLine(now: Date = Date(), timeZone: TimeZone = .current) -> String {
-        let formatter = DateFormatter()
-        formatter.timeZone = timeZone
-        formatter.dateFormat = "EEEE, d MMMM yyyy, h:mm a"
-        return "\(formatter.string(from: now)) (\(timeZone.identifier))"
-    }
-
     /// Parse the local model's `<tool_call>` markup.
     ///
     /// FC P1: now a thin reading of `LocalOutputPolicy`, so there is exactly one parser. The
@@ -5929,8 +6006,6 @@ class LLMService: ObservableObject {
         return (invocation.name, invocation.arguments)
     }
 
-    /// True when the reply narrates an intention to fetch/check something without any
-    /// tool markup — the shape a small model produces instead of acting.
     /// The last `n` history entries as (role, content) tuples — the shape the local paths and
     /// UncertaintyReask consume. Optionally strips `<tool_call>` markup (local path keeps its
     /// context clean; the Apple path's transcript never contains markup).
@@ -5957,68 +6032,6 @@ class LLMService: ObservableObject {
             }
             return content.isEmpty ? nil : (role: role, content: content)
         }
-    }
-
-    nonisolated static func announcesToolIntent(_ response: String) -> Bool {
-        let lowered = response.lowercased()
-        guard !lowered.contains("<tool_call>") else { return false }
-        // A promise-instead-of-action reply is SHORT (a sentence or two). A long answer that
-        // merely contains "searching for"/"let me check" mid-prose is an answer, not a stall —
-        // without this gate the never-speak-a-promise net could discard valid replies.
-        guard lowered.count < 280 else { return false }
-        let intentPhrases = [
-            "looking up", "look that up", "look it up", "let me check", "i'll check",
-            "i will check", "checking the", "let me get", "i'll get", "i'm getting",
-            "fetching", "one moment", "just a moment", "i'm looking",
-            // Search-flavoured announcements (live-traced: "I will now search for popular
-            // tourist destinations in Samoa for you" — then silence). Anchored to first-person
-            // intent so an answer that merely mentions searching doesn't match.
-            "i will now search", "i will search", "i'll search", "let me search",
-            "i'm searching", "searching for", "i should have used a tool",
-            "i will use a tool", "using a tool to",
-        ]
-        return intentPhrases.contains { lowered.contains($0) }
-    }
-
-    /// True when the reply asks the user to supply their location — the model has
-    /// where_am_i available and must never ask (live-traced: "If you tell me your current
-    /// location, I can check the forecast for you").
-    nonisolated static func asksUserForLocation(_ response: String) -> Bool {
-        let lowered = response.lowercased()
-        guard !lowered.contains("<tool_call>") else { return false }
-        let askPhrases = [
-            "your location", "your current location", "where you are",
-            "what city", "which city", "your city", "tell me where",
-            "let me know where", "share your location",
-        ]
-        return askPhrases.contains { lowered.contains($0) }
-    }
-
-    /// Round 0's corrections after a stall, shared with `LocalToolLoop` so both say the same thing.
-    nonisolated static let localLocationCorrection = "The user's location is already available to you — never ask for it. Call the where_am_i or get_weather tool now via <tool_call> in the exact format, then answer."
-    nonisolated static let localIntentCorrection = "You said you would look that up, but you did not call a tool. Either output the <tool_call> now in the exact format, or answer directly. Never say you will check — act."
-
-    /// The reduced tool block appended to the lean on-device prompt. Extracted (and pure)
-    /// so the location nudge is testable: without it, a small model that has no USER
-    /// LOCATION line answers "I can't find your location" instead of calling `where_am_i`.
-    nonisolated static func localToolInstructions(toolNames: [String]) -> String {
-        guard !toolNames.isEmpty else { return "" }
-        var block = """
-
-        \nTOOLS (use sparingly, only when the user clearly needs one):
-        Output exactly: <tool_call>{"name": "tool_name", "arguments": {"key": "value"}}</tool_call>
-        Available: \(toolNames.joined(separator: ", "))
-        Only use a tool if the user explicitly asks for that action. Otherwise just answer directly.
-        """
-        if toolNames.contains("where_am_i") {
-            block += "\nIf you need the user's location and it isn't given above, call where_am_i — never say you lack location access and never ask the user where they are."
-        }
-        if toolNames.contains("calendar") {
-            // Live-traced: without the argument schema the model only ever got the default
-            // ("today"), asked the user for dates it couldn't use, then denied having access.
-            block += "\ncalendar arguments: {\"action\": \"today\" | \"tomorrow\" | \"next\" | \"upcoming\"} — pick the one matching the day asked about. You DO have the user's calendar through this tool; never claim you lack calendar access and never ask for a date when one of these actions fits."
-        }
-        return block
     }
 
     /// The installation record the coordinator needs for an MLX model, resolved from the bundled
@@ -6089,7 +6102,16 @@ class LLMService: ObservableObject {
                                                           flagOn: Config.localNativeToolCallsEnabled)
         var toolNames: [String] = []
         var toolSpecs: [[String: Any]] = []
+        var compactToolSpecs: [[String: Any]] = []
         var toolRoots: [String: OnDeviceToolSchema.Node] = [:]
+        // Plan MQ P3: a native tool turn may take a larger window on a phone with the room
+        // (`LocalModelBudget.toolTurnContextWindow`); everything else keeps the model's own. The model
+        // is resident here, so its pages are already in the footprint the readings hold.
+        let toolTurnWindow = nativeTools
+            ? LocalModelBudget.toolTurnContextWindow(modelId: selectedID.rawValue, nativeToolCalls: true,
+                                                     marketingRAMGB: LocalLLMService.marketingRAMGB,
+                                                     readings: LocalMemoryReadings.againstProcessLimit())
+            : nil
 
         // Build tool instructions — use minimal set for local models
         var fullPrompt = systemPrompt
@@ -6100,9 +6122,19 @@ class LLMService: ObservableObject {
                                                libraryHasManuals: PersonalManualLibrary.permitted && !PersonalManualLibrary.shared.manuals.isEmpty)
             // Plan MQ P1: the Field Assist tools for a qualified model, or one under qualification.
             let fieldTools = Self.localFieldToolsOffered(modelID: selectedID.rawValue, runtime: installation.runtime)
-            let definitionBudget = LocalModelBudget.toolDefinitionBudget(for: selectedID.rawValue)
+            let definitionBudget = toolTurnWindow.map {
+                LocalModelBudget.toolDefinitionBudget(for: selectedID.rawValue, contextWindow: $0.tokens)
+            } ?? LocalModelBudget.toolDefinitionBudget(for: selectedID.rawValue)
             func estimate(_ name: String) -> Int {
                 guard let tool = router.registry.tool(named: name) else { return Int.max / 4 }
+                if nativeTools {
+                    // Plan MQ P3: the native turn's definitions are what Gemma's template renders,
+                    // calibrated on a phone, at the compact detail the runtime can always fall back
+                    // to (`LocalToolFit`), so the selection rarely leaves the fit a tool to drop.
+                    return OnDeviceToolSchema.localEstimatedTokens(spec: OnDeviceToolSchema.localToolSpec(
+                        name: name, description: tool.description, parameters: tool.parametersSchema,
+                        limits: .compact))
+                }
                 let root = OnDeviceToolSchema.root(toolName: name, parameters: tool.parametersSchema)
                 return OnDeviceToolSchema.estimatedTokens(name: name, description: OnDeviceToolSchema.toolDescription(tool.description), root: root)
             }
@@ -6116,10 +6148,14 @@ class LLMService: ObservableObject {
                 toolNames = LocalNativeToolPolicy.nativeToolNames(
                     field: fieldNames, everyday: everyday, utterance: text,
                     estimatedTokens: estimate, budgetTokens: definitionBudget)
+                // In priority order, which is the order `nativeToolNames` returns: the runtime's fit
+                // drops from the end when even the compact definitions don't fit.
                 for name in toolNames {
                     guard let tool = router.registry.tool(named: name) else { continue }
                     toolSpecs.append(OnDeviceToolSchema.localToolSpec(name: name, description: tool.description,
                                                                       parameters: tool.parametersSchema))
+                    compactToolSpecs.append(OnDeviceToolSchema.localToolSpec(
+                        name: name, description: tool.description, parameters: tool.parametersSchema, limits: .compact))
                     toolRoots[name] = OnDeviceToolSchema.root(toolName: name, parameters: tool.parametersSchema)
                 }
                 fullPrompt += Self.localNativeToolGuide(toolNames: toolNames)
@@ -6151,6 +6187,12 @@ class LLMService: ObservableObject {
             history = HandoffTranscriptBridge.outboundWindow(
                 history: recentTupleHistory(conversationHistory.count, stripToolMarkup: true),
                 budgetTokens: budget)
+        } else if nativeTools && isGGUF {
+            // Plan MQ H3: a GGUF native turn hands the runtime the conversation's tail and lets it
+            // trim in batches (`LocalModelBudget.historyFittingBudgetInBatches`), so the prompt's
+            // start stays where its KV cache already holds it. A fixed six-message window would
+            // move the start every turn.
+            history = recentTupleHistory(Self.ggufNativeHistoryMessages, stripToolMarkup: true)
         } else {
             history = recentTupleHistory(6, stripToolMarkup: true)
         }
@@ -6183,6 +6225,11 @@ class LLMService: ObservableObject {
                            _ systemOverride: String?,
                            _ toolTurn: LocalToolTurn?) async throws -> LocalToolLoop.Generation
         if let inferenceCoordinator {
+            // Plan MQ H1: the model's own sampling from its catalog entry, over the global set. Read
+            // once for the turn. The MLX backend derives the same values itself
+            // (`LocalLLMService.generateParameters(for:toolTurn:)`); the GGUF backend takes these.
+            let sampling = LocalModelSampling.configuration(for: selectedID.rawValue, toolTurn: false)
+            let toolSampling = LocalModelSampling.configuration(for: selectedID.rawValue, toolTurn: true)
             generateTurn = { message, turnHistory, image, preview, systemOverride, toolTurn in
                 let request = LocalGenerationRequest(
                     messages: MLXPromptAdapter.compose(systemPrompt: systemOverride ?? prompt,
@@ -6190,25 +6237,31 @@ class LLMService: ObservableObject {
                                                        userMessage: message),
                     images: image.map { [LocalImageInput(data: $0)] } ?? [],
                     maxOutputTokens: maxOutputTokens,
+                    sampling: toolTurn == nil ? sampling : toolSampling,
                     previewSink: preview,
                     toolTurn: toolTurn)
                 let stream = try await inferenceCoordinator.generateEvents(request, expecting: selectedID)
                 var assembled = ""
                 var calls: [LocalToolCallEvent] = []
+                var fit: LocalToolFit.Report?
+                var stats: LocalGenerationStats?
                 for try await event in stream {
                     switch event {
                     case .text(let chunk): assembled += chunk
                     case .toolCall(let call): calls.append(call)
+                    case .toolFit(let report): fit = report
+                    case .stats(let report): stats = report
                     }
                 }
-                return LocalToolLoop.Generation(text: assembled, toolCalls: calls)
+                return LocalToolLoop.Generation(text: assembled, toolCalls: calls, stats: stats, toolFit: fit)
             }
         } else {
             generateTurn = { message, turnHistory, image, preview, systemOverride, toolTurn in
                 let output = try await localService.generateTurn(MLXTurnInput(
                     userMessage: message, systemPrompt: systemOverride ?? prompt, history: turnHistory,
                     imageData: image, onToken: preview, toolTurn: toolTurn))
-                return LocalToolLoop.Generation(text: output.text, toolCalls: output.toolCalls)
+                return LocalToolLoop.Generation(text: output.text, toolCalls: output.toolCalls, stats: output.stats,
+                                                toolFit: output.toolFit)
             }
         }
         let generate: (_ message: String,
@@ -6240,7 +6293,9 @@ class LLMService: ObservableObject {
         // rendered by the model's own template.
         if nativeTools, let router = nativeToolRouter {
             return try await sendLocalNative(
-                text, history: history, toolNames: toolNames, toolSpecs: toolSpecs, toolRoots: toolRoots,
+                text, history: history, toolNames: toolNames, toolSpecs: toolSpecs,
+                compactToolSpecs: compactToolSpecs, contextWindow: toolTurnWindow?.tokens, toolRoots: toolRoots,
+                grounding: Self.localGroundingText(systemPrompt: prompt),
                 router: router, selectedID: selectedID, preview: containedPreview,
                 flushPreview: { if let onToken { let tail = previewFilter.flush(); if !tail.isEmpty { onToken(tail) } } },
                 generateTurn: { message, turnHistory, preview, toolTurn in
@@ -6303,12 +6358,12 @@ class LLMService: ObservableObject {
         // Gated on `.prose`: an output that already contains protocol did not stall, it failed, and
         // the containment below is the right answer for it. (That gate is also what the old
         // `!lowered.contains("<tool_call>")` check inside `announcesToolIntent` amounted to.)
+        //
+        // The same test the loop uses (`LocalToolLoop.standardCorrection`): a reply asking where the
+        // wearer is counts only on a turn that depends on where they are.
         if classification.kind == .prose, includeTools, nativeToolRouter != nil,
-           Self.announcesToolIntent(classification.text) || Self.asksUserForLocation(classification.text) {
+           let correction = LocalToolLoop.standardCorrection(for: classification.text, turn: text) {
             PrivacyLog.localModel(.stalled)
-            let correction = Self.asksUserForLocation(classification.text)
-                ? Self.localLocationCorrection
-                : Self.localIntentCorrection
             var correctiveHistory = history
             correctiveHistory.append((role: "assistant", content: classification.text))
             correctiveHistory.append((role: "user", content: correction))
@@ -6498,6 +6553,10 @@ class LLMService: ObservableObject {
         return validated
     }
 
+    /// Messages of history a GGUF native tool turn hands its runtime to trim (Plan MQ H3): twelve
+    /// exchanges, well past what a 4,096-token prompt holds, so the runtime's batch trim decides.
+    static let ggufNativeHistoryMessages = 24
+
     /// Plan MQ P1: one native tool turn on a downloaded model — `LocalToolLoop` over the turn's
     /// runtime, every call checked against the turn's offer, coerced to its declared types
     /// (`OnDeviceArgumentCoercion`) and dispatched through the router, whose approval and safety
@@ -6507,7 +6566,10 @@ class LLMService: ObservableObject {
                                  history: [(role: String, content: String)],
                                  toolNames: [String],
                                  toolSpecs: [[String: Any]],
+                                 compactToolSpecs: [[String: Any]] = [],
+                                 contextWindow: Int? = nil,
                                  toolRoots: [String: OnDeviceToolSchema.Node],
+                                 grounding: [String] = [],
                                  router: NativeToolRouter,
                                  selectedID: LocalModelID,
                                  preview: ((String) -> Void)?,
@@ -6518,22 +6580,40 @@ class LLMService: ObservableObject {
                                                 _ toolTurn: LocalToolTurn) async throws -> LocalToolLoop.Generation) async throws -> String {
         let earlier = history.map { $0.role == "assistant" ? LocalToolLoop.Message.assistant($0.content) : .user($0.content) }
         let fallback = Self.localToolInstructions(toolNames: toolNames)
-        let offered = Set(toolNames)
+        // What the dispatcher may run: the turn's offer, narrowed after each generation to what the
+        // runtime actually declared to the model (Plan MQ P3, `LocalToolFit`). A call to a tool the
+        // fit dropped is answered as not offered.
+        var offered = Set(toolNames)
+        // Plan MQ P3: an error code, a model number to identify and a step of the running procedure
+        // are called before the model (`LocalTurnRouter`), which answered them from memory.
+        var configuration = LocalToolLoop.Configuration()
+        configuration.routing = Self.localTurnRouting(offered: offered)
+        // A call's numbers may also come from the open job the prompt shows (`LocalArgumentGrounding`).
+        configuration.groundingText = grounding
+        // The first pass streams to the preview: the initial one, or the answer after a routed call.
+        var firstPass = true
         let outcome: LocalToolLoop.Outcome
         do {
-            outcome = try await LocalToolLoop.run(history: earlier, userMessage: text, generateTurn: { request in
-                let toolTurn = LocalToolTurn(history: earlier,
-                                             turn: Array(request.messages.dropFirst(earlier.count)),
-                                             tools: request.toolsOffered ? toolSpecs : [],
-                                             thinkingOff: true,
-                                             fallbackInstructions: fallback)
+            outcome = try await LocalToolLoop.run(history: earlier, userMessage: text, configuration: configuration,
+                                                  generateTurn: { request in
+                // Shared with the device qualification app (Plan MQ P3), so a phone run renders
+                // each pass exactly as this turn does.
+                let toolTurn = LocalToolTurn.forLoopPass(history: earlier, request: request,
+                                                         toolSpecs: toolSpecs, compactToolSpecs: compactToolSpecs,
+                                                         fallbackInstructions: fallback, contextWindow: contextWindow)
                 // The same transcript flattened, for a runtime that renders no tool turn (the seam
-                // composes its messages from it); the MLX runtime renders `toolTurn` instead.
+                // composes its messages from it); both runtimes render `toolTurn` instead (GGUF
+                // through llama.cpp's `common/chat`, Plan MQ P2), and fall back to this only when
+                // the model's template gives them no tool format.
                 let flat = LocalToolTranscript.flattened(request.messages)
-                let isFirst = request.purpose == .initial
+                let isFirst = firstPass
+                firstPass = false
                 let generation = try await generateTurn(flat.last?.content ?? text, Array(flat.dropLast()),
                                                         isFirst ? preview : nil, toolTurn)
                 if isFirst { flushPreview() }
+                if request.toolsOffered {
+                    offered = LocalToolFit.dispatchable(offered: toolNames, report: generation.toolFit)
+                }
                 return generation
             }, execute: { call in
                 await self.executeLocalToolCall(call, offered: offered, roots: toolRoots, router: router)
@@ -6549,10 +6629,30 @@ class LLMService: ObservableObject {
         }
         PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.executed.count,
                               total: outcome.generations, detail: PrivacyToken(outcome.endReason.rawValue))
+        if let routed = outcome.executed.first(where: \.routed) {
+            // A registered tool's name: the router names only tools it routes to, never the turn.
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.routedCalls,
+                                  tool: PrivacyToken(routed.call.name), detail: PrivacyToken("routed"))
+        }
+        if outcome.argumentsDropped > 0 {
+            // A count only: the arguments' names and values are the model's text and are never logged.
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.argumentsDropped,
+                                  detail: PrivacyToken("argumentsDropped"))
+        }
+        if outcome.argumentsCompleted > 0 {
+            // A count only: what was filled is the technician's words and is never logged.
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.argumentsCompleted,
+                                  detail: PrivacyToken("argumentsCompleted"))
+        }
+        if outcome.multiCallGenerations > 0 {
+            // A count only: generations that asked for more than one call, all of which ran or were counted.
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.multiCallGenerations,
+                                  detail: PrivacyToken("multiCall"))
+        }
         var answer = outcome.text
-        if outcome.endReason == .protocolOnly {
+        if [.protocolOnly, .unbackedClaim, .unbackedPromise].contains(outcome.endReason) {
             lastLocalTurnMissed = true
-        } else if Self.announcesToolIntent(answer) {
+        } else if outcome.endReason != .routedResult, Self.announcesToolIntent(answer) {
             // Never speak a promise: the loop already had its rounds to keep it.
             answer = Self.localMissMessage
             lastLocalTurnMissed = true
@@ -6563,6 +6663,23 @@ class LLMService: ObservableObject {
         return validated
     }
 
+    /// What `LocalTurnRouter` reads on a native local turn: the offer, the Field Assist procedure
+    /// running now, if any, and the procedures the session's vault lets `procedure_runner` start (its
+    /// library, as `availableProcedureDefinitions()` lists it). A step waiting on a read-back or a
+    /// corrective note is left to the model.
+    static func localTurnRouting(offered: Set<String>) -> LocalTurnRouter.Context {
+        let fieldAssist = Config.fieldAssistActive
+        let service = FieldSessionService.shared
+        let presentation = fieldAssist ? service.activeProcedurePresentation : nil
+        let procedures = fieldAssist && offered.contains("procedure_runner")
+            ? service.availableProcedureDefinitions().map { LocalTurnRouter.CatalogueEntry(id: $0.id, title: $0.title) }
+            : []
+        return LocalTurnRouter.Context(
+            offered: offered, procedureActive: presentation != nil,
+            procedureAwaitsConfirmation: presentation.map { $0.pendingReadBack != nil || $0.needsCorrectiveNote } ?? false,
+            procedures: procedures)
+    }
+
     /// One call from the native loop. A tool the turn did not offer, or arguments that cannot be
     /// read as the declared types, come back to the model as an error result and run nothing.
     private func executeLocalToolCall(_ call: LocalToolLoop.Call, offered: Set<String>,
@@ -6571,8 +6688,7 @@ class LLMService: ObservableObject {
         guard offered.contains(call.name) else {
             // The name is the model's text, not a registered tool, so it is not logged.
             PrivacyLog.localModel(.malformedOutput, detail: PrivacyToken("unofferedTool"))
-            return .init(text: "Error: the tool '\(call.name)' is not available on this turn. Use one of: "
-                         + offered.sorted().joined(separator: ", ") + ".", isError: true)
+            return .init(text: LocalToolLoop.unofferedToolMessage(name: call.name, offered: offered), isError: true)
         }
         var arguments = call.arguments
         if let root = roots[call.name] {
@@ -6604,27 +6720,6 @@ class LLMService: ObservableObject {
             return .init(text: "Error: \(reason)", isError: true)
         }
     }
-
-    /// The tool block for a native tool turn. The definitions themselves are rendered by the
-    /// model's chat template, so this says only how to use them.
-    nonisolated static func localNativeToolGuide(toolNames: [String]) -> String {
-        guard !toolNames.isEmpty else { return "" }
-        var block = "\n\nTOOLS: the tools you may call this turn are declared to you. Call one only when the user "
-            + "clearly needs it; otherwise answer directly. After a tool result, answer from it in one or two spoken "
-            + "sentences, and never repeat a call you have already made."
-        if toolNames.contains("where_am_i") {
-            block += " If you need the user's location and it isn't given above, call where_am_i — never ask the user where they are."
-        }
-        if toolNames.contains("reading") || toolNames.contains("field_session") {
-            block += " On the job: log a value the technician reports with reading, and run job steps with the job tools; never invent a value."
-        }
-        return block
-    }
-
-    /// The one honest-miss line the local path speaks when a turn produced no answer it may say —
-    /// a promise it never kept, or output that was nothing but broken tool protocol. It claims
-    /// nothing happened and invites a retry, which is the only truthful thing left to say.
-    nonisolated static let localMissMessage = "I couldn't get that information just now — please ask me again."
 
     // MARK: - Local Agent Model
 

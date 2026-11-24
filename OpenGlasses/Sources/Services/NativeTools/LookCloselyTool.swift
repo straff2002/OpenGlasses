@@ -242,6 +242,8 @@ final class LookCloselyTool: NativeTool {
         if let partial = ReadingCaptureOutcome.confidentText(from: recognized) {
             PrivacyLog.vision(.lookClosely, .textRecognized,
                               count: recognized.blocks.count, characters: partial.count)
+            // Plan NA §2: the only on-device text this tool has, for the reply check's numbers.
+            ReadingEvidenceBoard.shared.publish(partial, source: .lookClosely)
             return ReadingCaptureOutcome.partialTranscription(partial,
                                                               quality: degraded.report.quality)
         }

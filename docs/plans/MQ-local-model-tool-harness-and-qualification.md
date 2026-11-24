@@ -1,6 +1,6 @@
 # Plan MQ — Local Model Tool Harness and Device Qualification
 
-**Status:** 🚧 P0 built 2026-11-21 (headless core) · P1 built 2026-11-22 behind `Config.localNativeToolCallsEnabled`, off by default, Gemma 4 E2B only (see [P1 as built](#p1-as-built-2026-11-22)) · P2–P4 not built · P4 device pass owed · all 8 decisions taken 2026-11-21 · mlx-swift-lm moved to `4c21c84` (mlx-swift 0.33.0) in P1
+**Status:** 🚧 P0 built 2026-11-21 (headless core) · P1 built 2026-11-22 behind `Config.localNativeToolCallsEnabled`, off by default, Gemma 4 E2B only (see [P1 as built](#p1-as-built-2026-11-22)) · P3 part 1 built 2026-11-22: per-model sampling, the kill-limit memory budget, the run gate, the grader additions and the device qualification app (see [P3 part 1 as built](#p3-part-1-as-built-2026-11-22)); first phone run 2026-11-22 found every tool turn overflowing (`promptTooLong`, 4,317–4,326 of 3,456): the runtime now fits the definitions (compact, then drop, then none) before trimming history, the native selection's estimate is calibrated on the phone, and a native turn on Gemma 4 E2B gets 6,144 tokens on phones with 8 GB and the memory (see [Found on the phone](#found-on-the-phone-2026-11-22)); phone runs 2026-11-22 to 23 (see [Phone runs](#phone-runs-2026-11-22-to-2026-11-23)): the tool cases went from 6 of 94 to 303 of 326 through the fixes below and `LocalTurnRouter`, which runs error-code, model-number and procedure-step calls before the model; two-step 7–9 of 12, restraint and clean output 100%; P3 part 2 (2026-11-24): the full corpus on main 582/618 with every hard floor clear, and job commands, evidence choices and reading follow-ups routed too: tool cases 317/326 · **P2 built 2026-11-24** behind the same flag (and `Config.ggufModelsEnabled`): GGUF models call tools through llama.cpp's own `common/chat` at the kept v0.3.0 pin (Gemma 4 and Qwen 3.x handlers, lazy call grammars), feeding the same `LocalToolLoop`; the KV cache keeps its shared prefix and GGUF history is trimmed in batches; Gemma 4 E2B, Gemma 4 E4B and Qwen 3.5 4B added as GGUF catalog entries (text only, no badge) and allowlisted; device app `--gguf`; nothing run on a phone (see [P2 as built](#p2-as-built-2026-11-24)) · the rest of P3 not built · P4 device pass owed · all 8 decisions taken 2026-11-21; owner 2026-11-22: phone results first, the Mac screener is a compile check · mlx-swift-lm moved to `4c21c84` (mlx-swift 0.33.0) in P1
 
 Offline Field Assist depends on the downloaded models (MLX and GGUF) when Apple Intelligence is
 missing or can't hold the turn. The research of 2026-11-20
@@ -87,10 +87,11 @@ behind `Config.localNativeToolCallsEnabled`.
   | Field Assist | longPrompt | 4 |
   | Field Assist | cleanOutput | 3 |
   | Field Assist | cancellation | 2 |
+  | Field Assist | restraint (added in P3, 2026-11-22) | 36 |
   | Everyday | restraint | 7 |
   | Everyday | toolChoice | 2 |
   | Everyday | cancellation | 1 |
-  | | **Total** (Field Assist 673, 98%) | **683** |
+  | | **Total** (Field Assist 709, 98%) | **719** |
 
   | Source | Cases |
   |---|---:|
@@ -103,7 +104,7 @@ behind `Config.localNativeToolCallsEnabled`.
   | `procedures/slp99_pressure_switch_lockout.json` | 21 |
   | `procedures/slp99_unit_size_code.json` | 16 |
   | `eval/calibration.jsonl` (phrasings) | 24 |
-  | written in the generator (job flow, protocol, everyday) | 34 |
+  | written in the generator (job flow, protocol, Field Assist restraint, everyday) | 70 |
 
   Writing the cases found two gaps in the check, fixed before it shipped: a timing table's bare `s`
   wasn't read as seconds, and the manifold table states its unit only as the nameplate note's
@@ -194,8 +195,8 @@ unchanged: a turn reaches a downloaded model exactly when it did before.
   Field Assist tools so the owner can try it on a job. `qualifiesForFieldAssistTools` stays false
   for every model, and no badge shows (decision 6).
 - **Floors in code.** `LocalToolEval.Floors` holds decision 5's hard floors (not in the manual
-  ≥ 95%, clean output 100%, restraint ≥ 90%). Tool choice and two-step stay unset until the Mac
-  screener.
+  ≥ 95%, clean output 100%, restraint ≥ 90%). Tool choice and two-step stay unset until the first
+  phone run (owner, 2026-11-22; it was the Mac screener).
 - **The pin.** mlx-swift-lm `14414441` → `4c21c84` (upstream PR #812), and mlx-swift 0.31.6 →
   0.33.0. The library now streams reasoning as its own `Generation.reasoning` event:
   - `LocalStreamRouter` keeps it out of the spoken, previewed and returned text.
@@ -215,13 +216,20 @@ unchanged: a turn reaches a downloaded model exactly when it did before.
   convolution state can't be trimmed, so it reuses only when the new prompt extends the old one
   exactly, which batch trimming makes common.
 
-Context audit after P1, the same scenario as above (`FieldAssistContextAuditTests`, which now
-measures the real tool JSON and fails under 400 tokens left on any model, or 600 on Gemma 4 E2B
-native):
+Context audit after P1, the same scenario as above (`FieldAssistContextAuditTests`, which fails
+under 400 tokens left on any model, or 600 on Gemma 4 E2B native). **Corrected 2026-11-22 from the
+first phone run** (see [Found on the phone](#found-on-the-phone-2026-11-22)): the Gemma rows count
+the definitions at Gemma's real template rate calibrated on the phone
+(`OnDeviceToolSchema.localEstimatedTokens`, 3.4 bytes of spec JSON a token plus 8 a tool, not four
+characters a token), selected and fitted as the app now does it (`LocalToolFit`, with the 600-token history reserve a job
+turn has). On 6,144 the larger definition budget (1,376) selects five bigger tools; full detail
+would leave only 376 for the conversation, so they go compact. P1's figure was 1,146 tokens of
+tools and 617 left.
 
 | Model | Budget | Compact tier (of its cap) | Prompt without the job | Tools | Left for history and the turn |
 |---|---:|---:|---:|---:|---:|
-| Gemma 4 E2B, native, 5 tools | 3,456 | 648 of 864 | 1,045 | 1,146 | 617 |
+| Gemma 4 E2B, native, 6 GB phone (4,096 window): 5 tools, compact | 3,456 | 648 of 864 | 1,045 | 940 | 823 |
+| Gemma 4 E2B, native, 8 GB and up (6,144 window): 5 tools, compact | 5,504 | 648 of 864 | 1,045 | 1,394 | 2,417 |
 | Gemma 4 E4B, Qwen 2.5 3B, SmolVLM2 2.2B (single shot) | 3,456 | 643 of 864 | 1,045 | 213 | 1,555 |
 | LFM2.5 2.6B (single shot) | 2,944 | 643 of 736 | 1,045 | 213 | 1,043 |
 | Qwen 2.5 0.5B, SmolVLM2 500M (8K) | 7,552 | 643 of 1,888 | 1,045 | 213 | 5,651 |
@@ -229,6 +237,392 @@ native):
 The compact tier is 349 tokens with only the job open and 648 at most, against 7,792–10,049 for
 the full block. Verified headless: 716 tests, 0 failures, plus the Release build. Not verified: any
 real model on a phone. That is P3 and P4.
+
+## P3 part 1 as built (2026-11-22)
+
+The owner decided on 2026-11-22 that phone results come first: the Mac's memory limit, GPU and
+thermals don't represent a phone, so the Mac screener shrinks to a compile check and the device app
+is the runner that qualifies. This part builds the device app and what it stands on. Nothing in it
+grants a badge, adds a catalog model or touches the GGUF tool path (P2).
+
+- **Per-model sampling (H1).** `LocalModelSampling` (`Services/LocalInference/`): an optional
+  `sampling` object on MLX and GGUF catalog entries — temperature, top-p, top-k, min-p, repetition
+  and presence penalty, each decoded only when present — with a `source` note and an optional
+  `toolTurn` set applied over it on a native tool turn. Only the members set replace the global
+  0.7 / 0.9. `LocalLLMService.generateParameters(for:toolTurn:)` reads it on every MLX turn, and
+  `sendLocal` passes the same set to the GGUF backend through `LocalGenerationRequest.sampling`, so
+  the app and the device app sample alike. Sets are added only where the publisher states one:
+  - Gemma 4 E2B and E4B: temperature 1.0, top-p 0.95, top-k 64 (their model cards, "Best
+    Practices", one configuration for all uses);
+  - LFM2.5 2.6B: temperature 0.1, top-k 50, repetition penalty 1.1 (its card's "Generation
+    parameters"). These are the values `generateParameters` hard-coded before; the card names no
+    top-p, so it now takes the global 0.9 rather than the library's 1.0.
+
+  Qwen 2.5 and the GGUF entries carry none. No entry has a tool-turn set: no publisher we ship
+  states one. A GGUF set may not use presence penalty (the wrapper's sampler has none) and is
+  refused if it does; GGUF min-p now comes from the request when set.
+- **Memory budget from the kill limit (H2).** `LocalMemoryBudget` (pure): the kill limit is
+  `os_proc_available_memory()` plus the footprint held, measured once; copied weights (MLX) are
+  judged against it with the footprint held, mapped weights (GGUF) against Metal's
+  `recommendedMaxWorkingSetSize` with their working set against the kill limit; 1 GB is kept back
+  on a 6 GB phone, 512 MB above. `LocalMemoryReadings` is the live adapter, with the kill limit
+  fixed at first use. **The shipping gates are unchanged**: loads still go through
+  `MemoryHeadroom.canLoad` and the RAM floors. Switching a gate that decides which models a
+  customer may load waits for the phone records this feeds.
+- **The run gate (H4).** `QualificationRunGate` (pure, in `OpenGlassesTests/LocalToolEval/`):
+  thermal state, Low Power Mode, battery level and charging into `proceed`, `wait(reasons)`,
+  `flag(reasons)` or `stop(reasons)`. **Heat changes the speed, not the answers (owner,
+  2026-11-22):** a run measures through `nominal`, `fair` and `serious` and counts every answer
+  towards the floors; the record's time to first token and decode rate come only from cases that
+  started `nominal` or `fair`, and the hot cases' count and decode rate are kept beside them. It
+  pauses only at `critical`, settles for 120 s at the start and after a `critical` spell, refuses
+  Low Power Mode and a battery off the charger, flags when `critical` outlasts the cap (20
+  minutes), and stops when power is still bad at the cap. The plan gives no numbers; these are
+  the device app's defaults and its arguments. Found on the phone: the first build waited for
+  `nominal`, and a cool iPhone Air on its charger reported `fair` between cases; the second waited
+  out `serious`, which the phone reached within a minute of generating after an hour of runs.
+- **Grader additions.** A generation's runtime report (`LocalGenerationStats`: tokens, timings,
+  the cap and the stop reason, from mlx-swift-lm's completion info) now rides out of
+  `LocalLLMService` on `MLXTurnOutput` and `LocalToolLoop.Generation`. A reply of zero tokens fails
+  `cleanText` as a template fault; a blank reply with tokens behind it does not. A reply that
+  stops at the cap is marked cut and counted, not failed.
+- **One grading core, two runners.** `LocalToolEvalCore.swift` is compiled unchanged by the test
+  target and the device app. Its `Environment` takes the loop's generation (text, parsed calls and
+  report), a reader for reading cases, and optionally a model that runs its own tool loop (Apple's).
+  A reading case now asks the model for a reading (`Reader`: passages by id and the question in,
+  one JSON object out), which `ManualReadingCheck` accepts or declines; CI's scripted model replies
+  with the case's scripted reading in that format, and an unreadable reply is declined, as the app
+  would decline it, and counted. The 98 near-miss twins test the check, not a model (each is an
+  answered case's question and passages with a made-up value in its scripted reading), so a live
+  run skips them (`Case.isCheckOnly`) and the record says how many. The dispatcher's unoffered-tool
+  message (`LocalToolLoop.unofferedToolMessage`) and the tool-result framing
+  (`PromptInjectionPolicy.resultForModel`) are the shipped ones, shared.
+- **The device app** (`Scripts/local-model-qualification/`, bundle id
+  `com.openglasses.localmodelqualification`, the app's increased-memory-limit entitlement). It
+  compiles the production `LocalLLMService` and its MLX runtime, the loop, parser, coercion, output
+  policy, schema conversion, catalog and sampling by path; `Stubs.swift` adapts only telemetry, the
+  turn recorder, two type names and a photo-only helper. To make that possible, four pure pieces
+  moved out of large files unchanged: the local turn's wording (`LLMService+LocalTurnText.swift`),
+  canonical arguments (`AttemptToolLedger+CanonicalArguments.swift`), tool-output framing
+  (`PromptInjectionPolicy+ToolOutput.swift`), and the staging-summary bridge (into
+  `LocalModelRowState.swift`); `LocalToolTurn.forLoopPass` builds each pass for `sendLocalNative`
+  and the app alike. What it can't build without the app is in `Fixture/qualification-fixture.json`:
+  each offered tool's registry declaration and the lean on-device prompt with the Lennox job open,
+  fitted to each tool-candidate model; `LocalModelQualificationFixtureTests` rebuilds it from the
+  app and fails when it is stale. The app takes `--model` (default Gemma 4 E2B), `--apple`,
+  `--repeats` (3), `--groups` (default Field Assist with the restraint and not-in-the-manual
+  categories), `--limit`, `--settle`, `--cap`, `--allow-battery`, `--cancel-probes` and `--fresh`;
+  downloads the model through the production downloader; gates every case; keeps the screen awake;
+  cancels generation when it resigns active; and writes `Documents/results.json` after every case,
+  resuming a matching unfinished record. The record (`LocalModelQualificationRecord`) is counts and
+  hashes only: per group and category pass counts with bootstrap intervals over cases, decision 5's
+  floors, cut and zero-token replies, time to first token and decode rate, the fit before load and
+  the peak footprint against the kill limit, the thermal trace, gate waits and flags, cancel latency
+  from timed probes, the sampling set, and the device, OS build, app commit, runtime revision, model
+  revision and quantisation.
+- **Apple's baseline.** `--apple` runs the same cases on Apple's on-device model: the tools are
+  the shipped `AppleToolBridge` adapters built from `OnDeviceToolSchema`, each calling the same
+  dispatcher the loop uses (scripted results, the same coercion), and the outcome is graded by the
+  same graders. Two differences, recorded here: its instructions are Gemma 4 E2B's fixture prompt,
+  not the shipped Apple path's `AppleOnDeviceInstructions` (which needs the running app's job
+  service), and Apple reports no token counts, so the zero-token and cut checks don't apply to it.
+- **Decision 8's test.** An entry with `deviceVerified` evidence must name its record
+  (`evidenceRecord`, a JSON file under `reports/`; MLX and GGUF), and
+  `LocalModelQualificationRecordTests` fails when a named record is not in git, read from the git
+  index itself since the simulator can't run `git`. No entry names one yet.
+- **Compile check.** `Scripts/local-model-qualification/check-compiles.sh` builds the app for the
+  simulator. It is not in `Scripts/check-eval-harnesses.sh`: that job compiles plain-swiftc Mac
+  harnesses in a 10-minute budget, and a cold mlx-swift-lm build alone takes longer.
+- **Field Assist restraint cases.** Found while building: the corpus had no Field Assist restraint
+  case (its seven were everyday chatter), so the restraint floor could not be judged on the group
+  decision 5 names and no run could clear every floor. `generate-corpus.py` now writes 36 job turns
+  that need no tool while the job tools are offered (owner, 2026-11-22): chatter and asides, turns
+  that name the unit, a code or a procedure without asking for anything, and requests none of the
+  offered tools can do. None states a reading. They are written by hand, with no facts from the
+  vault beyond names the corpus already used. The corpus is 719 cases (Field Assist 709); the
+  format is unchanged, so it stays version 2.
+
+### Found on the phone (2026-11-22)
+
+The first phone run (iPhone Air, 12 GB, `mlx-community/gemma-4-e2b-it-4bit`, mlx-swift-lm
+`4c21c84`): reading turns ran at about 40 tokens a second, first token in 0.1–0.6 s (6.2 s cold),
+peak footprint 3.16 GB against a 6.44 GB kill limit. **Every tool turn failed before generating**
+with `promptTooLong(tokens: 4,317–4,326, limit: 3,456)`. Three faults together:
+
+- **Nothing cut the tools.** `historyFittingBudget` drops history, and these turns had none; the
+  overflow was the definitions, and the turn threw.
+- **The device app bypassed the app's selection.** It sent each case's offered tools as they were;
+  the first tool cases offer `reading`, `field_session`, `table_lookup` and `domain_calc`, whose
+  standard definitions are about 2,750 tokens (`domain_calc` alone about 1,400). The app's own
+  selection would have cut them to its 864-token definition budget.
+- **The app's selection estimate was low.** It used the Apple path's `estimatedTokens`, which counts
+  no JSON keys, types or punctuation: 2,155 for those four tools, about 22% under the render.
+
+Calibration, from that case (`FieldAssistContextAuditTests.testTheCalibratedToolEstimateAgainstThePhone`):
+the job prompt with the tool guide is 6,234 characters (about 1,560 tokens at four characters a
+token), the turn 52–75 characters, the four specs 10,034 bytes of JSON; 4,317–4,326 measured leaves
+about 2,750 tokens for the definitions, 3.65 bytes a token. The native selection now budgets with
+`OnDeviceToolSchema.localEstimatedTokens` (3.4 bytes a token plus 8 per tool), which puts that
+prompt at 4,556–4,561, 5–6% over the phone; the test fails if it ever comes in under. P1's audit was
+not a chars/4 undercount by half, as first read: its five tools were selected under the 864-token
+budget, the phone's four were not, and four characters a token of the same spec JSON is about 8% low.
+The split assumes the system prompt reads at four characters a token; the record now keeps every
+generation's prompt token count, which settles it on the next run.
+
+What was built:
+
+- **The fit (`LocalToolFit`, pure).** At the one chokepoint every local tool turn goes through
+  (`LocalLLMService.generateTurn`, both the Gemma 4 VLM path and the generic tokenizer path), the
+  system prompt, the turn and the tools are measured with the model's own tokenizer and template,
+  no history, in this order: every tool at full detail (only when that also leaves 600 tokens,
+  `LocalToolFit.historyReserve`, for a turn with history, so a roomier window doesn't spend its room
+  on longer descriptions); every tool with compact definitions (`OnDeviceToolSchema.Limits.compact`:
+  a 160-character tool description, required properties' descriptions cut to 100, optional ones
+  dropped; every node keeps its `type` and choices, nesting still at most two); compact, dropping one
+  tool at a time from the lowest-priority end; no tools. Only then is the history trimmed into what
+  is left. A tool turn now throws `promptTooLong` only when the system prompt and the turn alone
+  don't fit. A turn whose model inferred no tool format (Hermes instruction, nothing rendered) is
+  not fitted.
+- **Priority order is explicit.** `LocalToolTurn.tools` and `compactTools` are in priority order
+  (`LocalNativeToolPolicy.nativeToolNames`, which now builds on a pure `ordered(field:everyday:utterance:)`);
+  `FieldAssistLocalToolSet.ordered` is the Field Assist half.
+- **The dispatcher refuses a dropped tool.** `MLXTurnOutput.toolFit` and `LocalToolLoop.Generation.toolFit`
+  carry offered, kept, compact and the window (a `.toolFit` event on the coordinator path).
+  `sendLocalNative` and the eval core narrow the offer after each generation
+  (`LocalToolFit.dispatchable`), so a call to a dropped tool gets `unofferedToolMessage` and runs
+  nothing; the `toolName` grader fails a call the dispatcher refused as not offered.
+- **The selection is honest.** A native turn's `estimate` is `localEstimatedTokens` of the compact
+  spec (the least the runtime can send), so the selection rarely leaves the fit a tool to drop; the
+  audit asserts it leaves none. The single shot and the Apple path keep `estimatedTokens`.
+- **The device app orders like the app.** `LiveEnvironments.appOrder` orders each case's tools with
+  the same two functions, sends standard and compact specs, and the record keeps, per run (counts
+  only): tools offered and kept on the first tool generation, generations that dropped a tool or
+  went compact, whether a tool the case expected was dropped, the window and every generation's
+  prompt tokens; per group: runs where the fit dropped an expected tool (so "the fit dropped it" is
+  told from "the model missed it"), runs that dropped any and runs that went compact. Record schema
+  `/2`, so a `/1` record is not resumed.
+- **A larger window for Gemma on bigger phones (behind the flag).** A native tool turn (the flag on,
+  an allowlisted MLX model) on Gemma 4 E2B gets a 6,144-token window, prompt budget 5,504, definition
+  budget 1,376, when the phone has at least 8 GB and `LocalMemoryBudget.fit` against the kill limit
+  still keeps the reserve after the model, its 768 MB working set and the KV cache for 6,144 tokens
+  (`LocalModelBudget.toolTurnContextWindow`). 6 GB phones, the flag off, other models and non-tool
+  turns keep 4,096. The cache is read from the model's config as mlx-swift-lm builds it: of 35
+  layers the last 20 share earlier layers' K and V and hold none, and of the 15 that do, 3 are full
+  attention (one KV head, 512 wide) and 12 slide over 512 tokens (one head, 256): 6 KB a token
+  plus 12 MB, 48 MB at 6,144. The gate charges a conservative 180 MiB (all 15 layers full width, no
+  window) in case the checkpoint's config differs from the library's defaults. The record names the
+  window (`window`: ordinary, chosen, reason, budget). The app decides it once per turn in
+  `sendLocal` and hands it to the runtime on `LocalToolTurn.contextWindow`.
+- **The fixture no longer carries the clock.** Found while regenerating it: the job tier stamps the
+  equipment with the time it was identified, so `qualification-fixture.json` differed on every run;
+  `LocalModelQualificationFixtureTests` pins that time, and the file is now the same every build.
+- **Time to first token (owed, phone).** The larger window lets a turn carry up to about 2,000 more
+  prompt tokens. Reading turns prefilled in 0.1–0.6 s warm; the extra prompt will add to that on a
+  long job, and the next phone run measures it (the record's per-generation prompt seconds and
+  tokens). Not measured here.
+
+### Phone runs (2026-11-22 to 2026-11-23)
+
+Gemma 4 E2B (MLX, `mlx-community/gemma-4-e2b-it-4bit`) on the iPhone Air, one repeat a case, the
+device app's counts-and-hashes record. Fifteen runs: a 94-case slice, the full corpus once, then the
+326 tool cases (every tool category plus restraint) after each change. Run to run, the same build
+moves about four cases either way.
+
+| Run | Cases | Passed | Notes |
+|---|---|---|---|
+| 94-case slice, P1's guide | 94 | 6 | |
+| 94-case slice, after the fixes below up to table rows | 94 | 83 | |
+| Full corpus (before the router) | 618 | 375 | not-in-manual 63/63, restraint 43/43, manual answers 218/229, clean output 311/317; tool choice 44/143, multi-turn 1/119, two-step 0/12 |
+| Tool cases, Gemma's own call syntax read | 326 | 113 | |
+| Tool cases, with the router | 326 | 294 | every routed turn passed |
+| Tool cases, the last two builds | 326 | 302, 303 | tool choice 132–133/143, multi-turn 112/119, two-step 7–9/12, restraint 43/43, clean output 324/324 |
+
+Decode ran at about 19 tokens a second with the phone hot (its usual state in a long run), 26–28
+warm; peak footprint 3.5 GB. **The full corpus was last run before the router; a full run on the
+final build is owed**, so the reading categories' numbers are from that earlier build.
+
+**What the runs found, and what was built for each:**
+
+- **Results lost when the phone locked.** The runner resumes in the same process when the app
+  returns to the foreground.
+- **An empty reply after a successful call.** Gemma often ended its turn right after `reading`;
+  the loop now speaks the tool's own result when it is a short single line of prose
+  (`LocalToolLoop` end reason `.toolResult`), and a miss otherwise.
+- **Readings declined on a formality.** `ManualReadingCheck` reads a passage id written `[p1]` or
+  `passage p1`, and accepts a quote made of one table row's cells with that table's headers.
+- **Gemma's own call syntax.** `LocalOutputPolicy` reads `call:name{key:<|"|>value<|"|>}` and its
+  `<tool_call:…>` hybrids, and a Python-style `name(key="value")` call standing on its own line, as
+  further grammars (never as repairs: a body that doesn't parse is never a call, and is not spoken).
+- **The assistant's name at the front of a reply** ("Avenkin here…") is taken off; "Avenkin will
+  log…" is kept.
+- **Lookups and procedure steps answered from memory.** Gemma rarely called `equipment_lookup` for
+  an error code or a model number, or `procedure_runner` for "next", "say that again" or a step's
+  answer, and sometimes made up advice. Guide lines asking it to did not help, and nor did fewer
+  tools. `LocalTurnRouter` (pure) now recognises those turns and runs the call before the model:
+  an error code, a model number given to identify the unit, a running procedure's next / repeat /
+  answer, and a procedure start matched to exactly one title in the vault's catalogue. A lookup's
+  result goes to the model to phrase; a step's result is spoken as the runner wrote it, minus the
+  lines meant for the model. Over the corpus it routes every code, model and next/repeat case and
+  11 of 12 answers, never a case that expects no call, never a wrong one. Its score is the router's
+  as much as the model's: the record counts routed calls per run.
+- **Two calls in one generation.** Every call a generation makes now runs, in order, each through
+  the dispatcher and counted against the round cap.
+- **Claims and promises nothing kept.** A reply that says a reading was logged or a drop worked out
+  when no such call ran gets the turn's one correction, then the miss text (`unbackedClaim`); a
+  final promise to act ("I will calculate it now") with nothing behind it ends the same way
+  (`unbackedPromise`). The intent check also hears the assistant's own name as "I".
+- **Numbers nobody said.** Gemma filled voltage-drop calls with invented conductor figures (a
+  resistance of 16 Ω/ft for 14 AWG copper). `LocalArgumentGrounding` drops a numeric argument that
+  appears nowhere in the turn, the history, this turn's tool results or the job block of the
+  prompt, and tells the model which; over the corpus's reference calls it drops none.
+- **The wire, the supply and the operation from the technician's words.** `LocalArgumentCompletion`
+  fills a voltage drop's `wire_awg` or `area_mm2`, `material` and `supply_v` from what the
+  technician said (the technician's stated wire wins over a figure the model supplied), and sets
+  `operation` on a call shaped like a voltage drop that named none. Coercion moves a missing
+  required choice from a key that holds one of its values (Gemma's `application: voltage_drop`).
+- **Voltage drop by wire size.** `domain_calc` takes `wire_awg` (18 to 4/0) or `area_mm2`, with the
+  metal; the figures ship as electrical trade reference data (`Resources/Electrical/conductors.json`,
+  credited in Attributions), the one exception to Plan JJ's "no shipped tables"
+  ([JJ decision 8](JJ-table-lookup-and-rule-chains.md)). The metal is never assumed.
+- **A location ask on a turn about something else** ("It's filthy in this cupboard" → "tell me
+  where you are?" → `where_am_i`). The location correction now fires only on a turn that depends on
+  where the wearer is.
+
+**P3 part 2 (2026-11-24).** The full corpus on `main` after part 1 (4d6c64dbd): **582 of 618, and
+every hard floor clears** — not-in-manual 62/63, clean output 324/324, restraint 43/43, manual
+answers 217/229, tool choice 131/143, multi-turn 112/119, two-step 8/12, cancellation 2/2; decode
+about 28 tokens a second hot, first token 1.4 s median, peak footprint well inside the kill limit.
+Then `LocalTurnRouter` took three more shapes the model kept answering instead of calling: job
+commands (`field_session` start, work order, pause, resume, end, next unit, status — imperative or a
+fixed status question only, never a deferred, conditional, negated or past-tense turn, and not
+start or next unit while a procedure runs), evidence choices (`evidence` keep / exclude / include
+all), and a reading's follow-up ("and the other one?" after a turn that stated two values and logged
+one: the other value, the same quantity and unit). `LocalArgumentCompletion` fills `show_source`'s
+`which` from the words. Over the corpus the router routes 8/8 job, 4/4 evidence and 6/6 follow-up
+cases, never a case that expects no call. The tool cases on the phone: **317 of 326** (was 303) —
+tool choice 138/143, multi-turn 118/119, two-step 11/12, restraint 43/43.
+
+An evidence choice is routed with no photo named, so the tool takes its default, the latest photo:
+"Exclude the blurry photo of the inducer" excludes the latest one. The model couldn't do better
+(photo ids aren't in its prompt), and a choice can be undone ("put it back").
+
+**Still failing:** an explicit "Log <quantity> … at <value> <unit>" turn answered with "which
+model?" or a promise (6 of the 9 tool failures; it passes most runs, so a route for it is next), one
+procedure answer to a step that asks nothing, one two-step, a show-source argument. The badge waits
+on P4's device pass.
+
+**Not checked on the phone:** what the router and the argument steps say in the real app (the
+qualification run scores scripted tool results, so a reply after a refused call can still quote
+the script); the preview stream can show a Gemma or Python-style call line briefly before it is
+classified (the spoken and stored text never carries it).
+
+## P2 as built (2026-11-24)
+
+GGUF models now take their tools natively, through llama.cpp's own `common/chat` (decision 4),
+behind the same flag as MLX (`Config.localNativeToolCallsEnabled`, and `Config.ggufModelsEnabled`
+for GGUF at all). Nothing changes with either flag off.
+
+- **The pin is kept.** v0.3.0 (`c1d0e7a0`, 2026-08-25) already has `common/chat` with what P2
+  needs: a dedicated Gemma 4 handler (`peg-gemma4`: Gemma's `<|tool_call>call:name{…}<tool_call|>`
+  syntax and its `<|"|>` strings, written back as Gemma writes them), the Qwen 3.5 / Qwen3-Coder XML
+  handler (`<function=…><parameter=…>`), an automatic parser for Hermes-style templates (Qwen 3,
+  Qwen 2.5), lazy grammars with their triggers, `tool_choice`, and llama.cpp's own Jinja engine.
+  Newer non-prerelease releases exist (v1.0.0, 2026-11-13, about 50 commits to the chat code,
+  including a Gemma 4 grammar refactor); moving there means a new engine API to adopt and is left
+  to its own change.
+- **What is built, and what is not.** Not upstream's `llama-common` target: it also carries the
+  model downloader, the Hugging Face cache, the argument parser and cpp-httplib. A separate
+  configure, `Vendor/LlamaCpp/chat/CMakeLists.txt`, compiles chat's link closure from the same
+  pinned checkout (worked out from the objects' undefined symbols: chat, its PEG parser, the Jinja
+  engine, JSON (nlohmann, MIT), `common.cpp` and what it pulls in), and leaves out `arg`, `console`,
+  `debug`, `download`, `hf-cache`, `http`, `imatrix-loader`, `llguidance`, `preset` and `subproc` by
+  name. The build script merges it into `libllama.a`, ships its headers under
+  `Headers/llama-common/`, fingerprints its source list in BUILD-INFO's options digest, and now
+  fails the build when the device archive references a socket, resolver, URL-loading or TLS symbol
+  (none does). `common/`'s own logger, which would write template text and model output to stderr,
+  is switched off by the bridge.
+- **Size.** The device slice went from 10,322,800 bytes (v0.3.0 without chat, Xcode 26.6) to
+  15,621,800 (with it, Xcode 26.6); the chat library alone is a 5.3 MB archive. Linked and
+  dead-stripped into a minimal arm64 executable, chat adds 1,522,744 bytes (stripped: 5.53 → 7.05 MB).
+- **Reproducibility.** The bytes were re-recorded because the options changed. A first record on
+  the Mac (Xcode 27.2) could not be reproduced: no GitHub macOS runner has 27.2, so the strict
+  rebuild failed on the toolchain. The committed engine is instead the CI runner's own build
+  (Xcode 26.6, the toolchain `main`'s engine was recorded with), made by a hand-started run of the
+  Engine Reproducibility workflow with its new `record` input, which builds with `--update-sums` and
+  uploads the engine, SHA256SUMS and BUILD-INFO for a person to commit; the ordinary strict run then
+  checks those bytes against the same toolchain. The workflow now also runs when
+  `chat/CMakeLists.txt` changes, and selects the Xcode BUILD-INFO names when the runner has it.
+- **The bridge.** `LlamaCppChat.mm` in the wrapper, behind C functions in `LlamaCppWrapper.h`, JSON
+  text in and out: templates from the model (or from Jinja source, for the tests), a render
+  (OpenAI-style messages, tools, `tool_choice`, thinking, a fixed clock → prompt, format, lazy grammar
+  and triggers, the control tokens the parser needs as text, extra stops, the serialized parser), a
+  parser handle and a parse (full, or partial for the preview). The lazy grammar sits on the sampler
+  beside its chain, applied as llama.cpp's own sampler does: the chain draws, and only a token that
+  would break a started call is redrawn under the grammar. No status carries a message, so no
+  prompt or reply can reach a log through an error. `LlamaToolChat` (Swift, pure) builds the
+  request and reads the parse; a call whose name is empty or whose arguments are not a whole JSON
+  object (a call cut off by the cap) is counted and never run.
+- **How GGUF reaches `LocalToolLoop`.** `LlamaCppLocalInferenceBackend.generateEvents` renders a
+  tool turn through `common/chat`: the system prompt, the earlier turns, this turn's calls and
+  results in `tool` roles, and the tools, fitted by `LocalToolFit.fit` (moved out of
+  `LocalLLMService`, so both runtimes run the same fit) with no history, then the history trimmed
+  into the room left. The completion is read by the family's parser: the reply without its calls as
+  `.text`, each call as `.toolCall`, the fit as `.toolFit`, and the runtime's counts and timings as
+  a new `.stats` event (MLX's backend yields it too). `sendLocal` and `sendLocalNative` are
+  unchanged apart from reading `.stats`: the router, grounding, completion, claim and promise
+  guards, the round cap and the dispatcher's refusal of dropped tools all apply as on MLX. A model
+  whose templates `common/chat` cannot read falls back to the Hermes instruction, as MLX does with
+  no format. Ordinary (non-tool) turns keep the fixed-list template path Plan DZ shipped, except on
+  a model only `common/chat` can render — Gemma 4's template is not on llama.cpp's fixed list, so
+  before P2 a Gemma 4 GGUF could not load at all.
+- **Prefix reuse (H3).** The backend keeps the tokens its KV cache holds and, before each prompt,
+  keeps their longest shared prefix (less one token, for the logits) instead of clearing the cache
+  (`og_llama_context_keep_prefix`). A sliding-window cache that has dropped early cells, or a
+  recurrent or hybrid model's state (Qwen 3.5 is hybrid), cannot be cut back: the cache is then
+  cleared and the prompt read from the start, as llama.cpp's server does. A cancel, an error or an
+  unload forgets the cache. GGUF history is trimmed in batches of a quarter of the room, rounded up
+  to whole exchanges (`LocalModelBudget.historyFittingBudgetInBatches`), so the same exchanges stay
+  dropped until the conversation has grown another batch; the system prompt, the job tier and the
+  turn never go. A GGUF native turn hands the runtime the last 24 messages for that trim, not the
+  six-message window that moves the start every turn. MLX keeps its one-at-a-time trim (its cache
+  is not reused). Time to first token is in every generation's `.stats` (render, tokenize and the
+  prefill the cache did not save), which the device app records as it records MLX's.
+- **The targets.** `LocalNativeToolPolicy.ggufAllowlist` holds Gemma 4 E2B, Gemma 4 E4B and
+  Qwen 3.5 4B as GGUF, under qualification like the MLX entry (no badge, decision 6). All three are
+  new catalog entries from llama.cpp's own GGUF repositories, at pinned revisions with their files'
+  sizes and SHA-256 digests, text only, `fileMetadataOnly`, Apache 2.0 (the base models' licence;
+  decision 7): Gemma 4 E2B and E4B at Q4_0 (the only 4-bit quantisation published there), Qwen 3.5
+  4B at Q4_K_M. The Gemma entries carry the same sampling as the MLX entries. Qwen 3.5's card asks
+  for a presence penalty the GGUF sampler does not take yet, so its entry carries none.
+- **The device app.** `--gguf <catalog id>` runs a GGUF entry on the production GGUF backend
+  through the same loop and graders (`LiveEnvironments.backend`, over any backend behind the seam),
+  with Gemma 4 E2B's fixture prompt, the record naming llama.cpp's revision and the mapped backing.
+  It has no GGUF downloader: the weights file is copied into its `Documents/gguf/` (README). Not
+  yet for GGUF: the cancel-latency probes, and a run with the phone locked.
+
+- **Found while building: C++ exceptions in the app image.** Inside the app (and the test host,
+  which is the app), `catch (const std::exception &)` does not catch a libc++ `std::runtime_error`:
+  the MediaPipe graph archive's `regex_split.o` and `wordpiece_tokenizer.o` define their own
+  `std::exception` typeinfo (device and simulator archives alike), and every catch clause in the
+  image binds to that copy, while libc++'s exceptions derive from libc++abi's. The same code on the
+  Mac catches them. `common/chat` relies on such catches when it probes a template for its automatic
+  parser, so a template without a dedicated handler (Qwen 3, Qwen 2.5, SmolLM2) fails to render
+  there: the backend then gives the turn the Hermes instruction over the fixed-list path, and logs
+  `gguf-exceptions-unreliable` once per load. Gemma 4 and Qwen 3.5 have their own handlers and are
+  unaffected; the two Qwen 3 bridge tests skip while the probe
+  (`og_llama_runtime_catches_standard_exceptions`) says so. The same hazard sits under any C++ in
+  the image that catches `std::exception` from libc++ — llama.cpp's own model loader among it — so
+  it is an owner decision to fix at the MediaPipe archive rather than here.
+
+Verified headless on main at `727ce7e56`: 604 tests across the GGUF, local-model, loop, eval,
+privacy and guard suites, 0 failures, 2 skipped (the Qwen 3 bridge tests above), slowest 23 s; the
+device app's compile check passes; `Scripts/check-privacy-logging.sh` passes.
+
+**Not checked on a phone:** any of it. Owed: that each target loads at v0.3.0 (the GGUF files were
+re-uploaded 2026-11-12, after the pin), Gemma 4 E2B GGUF against its MLX run on the same corpus,
+time to first token on turn 1 and turn 8 of a long job with the cache kept, and the grammar's cost
+per token inside a call. The GGUF runtime still offloads every layer to Metal by default, so the
+locked-phone case the plan names needs a CPU-only load before it can be measured.
 
 ## What the local path does today (read from the code, 2026-11-20)
 
@@ -348,7 +742,7 @@ calling, so none of this changes A–G. All four decide whether a qualification 
 model or the conditions around it. Where code is adapted rather than rewritten, its MIT notice
 goes with it.
 
-1. **Each model's own sampling (P3, before the screener).** Every local turn today uses one set of
+1. **Each model's own sampling (P3, before the first phone run; built 2026-11-22).** Every local turn today uses one set of
    settings, temperature 0.7 and top-p 0.9 (`LocalLLMService`). Model publishers recommend very
    different ones: top-k and min-p values differ by family, and some advise against a repetition
    penalty. A model screened on settings its publisher doesn't recommend can fail a floor for
@@ -390,8 +784,9 @@ goes with it.
    - `flag`: the wait ran out, so it measures anyway and the issue goes on the record;
    - `stop`: the power is still bad at the cap, so no later model is measured.
 
-   Unattended runs wait for `nominal` plus a settle period, refuse a draining battery and refuse
-   Low Power Mode. A flagged result can't grant a badge. The 10-minute sustained run keeps
+   As built (owner, 2026-11-22): heat changes the speed, not the answers, so answers count
+   through `serious` and only the timing is taken from cool cases; the run pauses only at
+   `critical`, and refuses a draining battery and Low Power Mode. A flagged result can't grant a badge. The 10-minute sustained run keeps
    its thermal trace either way.
 
 Smaller items go in with P3's graders:
@@ -437,13 +832,10 @@ set when it has none, and the record says which.
 
 1. **CI, headless:** the loop, the schema adapter, the graders and the corpus format against a
    scripted fake model. This is where regressions are caught.
-2. **Mac screener:** `Scripts/local-tool-eval/run.sh` compiles the app's loop, parser and graders
-   against mlx-swift-lm on macOS (MLX runs on Apple silicon). It honours `EVAL_COMPILE_ONLY` so
-   `Scripts/check-eval-harnesses.sh` keeps it building. It compares models; it doesn't qualify
-   them. The research found Swift and Python results differ, so it must run the Swift path.
-3. **Device qualification app:** `Scripts/local-model-qualification/`, a separate bundle id on the
-   pattern of `Scripts/manual-library-benchmark`, running the production `LocalInferenceCoordinator`
-   and backends. It records the corpus results and, per run:
+2. **Device qualification app, first** (owner, 2026-11-22): `Scripts/local-model-qualification/`,
+   a separate bundle id on the pattern of `Scripts/manual-library-benchmark`, running the
+   production `LocalLLMService` and its MLX runtime with the CI runner's grading core compiled
+   unchanged (built in P3 part 1). It records the corpus results and, per run:
    - time to first token and decode rate;
    - peak footprint against `os_proc_available_memory`;
    - thermal state over a 10-minute sustained run;
@@ -453,6 +845,10 @@ set when it has none, and the record says which.
    It runs on each RAM tier we offer (6, 8 and 12 GB, per `minimumRAMGB`). Results go into the
    catalog's `evidence` and a dated qualification record. The record holds counts and hashes only,
    plus the device, OS build, app build, runtime revision, model revision and quantisation.
+3. **Mac screener, a compile check only.** The Mac's memory limit, GPU and thermals don't
+   represent a phone, so a Mac run neither qualifies nor ranks models. What is left of it is
+   keeping the device app building: `Scripts/local-model-qualification/check-compiles.sh` builds it
+   for the simulator.
 
 Apple's on-device model, and Private Cloud Compute once MP P2 lands, run the same corpus as the
 baseline.
@@ -492,14 +888,19 @@ licences are confirmed.
   What the vault's core files become in that tier, and what `table_lookup` and a manual question
   hand a small model, is [Plan MV](MV-manuals-a-small-model-can-use.md)'s: typed facts the app
   scopes to the unit and speaks itself, and cards of at most 200 tokens for the reader.
-- **P2 — GGUF tool parsing**, behind the same flag: `common/chat` in the framework build (or the
-  alternative from decision 4), with the engine-reproducibility check updated, and the GGUF cache
-  keeping its shared prefix with batch trimming (H3).
-- **P3 — qualification:** per-model sampling in the catalog (H1) and the kill-limit memory budget
-  (H2) first; then the Mac screener and the device app with its run gate (H4), the shortlist run,
-  new catalog entries for the models that pass, badges set from the records, and the flag's default
-  decided per model from the results. Records are dated JSON in `reports/` (decision 8), and a test fails
-  if a catalog entry's evidence names a record that is not in git.
+- **P2 — GGUF tool parsing** (✅ built 2026-11-24, [as built](#p2-as-built-2026-11-24)), behind
+  the same flag: `common/chat` in the framework build (or the alternative from decision 4), with
+  the engine-reproducibility check updated, and the GGUF cache keeping its shared prefix with batch
+  trimming (H3). Owed on a phone: each target loading at the pin, Gemma 4 E2B GGUF against its MLX
+  run, and time to first token with the cache kept.
+- **P3 — qualification:** part 1 (🚧 built 2026-11-22, [as built](#p3-part-1-as-built-2026-11-22)):
+  per-model sampling in the catalog (H1), the kill-limit memory budget (H2), the device app with
+  its run gate (H4), the grader additions, Apple's baseline, and the test that fails if a catalog
+  entry's evidence names a record that is not in git (decision 8). Owed: the first phone run, then
+  tool choice's and two-step's floors set from it, the
+  shortlist run on each RAM tier, new catalog entries for the models that pass, badges set from the
+  records (dated JSON in `reports/`), and the flag's default decided per model from the results.
+  The Mac screener is a compile check (owner, 2026-11-22).
 - **P4 — device pass (owed, not automatable):** a field day on each RAM tier in airplane mode:
   open a job by voice, log readings, a calculation, a manual question answered and one declined,
   barge-ins, a locked phone (Plan GE's background ladder).
@@ -530,8 +931,8 @@ All eight decided by the owner on 2026-11-21.
    - no protocol markup reaching the voice: 100%;
    - restraint (no tool when none applies) ≥ 90%.
 
-   Set after the first Mac screener run but before the device runs: tool choice (around 85%) and
-   two-step (around 70%).
+   Set after the first phone run (owner, 2026-11-22, in place of the Mac screener run): tool
+   choice (around 85%) and two-step (around 70%). The hard floors above are unchanged.
 6. **Does an unbadged model still get tools?** **Decided 2026-11-21: yes, the everyday set only,
    as built**, with no Field Assist tools until it is qualified (or, with the P1 flag on, while an
    allowlisted model is under qualification), and the badge hidden.

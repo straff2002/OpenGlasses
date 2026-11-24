@@ -3,8 +3,10 @@ import XCTest
 
 /// Plan JJ P4 — voltage drop as `domain_calc`'s electrical domain, and the same arithmetic in a
 /// rule chain's `calc` step. Every resistance, factor, area and table here is invented (QX sizes,
-/// Table 96, Rule QR-30); no value is a conductor's real resistance or any code's factor, and the
-/// tool has none built in.
+/// Table 96, Rule QR-30); no value is a conductor's real resistance or any code's factor. The one
+/// exception is a run given as a wire size or an area in mm² with its metal (Plan MQ P3, Plan JJ
+/// decision 8): the standard AWG areas and the copper and aluminium factors in the bundled
+/// conductor file (`ConductorTable`), which the answer names.
 @MainActor
 final class VoltageDropTests: XCTestCase {
 
@@ -24,6 +26,15 @@ final class VoltageDropTests: XCTestCase {
 
     private func volts(_ input: VoltageDrop.Input) throws -> Double {
         try VoltageDrop.compute(input).get().volts
+    }
+
+    /// The bundled conductor file.
+    private var conductors: ConductorTable {
+        get throws { try XCTUnwrap(ConductorTableCatalog.table(), "conductors.json is bundled and decodes") }
+    }
+
+    private static var repoRoot: URL {
+        URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
     }
 
     // MARK: - The core
@@ -131,6 +142,269 @@ final class VoltageDropTests: XCTestCase {
         let schema = DomainCalcTool().parametersSchema
         XCTAssertEqual(schema["required"] as? [String], ["operation"])
         XCTAssertTrue(DomainCalcTool().description.contains("'voltage_drop'"))
+    }
+
+    // MARK: - A run given as a wire size (Plan MQ P3)
+
+    func testFourteenGaugeCopperFromItsSize() async throws {
+        // 14 AWG is 4,110 cmil and copper's factor 12.9 Ω·cmil/ft, so R = 12.9 / 4,110 Ω/ft.
+        // Single-phase: 2 × 15 A × 50 ft × 12.9 / 4,110 = 19,350 / 4,110 = 4.708 V;
+        // of a 120 V supply, 4.708 / 120 = 3.92 %.
+        let answer = try await run(["phase": "single", "current_a": 15, "length_ft": 50,
+                                    "wire_awg": "14", "material": "copper", "supply_v": 120])
+        XCTAssertTrue(answer.hasPrefix("Voltage drop ≈ 4.71 V, 3.92 % of the 120 V supply (single-phase"), answer)
+        XCTAssertTrue(answer.contains("conductor 14 AWG copper: factor 12.9 Ω·cmil/ft, conductor area 4110 cmil"), answer)
+        XCTAssertTrue(answer.contains("the area is the standard 14 AWG size and the factor the usual figure for "
+                                      + "copper at 75 °C; a figure from the organisation's own book wins"), answer)
+        XCTAssertFalse(answer.contains("not a value from any code or table"), answer)
+
+        XCTAssertTrue(answer.contains("Conductor data: standard AWG conductor areas and conductor resistivity "
+                                      + "figures at 75 °C."), answer)
+
+        let table = try conductors
+        let gauge = try XCTUnwrap(VoltageDrop.WireGauge(words: "14", table: table))
+        let copper = try XCTUnwrap(table.factor(for: .copper, unit: .ohmCircularMilsPerFoot))
+        let core = try volts(.init(phase: .single, current: 15, length: 50, lengthUnit: .feet,
+                                   conductor: .factor(copper.value, .ohmCircularMilsPerFoot,
+                                                      area: gauge.circularMils), supply: 120))
+        XCTAssertEqual(core, 19_350.0 / 4_110, accuracy: 1e-9)
+
+        // A size sent as a number, the metal in another case.
+        let asNumber = try await run(["phase": "single", "current_a": 15, "length_ft": 50,
+                                      "wire_awg": 14, "material": "Copper"])
+        XCTAssertTrue(asNumber.hasPrefix("Voltage drop ≈ 4.71 V (single-phase"), asNumber)
+    }
+
+    func testSizesAndMetalsAreReadAsSaid() throws {
+        let table = try conductors
+        func size(_ words: String) -> VoltageDrop.WireGauge? { VoltageDrop.WireGauge(words: words, table: table) }
+        XCTAssertEqual(size("#12")?.circularMils, 6_530)
+        XCTAssertEqual(size("12 AWG")?.circularMils, 6_530)
+        XCTAssertEqual(size("10 gauge")?.circularMils, 10_380)
+        XCTAssertEqual(size("14.0")?.name, "14")
+        XCTAssertEqual(size("1/0")?.circularMils, 105_600)
+        XCTAssertEqual(size("00")?.name, "2/0")
+        XCTAssertEqual(size("4/0 AWG")?.circularMils, 211_600)
+        for unknown in ["7", "13", "22", "5/0", "250 kcmil", "2.5", "", "fourteen"] {
+            XCTAssertNil(size(unknown), unknown)
+        }
+        XCTAssertEqual(VoltageDrop.Material(words: "aluminium"), .aluminum)
+        XCTAssertEqual(VoltageDrop.Material(words: "Al"), .aluminum)
+        XCTAssertEqual(VoltageDrop.Material(words: "CU"), .copper)
+        XCTAssertNil(VoltageDrop.Material(words: "steel"))
+        XCTAssertEqual(table.factor(for: .aluminum, unit: .ohmCircularMilsPerFoot)?.value, 21.2)
+    }
+
+    func testGivenValuesWinOverTheWireSize() async throws {
+        let base: [String: Any] = ["phase": "single", "current_a": 15, "length_ft": 50]
+        // A resistance wins outright: 2 × 15 × 50 × 2.5 / 1000 = 3.75 V.
+        let resistance = try await run(base.merging(["wire_awg": "14", "material": "copper",
+                                                     "resistance_ohm_per_1000ft": 2.5]) { a, _ in a })
+        XCTAssertTrue(resistance.hasPrefix("Voltage drop ≈ 3.75 V"), resistance)
+        XCTAssertFalse(resistance.contains("AWG"), resistance)
+
+        // A factor given with a size: the size's area, the given factor, no metal needed.
+        // 2 × 15 × 50 × 10 / 4,110 = 3.65 V.
+        let factor = try await run(base.merging(["wire_awg": "14", "k_factor_ohm_cmil_per_ft": 10]) { a, _ in a })
+        XCTAssertTrue(factor.hasPrefix("Voltage drop ≈ 3.65 V"), factor)
+        XCTAssertTrue(factor.contains("conductor 14 AWG: factor 10 Ω·cmil/ft, conductor area 4110 cmil"), factor)
+        XCTAssertTrue(factor.contains("the area is the standard 14 AWG size and the factor the one given"), factor)
+
+        // An area given with a metal: the given area, the metal's factor. 2 × 15 × 50 × 21.2 / 5,000 = 6.36 V.
+        let area = try await run(base.merging(["area_cmil": 5_000, "wire_awg": "14", "material": "aluminum"]) { a, _ in a })
+        XCTAssertTrue(area.hasPrefix("Voltage drop ≈ 6.36 V"), area)
+        XCTAssertTrue(area.contains("conductor aluminum: factor 21.2 Ω·cmil/ft, conductor area 5000 cmil"), area)
+        XCTAssertTrue(area.contains("the area is the one given and the factor the usual figure for aluminum"), area)
+    }
+
+    func testTheMetricFactorPathIsUnchangedBySize() async throws {
+        // 2 × 0.05 × 25 A × 40 m / 8 mm² = 12.5 V, as before, a size and a metal beside it or not.
+        for extra in [[:], ["wire_awg": "14", "material": "copper"]] as [[String: Any]] {
+            let answer = try await run(["phase": "single", "current_a": 25, "length_m": 40,
+                                        "k_factor_ohm_mm2_per_m": 0.05, "area_mm2": 8].merging(extra) { a, _ in a })
+            XCTAssertTrue(answer.hasPrefix("Voltage drop ≈ 12.5 V (single-phase"), answer)
+            XCTAssertTrue(answer.contains("factor 0.05 Ω·mm²/m, conductor area 8 mm²"), answer)
+            XCTAssertTrue(answer.contains("not a value from any code or table"), answer)
+            XCTAssertFalse(answer.contains("AWG"), answer)
+        }
+    }
+
+    func testAnUnknownSizeOrAMissingMetalIsRefused() async throws {
+        let base: [String: Any] = ["phase": "single", "current_a": 15, "length_ft": 50, "material": "copper"]
+        let unknown = try await run(base.merging(["wire_awg": "7"]) { a, _ in a })
+        XCTAssertEqual(unknown, "'wire_awg' must be an AWG size from 18 to 4/0 (18, 16, 14, 12, 10, 8, 6, 4, 3, 2, 1, "
+                       + "1/0, 2/0, 3/0 or 4/0); '7' is not one. For another size, give the conductor's resistance "
+                       + "per unit length or its area in circular mils ('area_cmil').")
+        let kcmil = try await run(base.merging(["wire_awg": "250 kcmil"]) { a, _ in a })
+        XCTAssertFalse(kcmil.contains("Voltage drop ≈"), kcmil)
+
+        for metal in [nil, "steel"] as [String?] {
+            var args: [String: Any] = ["phase": "single", "current_a": 15, "length_ft": 50, "wire_awg": "14"]
+            if let metal { args["material"] = metal }
+            let answer = try await run(args)
+            XCTAssertEqual(answer, "Specify 'material': 'copper' or 'aluminum', the conductor's metal. It is never "
+                           + "assumed: ask the technician.")
+        }
+        // The phase is still never assumed.
+        let noPhase = try await run(["current_a": 15, "length_ft": 50, "wire_awg": "14", "material": "copper"])
+        XCTAssertTrue(noPhase.contains("The phase is never assumed"), noPhase)
+    }
+
+    func testTheSchemaOffersTheSizeAndTheOperationAsChoices() {
+        let properties = DomainCalcTool().parametersSchema["properties"] as? [String: Any]
+        func property(_ name: String) -> [String: Any]? { properties?[name] as? [String: Any] }
+        XCTAssertEqual(property("operation")?["enum"] as? [String], ["pt_lookup", "superheat", "subcool", "voltage_drop"])
+        XCTAssertEqual(property("material")?["enum"] as? [String], ["copper", "aluminum"])
+        XCTAssertEqual(property("wire_awg")?["type"] as? String, "string")
+        XCTAssertTrue(DomainCalcTool().description.contains("'wire_awg' with 'material' is enough"))
+    }
+
+    // MARK: - The conductor file (Plan JJ decision 8)
+
+    func testTheBundledConductorFileLoadsWithItsStatedFigures() throws {
+        XCTAssertNotNil(Bundle.main.url(forResource: ConductorTableCatalog.resourceName, withExtension: "json"),
+                        "conductors.json is in the app bundle")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: Self.repoRoot
+            .appendingPathComponent("OpenGlasses/Sources/Resources/Electrical/conductors.json").path))
+        let table = try conductors
+        XCTAssertEqual(table.awg.map(\.size), ["18", "16", "14", "12", "10", "8", "6", "4", "3", "2", "1",
+                                              "1/0", "2/0", "3/0", "4/0"])
+        XCTAssertEqual(table.gauge(named: "14")?.circularMils, 4_110)
+        let expected: [(VoltageDrop.Material, VoltageDrop.FactorUnit, Double)] = [
+            (.copper, .ohmCircularMilsPerFoot, 12.9), (.aluminum, .ohmCircularMilsPerFoot, 21.2),
+            (.copper, .ohmSquareMillimetresPerMetre, 0.02097), (.aluminum, .ohmSquareMillimetresPerMetre, 0.03453),
+        ]
+        for (metal, unit, value) in expected {
+            let factor = try XCTUnwrap(table.factor(for: metal, unit: unit), "\(metal) \(unit)")
+            XCTAssertEqual(factor.value, value, "\(metal) \(unit)")
+            XCTAssertEqual(factor.temperatureC, 75, "every factor is stated at one temperature")
+        }
+        // The metric factors are the 20 °C standard resistivities corrected to 75 °C:
+        // copper 0.017241 × (1 + 0.00393 × 55) = 0.020968, aluminium 0.028264 × (1 + 0.00403 × 55) = 0.034529.
+        XCTAssertEqual(0.017241 * (1 + 0.00393 * 55), 0.02097, accuracy: 0.000005)
+        XCTAssertEqual(0.028264 * (1 + 0.00403 * 55), 0.03453, accuracy: 0.000005)
+        XCTAssertEqual(table.source, "standard AWG conductor areas and conductor resistivity figures at 75 °C")
+        XCTAssertFalse(table.basis.isEmpty)
+        XCTAssertEqual(ConductorTableCatalog.table(), table, "a second load is the cached one")
+
+        let note = try String(contentsOf: try XCTUnwrap(Bundle.main.url(forResource: "Vaults/electrical/conductors",
+                                                                         withExtension: "md")), encoding: .utf8)
+        XCTAssertTrue(note.contains("`domain_calc`") && note.contains("Never quote"), note)
+        XCTAssertTrue(VaultRegistry.builtInManifest(id: VaultRegistry.electricalStarterId)?.files
+            .contains("conductors.md") == true)
+        // Credited in Settings › Attributions, under Reference data, as the saturation tables are.
+        let view = try String(contentsOf: Self.repoRoot.appendingPathComponent("OpenGlasses/Sources/App/Views/AttributionsView.swift"),
+                              encoding: .utf8)
+        let row = try XCTUnwrap(view.range(of: "String(localized: \"Conductor reference data\")"), "no conductor data row")
+        XCTAssertTrue(view[row.upperBound...].prefix(400).contains("Standard AWG conductor areas and conductor resistivity figures"))
+    }
+
+    func testTheLoaderParsesAFileAndRefusesABadOne() throws {
+        // Invented figures: the loader reads whatever the file says.
+        func file(sizes: String = #"[{"size": "QX1", "circularMils": 1000}]"#,
+                  aluminium: String = #"{"material": "aluminum", "ohmCircularMilsPerFoot": {"value": 2, "temperatureC": 20}, "ohmSquareMillimetresPerMetre": {"value": 0.002, "temperatureC": 20}}"#,
+                  source: String = "invented") -> Data {
+            Data("""
+            {"awg": \(sizes), "materials": [
+              {"material": "copper", "ohmCircularMilsPerFoot": {"value": 1, "temperatureC": 20},
+               "ohmSquareMillimetresPerMetre": {"value": 0.001, "temperatureC": 20}}, \(aluminium)],
+             "source": "\(source)", "basis": "invented for a test"}
+            """.utf8)
+        }
+        let table = try ConductorTable.decode(file())
+        XCTAssertEqual(table.gauge(named: "QX1")?.circularMils, 1_000)
+        XCTAssertEqual(table.factor(for: .aluminum, unit: .ohmSquareMillimetresPerMetre),
+                       ConductorTable.Factor(value: 0.002, temperatureC: 20))
+        XCTAssertEqual(VoltageDrop.WireGauge(words: "qx1 awg", table: table)?.circularMils, 1_000)
+
+        XCTAssertThrowsError(try ConductorTable.decode(Data("not json".utf8)))
+        XCTAssertThrowsError(try ConductorTable.decode(file(sizes: "[]"))) { XCTAssertEqual($0 as? ConductorTable.Problem, .noSizes) }
+        XCTAssertThrowsError(try ConductorTable.decode(file(sizes: #"[{"size": "QX1", "circularMils": 0}]"#))) {
+            XCTAssertEqual($0 as? ConductorTable.Problem, .badSize("QX1"))
+        }
+        XCTAssertThrowsError(try ConductorTable.decode(file(aluminium: #"{"material": "steel", "ohmCircularMilsPerFoot": {"value": 2, "temperatureC": 20}, "ohmSquareMillimetresPerMetre": {"value": 0.002, "temperatureC": 20}}"#))) {
+            XCTAssertEqual($0 as? ConductorTable.Problem, .missingMaterial("aluminum"))
+        }
+        XCTAssertThrowsError(try ConductorTable.decode(file(source: " "))) { XCTAssertEqual($0 as? ConductorTable.Problem, .noSource) }
+    }
+
+    func testWithoutTheFileTheSizeAndMetalPathsRefuseAndGivenFiguresStillWork() async throws {
+        // A bundle without the file (the test bundle) and a file that does not decode refuse alike.
+        let testBundle = Bundle(for: VoltageDropTests.self)
+        XCTAssertNil(ConductorTableCatalog.table(bundle: testBundle))
+        let sized = try await DomainCalcTool(bundle: testBundle).execute(args: [
+            "operation": "voltage_drop", "phase": "single", "current_a": 15, "length_ft": 50,
+            "wire_awg": "14", "material": "copper"])
+        XCTAssertEqual(sized, DomainCalcTool.conductorDataUnavailable)
+        XCTAssertFalse(sized.contains("Voltage drop ≈"), sized)
+
+        let broken = try? ConductorTable.decode(Data(#"{"awg": [], "materials": [], "source": "", "basis": ""}"#.utf8))
+        XCTAssertNil(broken)
+        let base: [String: Any] = ["phase": "single", "current_a": 20, "length_m": 30]
+        for extra in [["wire_awg": "14", "material": "copper"], ["area_mm2": 2.5, "material": "copper"],
+                      ["area_cmil": 4_110, "material": "copper"], ["wire_awg": "14", "k_factor_ohm_cmil_per_ft": 10]]
+            as [[String: Any]] {
+            let answer = DomainCalcTool.voltageDrop(base.merging(extra) { a, _ in a }, conductors: broken)
+            XCTAssertEqual(answer, DomainCalcTool.conductorDataUnavailable, "\(extra)")
+        }
+        // Figures the technician gives need no file: 2 × 20 × 30 × 5.25 / 1000 = 6.3 V, and
+        // 2 × 0.05 × 25 × 40 / 8 = 12.5 V.
+        XCTAssertTrue(DomainCalcTool.voltageDrop(base.merging(["resistance_ohm_per_km": 5.25]) { a, _ in a },
+                                                 conductors: nil).hasPrefix("Voltage drop ≈ 6.3 V"))
+        XCTAssertTrue(DomainCalcTool.voltageDrop(["phase": "single", "current_a": 25, "length_m": 40,
+                                                  "k_factor_ohm_mm2_per_m": 0.05, "area_mm2": 8], conductors: nil)
+            .hasPrefix("Voltage drop ≈ 12.5 V"))
+        // The metal is asked for before the file is needed.
+        XCTAssertTrue(DomainCalcTool.voltageDrop(base.merging(["area_mm2": 2.5]) { a, _ in a }, conductors: nil)
+            .hasPrefix("Specify 'material'"))
+    }
+
+    // MARK: - A run given as an area in mm² with its metal (Plan JJ decision 8)
+
+    func testAnAreaInSquareMillimetresWithItsMetal() async throws {
+        // 2.5 mm² copper: the file's 0.02097 Ω·mm²/m at 75 °C, so R = 0.02097 / 2.5 = 0.008388 Ω/m.
+        // Single-phase: 2 × 20 A × 30 m × 0.008388 = 1,200 × 0.008388 = 10.0656 V;
+        // of a 230 V supply, 10.0656 / 230 = 4.38 %.
+        let answer = try await run(["phase": "single", "current_a": 20, "length_m": 30,
+                                    "area_mm2": 2.5, "material": "copper", "supply_v": 230])
+        XCTAssertTrue(answer.hasPrefix("Voltage drop ≈ 10.07 V, 4.38 % of the 230 V supply (single-phase"), answer)
+        XCTAssertTrue(answer.contains("conductor copper: factor 0.02097 Ω·mm²/m, conductor area 2.5 mm² (8.39 Ω/km)"), answer)
+        XCTAssertTrue(answer.contains("the area is the one given and the factor the usual figure for copper at 75 °C; "
+                                      + "a figure from the organisation's own book wins over these."), answer)
+        XCTAssertTrue(answer.contains("Conductor data: standard AWG conductor areas"), answer)
+        XCTAssertFalse(answer.contains("AWG size"), answer)
+        let core = try volts(.init(phase: .single, current: 20, length: 30, lengthUnit: .metres,
+                                   conductor: .factor(0.02097, .ohmSquareMillimetresPerMetre, area: 2.5), supply: 230))
+        XCTAssertEqual(core, 10.0656, accuracy: 1e-9)
+
+        // Aluminium, three-phase: √3 × 50 A × 100 m × 0.03453 / 16 mm² = 18.69 V.
+        let aluminium = try await run(["phase": "three", "current_a": 50, "length_m": 100,
+                                       "area_mm2": 16, "material": "aluminium"])
+        XCTAssertTrue(aluminium.hasPrefix("Voltage drop ≈ 18.69 V (three-phase"), aluminium)
+
+        // The area given wins over a wire size beside it.
+        let withSize = try await run(["phase": "single", "current_a": 20, "length_m": 30,
+                                      "area_mm2": 2.5, "wire_awg": "14", "material": "copper"])
+        XCTAssertTrue(withSize.hasPrefix("Voltage drop ≈ 10.07 V"), withSize)
+        XCTAssertFalse(withSize.contains("14 AWG"), withSize)
+    }
+
+    func testAGivenMetricFactorWinsAndTheMetalIsNeverAssumed() async throws {
+        // A factor given beside the metal wins: 2 × 20 A × 30 m × 0.0225 / 2.5 mm² = 10.8 V.
+        let given = try await run(["phase": "single", "current_a": 20, "length_m": 30,
+                                   "k_factor_ohm_mm2_per_m": 0.0225, "area_mm2": 2.5, "material": "copper"])
+        XCTAssertTrue(given.hasPrefix("Voltage drop ≈ 10.8 V"), given)
+        XCTAssertTrue(given.contains("factor 0.0225 Ω·mm²/m, conductor area 2.5 mm²"), given)
+        XCTAssertTrue(given.contains("not a value from any code or table"), given)
+        XCTAssertFalse(given.contains("Conductor data"), given)
+
+        for metal in [nil, "steel"] as [String?] {
+            var args: [String: Any] = ["phase": "single", "current_a": 20, "length_m": 30, "area_mm2": 2.5]
+            if let metal { args["material"] = metal }
+            let answer = try await run(args)
+            XCTAssertEqual(answer, "Specify 'material': 'copper' or 'aluminum', the conductor's metal. It is never "
+                           + "assumed: ask the technician.")
+        }
     }
 
     // MARK: - The same arithmetic in a chain

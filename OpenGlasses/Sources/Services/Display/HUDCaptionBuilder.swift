@@ -128,8 +128,8 @@ enum HUDCaptionBuilder {
         return lines
     }
 
-    /// The caption as an items-less screen: what the Meta backend draws (top-aligned, no buttons)
-    /// and what the web mirror shows. Not interactive, so it never takes the lens from anything.
+    /// The caption as an items-less screen: what the Meta backend draws (top-aligned, no
+    /// buttons). Not interactive, so it never takes the lens from anything.
     static func screen(_ caption: HUDCaption) -> HUDScreen {
         HUDScreen(title: nil, lines: lines(caption), items: [])
     }

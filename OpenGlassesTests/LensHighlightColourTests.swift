@@ -1,12 +1,11 @@
 import CoreGraphics
-import JavaScriptCore
 import PDFKit
 import XCTest
 @testable import OpenGlasses
 
 /// Display & HUD › Highlight colour: the palette's rules, the stored choice, and each surface the
-/// app draws itself (manual-page marks, the turn arrow, the Web App) taking it, with Standard
-/// leaving every one as it was.
+/// app draws itself (manual-page marks, the turn arrow) taking it, with Standard leaving each one
+/// as it was.
 final class LensHighlightColourTests: XCTestCase {
 
     // MARK: - The palette
@@ -16,8 +15,6 @@ final class LensHighlightColourTests: XCTestCase {
         XCTAssertNil(standard.hex)
         XCTAssertEqual(standard.markHex, AccentColors.aiAccentDarkHex, "coral marks")
         XCTAssertEqual(standard.arrowHex, 0xFFFFFF, "a white arrow")
-        XCTAssertEqual(standard.webTextHex, 0xFFFFFF, "white Web App text")
-        XCTAssertEqual(standard.webFocusHex, 0xFFB000, "an amber focus ring")
         XCTAssertEqual(standard.keySuffix, "", "every existing picture key is unchanged")
     }
 
@@ -26,21 +23,13 @@ final class LensHighlightColourTests: XCTestCase {
             XCTAssertNotNil(colour.hex)
             XCTAssertEqual(colour.markHex, colour.hex, "\(colour)")
             XCTAssertEqual(colour.arrowHex, colour.hex, "\(colour)")
-            XCTAssertEqual(colour.webTextHex, colour.hex, "\(colour)")
             XCTAssertEqual(colour.keySuffix, ":hl-\(colour.rawValue)")
-        }
-    }
-
-    func testTheFocusRingStaysApartFromTheText() {
-        for colour in LensHighlightColour.allCases {
-            XCTAssertNotEqual(colour.webFocusHex, colour.webTextHex,
-                              "\(colour): the focused button must not look like the rest")
         }
     }
 
     func testEveryChoiceIsBrightAndNoneIsCyanOrBlue() {
         for colour in LensHighlightColour.allCases {
-            for hex in [colour.markHex, colour.arrowHex, colour.webTextHex, colour.webFocusHex] {
+            for hex in [colour.markHex, colour.arrowHex] {
                 let r = Double((hex >> 16) & 0xFF), g = Double((hex >> 8) & 0xFF), b = Double(hex & 0xFF)
                 let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
                 XCTAssertGreaterThan(luma, 120, "\(colour): black is clear on the lens, so a dark colour fades")
@@ -48,11 +37,6 @@ final class LensHighlightColourTests: XCTestCase {
                 XCTAssertFalse(g > 0xC0 && b > 0xC0 && r < 0x80, "\(colour): no cyan (house rule)")
             }
         }
-    }
-
-    func testCSSIsSixHexDigits() {
-        XCTAssertEqual(LensHighlightColour.css(0x5BE37D), "#5BE37D")
-        XCTAssertEqual(LensHighlightColour.css(0x00000A), "#00000A")
     }
 
     // MARK: - The stored choice
@@ -117,67 +101,7 @@ final class LensHighlightColourTests: XCTestCase {
         XCTAssertEqual(request.highlight, .standard)
     }
 
-    // MARK: - The Web App
-
-    @MainActor
-    func testStandardLeavesTheWebAppPayloadAsItWas() {
-        let screen = sampleScreen()
-        let payload = WebHUDPayload.from(screen: screen, highlight: .standard)
-        XCTAssertNil(payload.textColour)
-        XCTAssertNil(payload.focusColour)
-        XCTAssertEqual(payload.renderKey, screen.renderKey)
-    }
-
-    @MainActor
-    func testAChosenColourRidesOnTheWebAppPayloadAndItsKey() throws {
-        let screen = sampleScreen()
-        let payload = WebHUDPayload.from(screen: screen, highlight: .amber)
-        XCTAssertEqual(payload.textColour, "#FFB000")
-        XCTAssertEqual(payload.focusColour, "#FFFFFF", "amber text keeps a white ring")
-        XCTAssertEqual(payload.renderKey, screen.renderKey + ":hl-amber", "the page redraws on the next poll")
-        XCTAssertEqual(payload.title, "Pump check")
-        XCTAssertEqual(payload.items.map(\.id), ["done", "skip"])
-
-        let json = try XCTUnwrap(String(data: try JSONEncoder().encode(payload), encoding: .utf8))
-        XCTAssertTrue(json.contains("\"textColour\":\"#FFB000\""))
-    }
-
-    @MainActor
-    func testTheWebAppPageDrawsFromItsColourVariables() {
-        let html = WebHUDRenderer.page(mode: .inline(WebHUDPayload.from(screen: sampleScreen(), highlight: .green)))
-        XCTAssertTrue(html.contains(WebHUDRenderer.colourScript))
-        XCTAssertTrue(html.contains("color: var(--text)"))
-        XCTAssertTrue(html.contains("border-color: var(--focus)"))
-        XCTAssertTrue(html.contains("#ffb000"), "Standard's amber stays the fallback")
-        XCTAssertTrue(html.contains("\"textColour\":\"#5BE37D\""))
-    }
-
-    func testTheWebAppTakesOnlyAColourIntoItsCSS() throws {
-        let context = try XCTUnwrap(JSContext())
-        context.evaluateScript(WebHUDRenderer.colourScript)
-        func colour(_ value: Any?) -> String? {
-            context.objectForKeyedSubscript("colour")?
-                .call(withArguments: [value ?? NSNull(), "#fff"])?.toString()
-        }
-        XCTAssertEqual(colour("#5BE37D"), "#5BE37D")
-        XCTAssertEqual(colour(nil), "#fff", "Standard sends none")
-        XCTAssertEqual(colour("red"), "#fff")
-        XCTAssertEqual(colour("#5BE37D; background: url(x)"), "#fff")
-        XCTAssertEqual(colour("#FFF"), "#fff", "six digits only")
-        XCTAssertEqual(colour(42), "#fff")
-    }
-
     // MARK: - Helpers
-
-    private func sampleScreen() -> HUDScreen {
-        HUDScreen(title: "Pump check", lines: [
-            HUDLine("Close the valve", icon: .hazard),
-            HUDLine("Step 2 of 5", emphasis: .meta),
-        ], items: [
-            HUDItem(id: "done", label: "Done", style: .primary) {},
-            HUDItem(id: "skip", label: "Skip") {},
-        ])
-    }
 
     private func pixel(_ image: UIImage, x: Int, y: Int) -> (r: UInt8, g: UInt8, b: UInt8)? {
         LensPageFixtures.pixel(image, x: x, y: y)

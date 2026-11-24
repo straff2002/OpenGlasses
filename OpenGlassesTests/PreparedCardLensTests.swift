@@ -13,6 +13,13 @@ final class PreparedCardLensTests: XCTestCase {
 
     private var savedDisplayEnabled = false
     private var savedBackend: String?
+    /// Every frame the display service handed its test sink, in order.
+    private var frames: [GlassesDisplayService.HUDFrame] = []
+
+    /// Whether a flash line with `body` was sent to the lens.
+    private func flashed(_ body: String) -> Bool {
+        frames.contains { if case .content(let sent, _, _) = $0 { return sent == body } else { return false } }
+    }
 
     override func setUp() async throws {
         try await super.setUp()
@@ -50,7 +57,8 @@ final class PreparedCardLensTests: XCTestCase {
     private func makeDisplay() -> GlassesDisplayService {
         let display = GlassesDisplayService()
         display.testCapabilityOverride = true
-        display.testRenderSink = { _ in }
+        frames = []
+        display.testRenderSink = { [weak self] in self?.frames.append($0) }
         display.updateGlassesLink(connected: true, worn: true)
         display.applySessionReading(.init(state: .started))
         return display
@@ -246,7 +254,7 @@ final class PreparedCardLensTests: XCTestCase {
         XCTAssertNil(router.cardDraftPage)
         await drain()
         XCTAssertEqual(feed.staged, [LensCardFixtures.leaveBy.id])
-        XCTAssertEqual(display.mirrorScreen?.lines.first?.text, PreparedCardHUDBuilder.stagedLine)
+        XCTAssertTrue(flashed(PreparedCardHUDBuilder.stagedLine))
     }
 
     func testSendOnPhoneOnTheLastCardClosesTheStack() async {
@@ -259,7 +267,7 @@ final class PreparedCardLensTests: XCTestCase {
         XCTAssertFalse(router.isPresentingCards)
         await drain()
         XCTAssertEqual(feed.staged, [LensCardFixtures.runningLate.id])
-        XCTAssertEqual(display.mirrorScreen?.lines.first?.text, PreparedCardHUDBuilder.stagedOpenLine)
+        XCTAssertTrue(flashed(PreparedCardHUDBuilder.stagedOpenLine))
     }
 
     func testTheWords() async {

@@ -610,35 +610,54 @@ final class LocalLLMService: ObservableObject {
             let budget = LocalModelBudget.promptBudget(for: loadedModelId)
             if let toolTurn {
                 // Measured with the template itself, tools included: the definitions are tokens too.
+                // Plan MQ P3: the definitions are fitted first (`LocalToolFit`), with no history, and
+                // only then is the history trimmed into the room they leave.
                 let system = systemPrompt
                 let earlier = toolTurn.history
-                let kept = try LocalModelBudget.historyFittingBudget(
-                    history: earlier.map { (role: $0.role.rawValue, content: $0.content) }, budget: budget
-                ) { hist in
+                let window = toolTurn.contextWindow ?? LocalModelBudget.contextWindow(for: loadedModelId)
+                let toolBudget = LocalModelBudget.promptBudget(for: loadedModelId, contextWindow: window)
+                func count(keeping historyCount: Int, tools: [[String: Any]]) -> Int {
+                    let rendered = tools.isEmpty ? nil : tools.map(LocalToolTranscript.sendableSpec)
                     let messages = [["role": "system", "content": system] as [String: any Sendable]]
-                        + (Array(earlier.suffix(hist.count)) + toolTurn.turn).map(LocalToolTranscript.rawMessage)
+                        + (Array(earlier.suffix(historyCount)) + toolTurn.turn).map(LocalToolTranscript.rawMessage)
                     if let tokens = try? tokenizer.applyChatTemplate(
-                        messages: messages, tools: renderedTools,
+                        messages: messages, tools: rendered,
                         additionalContext: LocalToolTranscript.templateContext(thinkingOff: toolTurn.thinkingOff)) {
                         return tokens.count
                     }
-                    let flat = LocalToolTranscript.flattened(Array(earlier.suffix(hist.count)) + toolTurn.turn)
+                    let flat = LocalToolTranscript.flattened(Array(earlier.suffix(historyCount)) + toolTurn.turn)
                     return tokenizer.encode(text: Gemma4ChatPrompt.render(
-                        system: system + toolTurn.fallbackInstructions, history: Array(flat.dropLast()),
+                        system: system + (tools.isEmpty ? "" : toolTurn.fallbackInstructions),
+                        history: Array(flat.dropLast()),
                         userMessage: flat.last?.content ?? "", bosToken: tokenizer.bosToken),
                                             addSpecialTokens: false).count
                 }
-                if kept.count < earlier.count {
-                    PrivacyLog.localModel(.historyTrimmed, count: kept.count, total: earlier.count, tokens: budget)
+                let fitted = Self.fitTools(toolTurn, rendersTools: renderedTools != nil, budget: toolBudget,
+                                           window: window) { kept, detail in
+                    count(keeping: 0, tools: toolTurn.specs(kept: kept, detail: detail))
                 }
-                return try await generateGemma4Turn(
+                let keptSpecs = fitted.turn.tools
+                let kept = try LocalModelBudget.historyFittingBudget(
+                    history: earlier.map { (role: $0.role.rawValue, content: $0.content) }, budget: toolBudget
+                ) { hist in
+                    count(keeping: hist.count, tools: flattenTranscript ? [] : keptSpecs)
+                }
+                if kept.count < earlier.count {
+                    PrivacyLog.localModel(.historyTrimmed, count: kept.count, total: earlier.count, tokens: toolBudget)
+                }
+                var output = try await generateGemma4Turn(
                     userMessage: userMessage, systemPrompt: systemPrompt,
                     history: [], imageData: nil,
                     container: container, onToken: onToken,
                     toolTurn: LocalToolTurn(history: Array(earlier.suffix(kept.count)), turn: toolTurn.turn,
-                                            tools: toolTurn.tools, thinkingOff: toolTurn.thinkingOff,
-                                            fallbackInstructions: toolTurn.fallbackInstructions),
-                    renderedTools: renderedTools, flattenTranscript: flattenTranscript)
+                                            tools: keptSpecs, thinkingOff: toolTurn.thinkingOff,
+                                            fallbackInstructions: toolTurn.fallbackInstructions,
+                                            contextWindow: window),
+                    renderedTools: flattenTranscript || keptSpecs.isEmpty
+                        ? nil : keptSpecs.map(LocalToolTranscript.sendableSpec),
+                    flattenTranscript: flattenTranscript)
+                output.toolFit = fitted.report
+                return output
             }
             let trimmedHistory = try LocalModelBudget.historyFittingBudget(
                 history: history, budget: budget
@@ -667,13 +686,14 @@ final class LocalLLMService: ObservableObject {
         let toolEarlier = toolTurn?.history ?? []
         let tupleHistory = toolTurn == nil ? history
             : toolEarlier.map { (role: $0.role.rawValue, content: $0.content) }
-        func tokenizeToolTurn(_ toolTurn: LocalToolTurn, keeping count: Int) throws -> [Int] {
+        func tokenizeToolTurn(_ toolTurn: LocalToolTurn, keeping count: Int,
+                              tools: [[String: any Sendable]]?) throws -> [Int] {
             let messages = Array(toolEarlier.suffix(count)) + toolTurn.turn
             if !flattenTranscript {
                 let raw = [["role": "system", "content": system] as [String: any Sendable]]
                     + messages.map(LocalToolTranscript.rawMessage)
                 return try tokenizer.applyChatTemplate(
-                    messages: raw, tools: renderedTools,
+                    messages: raw, tools: tools,
                     additionalContext: LocalToolTranscript.templateContext(thinkingOff: toolTurn.thinkingOff))
             }
             let flat = LocalToolTranscript.flattened(messages)
@@ -681,8 +701,26 @@ final class LocalLLMService: ObservableObject {
                 + flat.map { ["role": $0.role, "content": $0.content] as [String: any Sendable] }
             return try tokenizer.applyChatTemplate(messages: raw, tools: nil, additionalContext: nil)
         }
+        // Plan MQ P3: a tool turn's definitions are fitted to the budget first, with no history
+        // (`LocalToolFit`); the history is then trimmed into what they leave.
+        var toolBudget: Int? = nil
+        var fittedToolTurn: (turn: LocalToolTurn, report: LocalToolFit.Report)?
+        if let toolTurn {
+            let window = toolTurn.contextWindow ?? LocalModelBudget.contextWindow(for: loadedModelId)
+            let budget = LocalModelBudget.promptBudget(for: loadedModelId, contextWindow: window)
+            toolBudget = budget
+            fittedToolTurn = try Self.fitTools(toolTurn, rendersTools: renderedTools != nil, budget: budget,
+                                               window: window) { kept, detail in
+                let specs = toolTurn.specs(kept: kept, detail: detail)
+                return try tokenizeToolTurn(toolTurn, keeping: 0,
+                                            tools: specs.isEmpty ? nil : specs.map(LocalToolTranscript.sendableSpec)).count
+            }
+            if let kept = fittedToolTurn?.turn.tools, renderedTools != nil {
+                renderedTools = kept.isEmpty ? nil : kept.map(LocalToolTranscript.sendableSpec)
+            }
+        }
         func tokenize(_ hist: [(role: String, content: String)]) throws -> [Int] {
-            if let toolTurn { return try tokenizeToolTurn(toolTurn, keeping: hist.count) }
+            if let toolTurn { return try tokenizeToolTurn(toolTurn, keeping: hist.count, tools: renderedTools) }
             var messages: [[String: String]] = [["role": "system", "content": systemPrompt]]
             for turn in hist { messages.append(["role": turn.role, "content": turn.content]) }
             messages.append(["role": "user", "content": userMessage])
@@ -715,7 +753,7 @@ final class LocalLLMService: ObservableObject {
         // an uncatchable per-token kill), then truncate oldest-history-first to fit instead of
         // hard-rejecting. Only a prompt that can't be trimmed under budget (system + current turn
         // alone too big) throws `.promptTooLong` — catchable, so the caller can fall back to cloud.
-        let budget = LocalModelBudget.promptBudget(for: loadedModelId)
+        let budget = toolBudget ?? LocalModelBudget.promptBudget(for: loadedModelId)
         let trimmedHistory = try LocalModelBudget.historyFittingBudget(
             history: tupleHistory, budget: budget
         ) { try tokenize($0).count }
@@ -763,7 +801,7 @@ final class LocalLLMService: ObservableObject {
         defer { NotificationCenter.default.removeObserver(bgObserver) }
 
         // Generate — sampling and token cap are per-model (reasoning models differ)
-        let parameters = Self.generateParameters(for: loadedModelId)
+        let parameters = Self.generateParameters(for: loadedModelId, toolTurn: toolTurn != nil)
         let stream = try await container.generate(input: input, parameters: parameters)
 
         // Reasoning models (LFM2.5) spend the start of every completion thinking. From mlx-swift-lm
@@ -838,7 +876,17 @@ final class LocalLLMService: ObservableObject {
             answer: output, routedReasoning: router.reasoning,
             stripsThink: isReasoningModel, templateOpensThink: templateOpensThink)
         noteReasoning(reasoning)
-        return MLXTurnOutput(text: spoken, toolCalls: toolCalls)
+        return MLXTurnOutput(text: spoken, toolCalls: toolCalls,
+                             stats: Self.generationStats(router.completion, tokenCap: parameters.maxTokens),
+                             toolFit: fittedToolTurn?.report)
+    }
+
+    /// Fit a tool turn's definitions to `budget` (Plan MQ P3): `LocalToolFit.fit`, which the GGUF
+    /// backend runs too (Plan MQ P2), so both runtimes cut the same tools the same way.
+    nonisolated static func fitTools(_ toolTurn: LocalToolTurn, rendersTools: Bool, budget: Int, window: Int,
+                         count: (_ kept: Int, _ detail: LocalToolFit.Detail) throws -> Int) rethrows
+        -> (turn: LocalToolTurn, report: LocalToolFit.Report) {
+        try LocalToolFit.fit(toolTurn, rendersTools: rendersTools, budget: budget, window: window, count: count)
     }
 
     /// Keep a turn's reasoning for the prompt inspector, and log that there was some.
@@ -891,7 +939,7 @@ final class LocalLLMService: ObservableObject {
         renderedTools: [[String: any Sendable]]? = nil,
         flattenTranscript: Bool = false
     ) async throws -> MLXTurnOutput {
-        let parameters = Self.generateParameters(for: loadedModelId)
+        let parameters = Self.generateParameters(for: loadedModelId, toolTurn: toolTurn != nil)
         // Answer, reasoning (Gemma 4's thought channel, routed by the library from 4c21c84), calls
         // and the completion report, collected off the main actor inside `container.perform`.
         let router = LocalStreamRouter<GenerateCompletionInfo>()
@@ -1082,7 +1130,8 @@ final class LocalLLMService: ObservableObject {
         let (spoken, reasoning) = LocalReasoningRouting.finish(
             answer: output, routedReasoning: router.reasoning, stripsThink: false, templateOpensThink: false)
         noteReasoning(reasoning)
-        return MLXTurnOutput(text: spoken, toolCalls: router.toolCalls)
+        return MLXTurnOutput(text: spoken, toolCalls: router.toolCalls,
+                             stats: Self.generationStats(router.completion, tokenCap: parameters.maxTokens))
     }
 
     /// One transcript message as the library's structured chat message, tool metadata included.
@@ -1112,7 +1161,8 @@ final class LocalLLMService: ObservableObject {
         container: ModelContainer,
         onToken: ((String) -> Void)?
     ) async throws -> String {
-        let parameters = GenerateParameters(maxTokens: 512, temperature: 0.7, topP: 0.9)
+        let parameters = Self.generateParameters(LocalModelSampling.configuration(for: loadedModelId, toolTurn: false),
+                                                 maxTokens: 512)
 
         // Same mid-generation backgrounding watch as the text path (Metal in the background
         // is an uncatchable kill) — but the drain runs inside `container.perform`, OFF the
@@ -1195,25 +1245,43 @@ final class LocalLLMService: ObservableObject {
         return spoken
     }
 
-    /// Sampling parameters per model. Reasoning models (LFM2.5) follow Liquid's recommended
-    /// low-temperature settings (temp 0.1, top-k 50, repetition penalty 1.1) and take their
-    /// token cap from `LocalModelBudget.generationReserve(for:)` — the think block spends
-    /// from the same cap as the spoken answer, so they get the larger reasoning reserve.
-    /// Everything else keeps the long-standing defaults.
-    nonisolated static func generateParameters(for modelId: String?) -> GenerateParameters {
-        if let modelId, LocalModelBudget.reasoningModelIds.contains(modelId) {
-            return GenerateParameters(
-                maxTokens: LocalModelBudget.generationReserve(for: modelId),
-                temperature: 0.1,
-                topK: 50,
-                repetitionPenalty: 1.1
-            )
-        }
-        return GenerateParameters(
-            maxTokens: LocalModelBudget.generationReserve(for: modelId),
-            temperature: 0.7,
-            topP: 0.9
-        )
+    /// Sampling parameters per model (Plan MQ H1). The values are the catalog's: the global set
+    /// (temperature 0.7, top-p 0.9) with the members the model's entry sets put over it — the
+    /// publisher's recommendation, with its source beside it (`LocalModelSampling`) — and, on a
+    /// native tool turn, the entry's tool-turn set over that. LFM2.5's low-temperature set, which
+    /// lived here before, is its catalog entry now. The token cap is
+    /// `LocalModelBudget.generationReserve(for:)`: a reasoning model's think block spends from the
+    /// same cap as its answer, so it gets the larger reserve.
+    ///
+    /// The device qualification app (`Scripts/local-model-qualification`) generates through this
+    /// same service, so a phone run samples exactly as a turn does.
+    nonisolated static func generateParameters(for modelId: String?, toolTurn: Bool = false) -> GenerateParameters {
+        generateParameters(LocalModelSampling.configuration(for: modelId, toolTurn: toolTurn),
+                           maxTokens: LocalModelBudget.generationReserve(for: modelId))
+    }
+
+    /// MLX's parameters for a resolved set. A member the set leaves open keeps MLX's own default:
+    /// top-k and min-p off, no penalty.
+    nonisolated static func generateParameters(_ sampling: LocalSamplingConfiguration, maxTokens: Int) -> GenerateParameters {
+        GenerateParameters(
+            maxTokens: maxTokens,
+            temperature: sampling.temperature,
+            topP: sampling.topP,
+            topK: sampling.topK ?? 0,
+            minP: sampling.minP ?? 0,
+            repetitionPenalty: sampling.repetitionPenalty,
+            presencePenalty: sampling.presencePenalty,
+            seed: sampling.seed)
+    }
+
+    /// The runtime's report on one generation, as the seam carries it (Plan MQ P3).
+    nonisolated static func generationStats(_ info: GenerateCompletionInfo?, tokenCap: Int?) -> LocalGenerationStats? {
+        guard let info else { return nil }
+        let stoppedAtCap: Bool
+        if case .length = info.stopReason { stoppedAtCap = true } else { stoppedAtCap = false }
+        return LocalGenerationStats(promptTokens: info.promptTokenCount, generatedTokens: info.generationTokenCount,
+                                    promptSeconds: info.promptTime, generateSeconds: info.generateTime,
+                                    tokenCap: tokenCap, stoppedAtCap: stoppedAtCap)
     }
 
     /// Load configuration for a model id.

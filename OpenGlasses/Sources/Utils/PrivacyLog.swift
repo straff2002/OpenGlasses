@@ -50,7 +50,7 @@ enum PrivacyLog {
         case gateway
         /// Model Context Protocol — both the client we run and the local server we expose.
         case mcp
-        /// Outbound media links: viewer broadcast, expert bridge, HUD mirror, their signalling.
+        /// Outbound media links: viewer broadcast, expert bridge, their signalling.
         case stream
         /// Wake word, recognition, transcription, captions, translation, speech synthesis.
         case speech
@@ -1291,7 +1291,7 @@ enum PrivacyLog {
     /// parameter here — not the URL, not the key, not a prefix of the key, and not the stall
     /// policy's advice sentence, which is composed *around* the destination URL.
     enum StreamChannel: String {
-        case viewerBroadcast, expertBridge, hudMirror, signaling, broadcastChat, rtmpBroadcast
+        case viewerBroadcast, expertBridge, signaling, broadcastChat, rtmpBroadcast
     }
 
     enum StreamEvent: String {
@@ -1537,6 +1537,48 @@ enum PrivacyLog {
         if let detail { fields.append(.init(.detail, .token(detail))) }
         if let error { fields.append(.init(.error, .summary(error))) }
         return emit(.init(.speech, .tts, fields))
+    }
+
+    // MARK: - Reply check (Plan NA)
+    //
+    // The app checks what a Blind Assistant answer says before it is spoken, or while it is.
+    // The sentence it checked is the assistant's half of the conversation, the question the
+    // wearer's, and the reading evidence what is printed on the wearer's medicine: none of them
+    // has a parameter here. Case names (the surface, the flag, what was done, why it was exempt,
+    // the live provider), the sentence's length, and — for a live stop — the milliseconds of
+    // audio still waiting to play, the only measure of whether the words were caught in time.
+
+    enum ReplyCheckEvent: String {
+        /// A sentence tripped a flag (`outcome` says what was done with it).
+        case flagged
+        /// A phrase matched and an exemption held (`reason`: `negated`, `quoted`).
+        case exempted
+        /// A reply's phrases were not checked (`reason`: `notEnglish`).
+        case notChecked
+        /// A live answer was stopped.
+        case liveStopped
+        /// The live model was told at the turn's end.
+        case modelNoted
+    }
+
+    @discardableResult
+    static func replyCheck(_ event: ReplyCheckEvent, surface: PrivacyToken,
+                           flag: PrivacyToken? = nil, outcome: PrivacyToken? = nil,
+                           exemption: PrivacyToken? = nil, provider: PrivacyToken? = nil,
+                           characters: Int? = nil, count: Int? = nil,
+                           pendingMilliseconds: Int? = nil) -> PrivacyEvent {
+        var fields: [PrivacyEvent.Field] = [
+            .init(.event, .token(PrivacyToken(event.rawValue))),
+            .init(.surface, .token(surface)),
+        ]
+        if let flag { fields.append(.init(.kind, .token(flag))) }
+        if let outcome { fields.append(.init(.outcome, .token(outcome))) }
+        if let exemption { fields.append(.init(.reason, .token(exemption))) }
+        if let provider { fields.append(.init(.provider, .token(provider))) }
+        if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let count { fields.append(.init(.count, .count(count))) }
+        if let pendingMilliseconds { fields.append(.init(.remaining, .milliseconds(pendingMilliseconds))) }
+        return emit(.init(.speech, .replyCheck, fields))
     }
 
     // MARK: - Audio plumbing
@@ -1868,6 +1910,10 @@ enum PrivacyLog {
         /// how a native tool loop ended (`detail` the end reason, `count` the calls run, `total` the
         /// generations). Names and counts; never a call's arguments or a result.
         case toolFormat, toolLoop
+        /// Plan MQ P3: a native tool turn's definitions were fitted to the prompt budget
+        /// (`LocalToolFit`): `count` kept of `total` offered, `tokens` the prompt with no history,
+        /// `detail` `standard`, `compact` or `none`. Counts only.
+        case toolsFitted
         /// Installed-model records (Plan DZ P0). These carry **counts only** — a compatibility
         /// descriptor's id is whatever the user typed into the model field, which makes it
         /// user-authored text rather than a public catalog token.
@@ -2635,7 +2681,7 @@ struct PrivacyEvent: Equatable {
         case mcpDiscovery, mcpToolScreened, mcpEgress, mcpFailed, mcpServer
         case stream
         case toolGate, toolDispatch, toolRun, toolAuthorizationRefused, webSearch
-        case wakeWord, speech, tts
+        case wakeWord, speech, tts, replyCheck
         case audio
         case model, modelCompaction, localModel, memoryContext
         case conversation

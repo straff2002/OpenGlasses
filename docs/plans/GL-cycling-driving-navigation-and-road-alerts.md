@@ -1,7 +1,9 @@
 # Plan GL — Travel Modes by Voice (Walk / Cycle / Drive), Road Alerts, Speed Cameras (country-gated)
 
 **Status:** 📝 Drafted (not scheduled), 2026-10-01; **revised 2026-10-02** (travel mode chosen by voice,
-mode switch and comparison, re-phased so P0–P2 need no traffic provider) — nothing built.
+mode switch and comparison, re-phased so P0–P2 need no traffic provider); **amended 2026-11-23**
+(cycling facts: heading from the track, speed that dims without a fix, moving time, a dimmed glance
+strip; see the amendment below) — nothing built.
 
 **Suggested build order (2026-10-02, across Plans GM, GL and HH):** shared surface model (GM P0) →
 watch map cards and the live route (GM P1a, P1b) → travel modes by voice, cycling then driving
@@ -353,6 +355,29 @@ location routes cover the border case.
    searches with the standard sentence — as a deliberate behaviour change for Medical users.*
 9. **Unguided road alerts** in P3, or only on a route? *Recommend route-only first.*
 10. **Glasses arrow while driving:** opt-in single arrow, or never? *Recommend never in v1.*
+
+## Amendment 2026-11-23 — cycling facts
+
+From field experience with the Display. They change P1 (cycling) and the cycling surfaces; nothing
+else moves.
+
+- **Heading comes from the track.** The app reads no heading today (no `CLHeading`,
+  `startUpdatingHeading` or `CLLocation.course` anywhere in `OpenGlasses/Sources`), a fix's own
+  course is invalid at low speed, and the glasses' head direction is not the bike's. Heading is the
+  bearing across the last ~12 m of good fixes, held while stopped (under ~0.7 m/s for 3 s). Plan
+  [NC](NC-a-safer-lens-and-more-on-it.md) P1 builds it as `TrackHeading` (pure); GL uses the same
+  type for the arrow on the glance strip and for road alerts in P3.
+- **Speed says how fresh it is.** With no new fix for 5 s the speed dims (secondary colour); at 15 s
+  it shows "--". It never shows the last speed as if it were current.
+- **Moving time only.** The ride's time counts only while moving (the same stopped rule as the
+  heading), so lights and cafés don't count. The total elapsed time is kept for the record.
+- **The glance strip dims.** The cycling card (speed, moving time, distance to the next turn) is sent
+  once more in the secondary colour after a few seconds without change, through NC's
+  `LensDimPolicy`, so it sits quietly in view. Turn cues still come at full brightness.
+- **Tests (P1):** `TrackHeadingTests` (NC), `RideSpeedFreshnessTests` (5 s and 15 s either side),
+  `MovingTimeTests` (stops, a slow climb that is still moving), `CyclingGlanceDimTests`.
+- **Device (owed, with P1's ride):** the heading near tall buildings and at junctions; whether the
+  dimmed strip is readable in daylight.
 
 ## Out of scope
 

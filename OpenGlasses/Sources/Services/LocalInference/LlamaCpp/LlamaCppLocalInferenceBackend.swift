@@ -110,7 +110,13 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
         /// seed and temperature can reach the runtime.
         var sampler: LlamaSamplerHandle
         var samplerOptions: LlamaSamplerOptions
-        let templateProfile: LlamaChatTemplateProfile
+        /// The fixed-list template path (`llama_chat_apply_template`), or nil when only llama.cpp's
+        /// Jinja engine can render this model's template (Gemma 4's), Plan MQ P2.
+        let templateProfile: LlamaChatTemplateProfile?
+        /// The model's templates in `common/chat` (Plan MQ P2): what renders a tool turn in the
+        /// family's own format and parses its calls. Nil when it cannot read them; a tool turn then
+        /// takes the Hermes instruction over the fixed-list path, as MLX does with no format.
+        let chatTemplates: LlamaChatTemplatesHandle?
         let contextTokens: Int
         let batchTokens: Int
         let vocabularyAddsBOS: Bool
@@ -125,10 +131,17 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
         var model: LlamaModelHandle?
         var context: LlamaContextHandle?
         var sampler: LlamaSamplerHandle?
+        var chatTemplates: LlamaChatTemplatesHandle?
     }
 
     private var resources: Resources?
     private var activeGeneration: Task<Void, Never>?
+    /// The tokens the KV cache holds after the last generation, in order (Plan MQ H3): its prompt
+    /// and every generated token it decoded. Empty after a cancel, an error or an unload, when
+    /// nothing is known about the cache, so the next prompt is read from the start.
+    private var cachedTokens: [LlamaToken] = []
+    /// The `common/chat` format last logged, so it is logged once per model.
+    private var chatFormatLogged: String?
 
     init(engine: any LlamaEngine = LlamaCppEngine(),
          directoryForInstallation: (@Sendable (InstalledLocalModel) -> URL)? = nil,
@@ -214,16 +227,29 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
             }
 
             // 4. The embedded template is authoritative, so it is proved usable here rather than
-            //    discovered to be broken on the wearer's first question.
+            //    discovered to be broken on the wearer's first question. Plan MQ P2: llama.cpp's
+            //    `common/chat` reads it too, for tool turns; and a template the fixed list does not
+            //    know (Gemma 4's) still loads when `common/chat` renders a conversation with it.
             let templateResult = LlamaCppChatTemplate.validate(engine.chatTemplate(model, named: nil)) {
                 try engine.applyChatTemplate($0, turns: $1, addAssistantHeader: $2)
             }
-            let templateProfile: LlamaChatTemplateProfile
+            let chatTemplates = try? engine.chatTemplates(model)
+            partial.chatTemplates = chatTemplates
+            if chatTemplates != nil, !LlamaCppEngine.catchesStandardExceptions {
+                // A template that needs `common/chat`'s automatic parser will not render in this
+                // image (see `LlamaCppEngine.catchesStandardExceptions`); its tool turns fall back.
+                PrivacyLog.localModel(.toolFormat, model: PrivacyToken(installation.id.rawValue),
+                                      detail: PrivacyToken("gguf-exceptions-unreliable"))
+            }
+            let templateProfile: LlamaChatTemplateProfile?
             switch templateResult {
             case .success(let profile):
                 templateProfile = profile
             case .failure(let fault):
-                throw LlamaBackendError.unsupportedChatTemplate(fault)
+                guard let chatTemplates, Self.chatRendersAConversation(engine, chatTemplates) else {
+                    throw LlamaBackendError.unsupportedChatTemplate(fault)
+                }
+                templateProfile = nil
             }
 
             // 5. Clamp to the smallest known ceiling.
@@ -263,12 +289,15 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                           runtime: .llamaCpp,
                                           contextLength: actualContext,
                                           capabilities: capabilities)
+            cachedTokens = []
+            chatFormatLogged = nil
             resources = Resources(installation: installation,
                                   model: model,
                                   context: context,
                                   sampler: sampler,
                                   samplerOptions: samplerOptions,
                                   templateProfile: templateProfile,
+                                  chatTemplates: chatTemplates,
                                   contextTokens: actualContext,
                                   batchTokens: actualBatch,
                                   vocabularyAddsBOS: engine.vocabularyAddsBOS(model),
@@ -322,9 +351,12 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
         await cancelGeneration()
         guard let resources else { return }
         self.resources = nil
+        cachedTokens = []
+        chatFormatLogged = nil
         tearDown(PartialLoad(model: resources.model,
                              context: resources.context,
-                             sampler: resources.sampler))
+                             sampler: resources.sampler,
+                             chatTemplates: resources.chatTemplates))
         PrivacyLog.localModel(.unloaded,
                               model: PrivacyToken(resources.installation.id.rawValue),
                               headroomMegabytes: megabytes(availableProcessBytes()),
@@ -338,6 +370,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
     /// that queued it. Freeing a model out from under either is a GPU-side use-after-free.
     private func tearDown(_ partial: PartialLoad) {
         if let context = partial.context { engine.synchronize(context) }
+        if let templates = partial.chatTemplates { engine.freeChatTemplates(templates) }
         if let sampler = partial.sampler { engine.freeSampler(sampler) }
         if let context = partial.context { engine.freeContext(context) }
         if let model = partial.model { engine.freeModel(model) }
@@ -345,12 +378,25 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
 
     // MARK: - Generation
 
+    /// Where one generation's output goes: text as the stream's elements, and — for
+    /// `generateEvents` — the tool calls, the tool fit and the runtime's report beside it.
+    private struct Output: Sendable {
+        let text: @Sendable (String) -> Void
+        let event: @Sendable (LocalGenerationEvent) -> Void
+        let finish: @Sendable (Error?) -> Void
+    }
+
     nonisolated func generate(_ request: LocalGenerationRequest) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
-            let starter = Task { await self.startGeneration(request, continuation: continuation) }
+            let output = Output(text: { continuation.yield($0) },
+                                event: { _ in },
+                                finish: { error in
+                                    if let error { continuation.finish(throwing: error) } else { continuation.finish() }
+                                })
+            let starter = Task { await self.startGeneration(request, output: output) }
             continuation.onTermination = { termination in
-                // A consumer that walks away must stop the GPU too — otherwise a barge-in leaves
-                // the model decoding to completion, burning battery on an answer nobody will read.
+                // A consumer that walks away must stop the GPU too — otherwise a barge-in leaves the
+                // model decoding to completion, burning battery on an answer nobody will read.
                 guard case .cancelled = termination else { return }
                 starter.cancel()
                 Task { await self.cancelGeneration() }
@@ -358,65 +404,105 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
         }
     }
 
+    /// The same generation with the family's tool calls parsed out of it (Plan MQ P2): on a tool
+    /// turn the text is the reply without its calls, then each call, as MLX's library yields them.
+    nonisolated func generateEvents(_ request: LocalGenerationRequest) -> AsyncThrowingStream<LocalGenerationEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let output = Output(text: { continuation.yield(.text($0)) },
+                                event: { continuation.yield($0) },
+                                finish: { error in
+                                    if let error { continuation.finish(throwing: error) } else { continuation.finish() }
+                                })
+            let starter = Task { await self.startGeneration(request, output: output) }
+            continuation.onTermination = { termination in
+                guard case .cancelled = termination else { return }
+                starter.cancel()
+                Task { await self.cancelGeneration() }
+            }
+        }
+    }
+
+    /// A prompt ready to decode, and how its completion is read.
+    private struct PreparedPrompt {
+        let tokens: [LlamaToken]
+        /// The tool turn's render (Plan MQ P2): its completion is parsed by `common/chat` and its
+        /// lazy grammar goes on the sampler. Nil on the fixed-list path.
+        let chat: PreparedChat?
+        /// What the runtime sent of a tool turn's tools; nil on a turn with none.
+        let fit: LocalToolFit.Report?
+    }
+
+    private struct PreparedChat {
+        let renderJSON: String
+        let render: LlamaToolChat.Render
+        /// Control tokens the family's parser reads as text: its call markers.
+        let preserved: Set<LlamaToken>
+    }
+
+    /// Thrown inside preparation; mapped to the backend's typed error at the boundary.
+    private struct PromptOverflow: Error {
+        let promptTokens: Int
+    }
+
     /// The isolated half of a generation: everything that touches resident state, ending with the
     /// launch of the off-actor decode loop.
-    private func startGeneration(_ request: LocalGenerationRequest,
-                                 continuation: AsyncThrowingStream<String, Error>.Continuation) {
+    private func startGeneration(_ request: LocalGenerationRequest, output: Output) {
         guard let resources else {
-            continuation.finish(throwing: LlamaBackendError.notLoaded)
+            output.finish(LlamaBackendError.notLoaded)
             return
         }
         guard activeGeneration == nil else {
-            continuation.finish(throwing: LlamaBackendError.alreadyGenerating)
+            output.finish(LlamaBackendError.alreadyGenerating)
             return
         }
         // 1. Text-only phase.
         guard request.images.isEmpty else {
-            continuation.finish(throwing: LocalInferenceError.visionNotAvailable)
+            output.finish(LocalInferenceError.visionNotAvailable)
             return
         }
 
         let promptStartedAt = monotonicNanoseconds()
-        let promptTokens: [LlamaToken]
-        let reserveTokens: Int
-        do {
-            // 2. Seam messages become template turns, with the system-merge policy the template's
-            //    own probe decided at load.
-            let turns = LlamaCppChatTemplate.turns(
-                from: request.messages,
-                mergingSystemIntoFirstUser: resources.templateProfile.mergesSystemIntoFirstUser)
+        let requested = request.maxOutputTokens > 0 ? request.maxOutputTokens : Self.defaultOutputTokens
+        let reserveTokens = max(1, min(requested, resources.contextTokens - 1))
+        let budget = max(1, resources.contextTokens - reserveTokens)
 
-            // 3. Apply the template, then tokenize with the special-token handling the rendered
-            //    text calls for, and work out the output reserve.
-            let rendered = try engine.applyChatTemplate(resources.templateProfile.template,
-                                                        turns: turns,
-                                                        addAssistantHeader: true)
-            let addSpecial = LlamaCppChatTemplate.shouldAddSpecialTokens(
-                rendered: rendered,
-                bosPiece: resources.bosPiece,
-                vocabularyAddsBOS: resources.vocabularyAddsBOS)
-            promptTokens = try engine.tokenize(resources.model,
-                                               text: rendered,
-                                               addSpecial: addSpecial,
-                                               parseSpecial: true)
-            let requested = request.maxOutputTokens > 0 ? request.maxOutputTokens
-                                                        : Self.defaultOutputTokens
-            reserveTokens = max(1, min(requested, resources.contextTokens - 1))
+        // 2–3. The prompt: rendered by `common/chat` for a tool turn (and for every turn of a model
+        //      only it can render), by the fixed-list template otherwise; tokenized with the
+        //      special-token handling the rendered text calls for; fitted to the context in
+        //      batches so its start stays put (Plan MQ H3).
+        let prepared: PreparedPrompt
+        do {
+            prepared = try preparePrompt(request, resources: resources, budget: budget)
+        } catch let overflow as PromptOverflow {
+            // 4. Refuse before decode, with counts and never the prompt.
+            let admission = LlamaPromptAdmission(promptTokens: overflow.promptTokens,
+                                                 reserveTokens: reserveTokens,
+                                                 contextTokens: resources.contextTokens)
+            PrivacyLog.localModel(.generationFailed,
+                                  model: PrivacyToken(resources.installation.id.rawValue),
+                                  count: admission.overflowTokens,
+                                  total: resources.contextTokens,
+                                  tokens: admission.promptTokens,
+                                  detail: PrivacyToken("gguf-over-context"))
+            output.finish(LlamaBackendError.promptTooLong(promptTokens: admission.promptTokens,
+                                                          reserveTokens: admission.reserveTokens,
+                                                          contextTokens: admission.contextTokens))
+            return
         } catch let error as LlamaEngineError {
-            continuation.finish(throwing: LlamaBackendError.engine(error))
+            output.finish(LlamaBackendError.engine(error))
             return
         } catch {
-            continuation.finish(throwing: LlamaBackendError.tokenizationFailed)
+            output.finish(LlamaBackendError.tokenizationFailed)
             return
         }
 
-        guard !promptTokens.isEmpty else {
-            continuation.finish(throwing: LlamaBackendError.tokenizationFailed)
+        guard !prepared.tokens.isEmpty else {
+            output.finish(LlamaBackendError.tokenizationFailed)
             return
         }
 
         // 4. Refuse before decode, with counts and never the prompt.
-        let admission = LlamaPromptAdmission(promptTokens: promptTokens.count,
+        let admission = LlamaPromptAdmission(promptTokens: prepared.tokens.count,
                                              reserveTokens: reserveTokens,
                                              contextTokens: resources.contextTokens)
         guard admission.fits else {
@@ -426,7 +512,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                   total: resources.contextTokens,
                                   tokens: admission.promptTokens,
                                   detail: PrivacyToken("gguf-over-context"))
-            continuation.finish(throwing: LlamaBackendError.promptTooLong(
+            output.finish(LlamaBackendError.promptTooLong(
                 promptTokens: admission.promptTokens,
                 reserveTokens: admission.reserveTokens,
                 contextTokens: admission.contextTokens))
@@ -448,18 +534,40 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                 self.resources?.sampler = replacement
                 self.resources?.samplerOptions = desiredSampling
             } catch let error as LlamaEngineError {
-                continuation.finish(throwing: LlamaBackendError.engine(error))
+                output.finish(LlamaBackendError.engine(error))
                 return
             } catch {
-                continuation.finish(throwing: error)
+                output.finish(error)
                 return
             }
+        }
+
+        // Plan MQ P2: the family's lazy call grammar for this turn, or none. A grammar that cannot
+        // be built leaves the turn unconstrained — its parser still reads the call — rather than
+        // failing a turn the model may well answer in words.
+        var parser: LlamaChatParserHandle?
+        if let chat = prepared.chat {
+            if chat.render.constrainsCalls, (prepared.fit?.kept ?? 0) > 0 {
+                do {
+                    try engine.setChatGrammar(sampler, model: resources.model, renderJSON: chat.renderJSON)
+                } catch {
+                    engine.clearGrammar(sampler)
+                    PrivacyLog.localModel(.toolFormat, model: PrivacyToken(resources.installation.id.rawValue),
+                                          detail: PrivacyToken("gguf-grammar-unavailable"))
+                }
+            } else {
+                engine.clearGrammar(sampler)
+            }
+            parser = try? engine.createChatParser(renderJSON: chat.renderJSON)
+            noteChatFormat(chat.render.formatName, model: resources.installation.id)
+        } else {
+            engine.clearGrammar(sampler)
         }
 
         PrivacyLog.localModel(.generationStarted,
                               model: PrivacyToken(resources.installation.id.rawValue),
                               tokens: admission.promptTokens,
-                              detail: PrivacyToken("gguf"),
+                              detail: PrivacyToken(prepared.chat == nil ? "gguf" : "gguf-chat"),
                               state: thermalToken())
 
         let plan = GenerationPlan(installationID: resources.installation.id,
@@ -467,27 +575,202 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                   model: resources.model,
                                   context: resources.context,
                                   sampler: sampler,
-                                  promptTokens: promptTokens,
+                                  promptTokens: prepared.tokens,
+                                  cachedTokens: cachedTokens,
                                   batchTokens: resources.batchTokens,
                                   contextTokens: resources.contextTokens,
                                   maxOutputTokens: reserveTokens,
-                                  stopSequences: request.stopSequences,
+                                  stopSequences: request.stopSequences
+                                      + (prepared.chat?.render.additionalStops ?? []),
+                                  chat: prepared.chat.map { ChatPlan(parser: parser, preserved: $0.preserved) },
+                                  fit: prepared.fit,
                                   headroomAfterLoadBytes: resources.headroomAfterLoadBytes,
                                   promptStartedAt: promptStartedAt)
+        // What the cache holds is unknown until this generation reports back.
+        cachedTokens = []
 
         // The assignment below happens before this method suspends or returns, so the loop's own
         // `finishGeneration()` — which needs this actor — cannot observe a nil slot and leave the
         // backend permanently "already generating".
         activeGeneration = Task { [weak self] in
             guard let self else { return }
-            await self.runLoop(plan, sampling: request.sampling, preview: request.previewSink,
-                               continuation: continuation)
-            await self.finishGeneration()
+            let cached = await self.runLoop(plan, preview: request.previewSink, output: output)
+            await self.finishGeneration(cached: cached)
         }
     }
 
-    private func finishGeneration() {
+    private func finishGeneration(cached: [LlamaToken]) {
         activeGeneration = nil
+        cachedTokens = cached
+    }
+
+    /// Log the family `common/chat` recognised, as a token, once per model (Plan MQ P2).
+    private func noteChatFormat(_ format: String, model: LocalModelID) {
+        guard chatFormatLogged != format else { return }
+        chatFormatLogged = format
+        PrivacyLog.localModel(.toolFormat, model: PrivacyToken(model.rawValue),
+                              detail: PrivacyToken("gguf-\(format)"))
+    }
+
+    // MARK: - Prompt
+
+    /// The prompt for one request. Three routes:
+    ///  - a tool turn, through `common/chat` (Plan MQ P2): the family's own rendering of the
+    ///    system prompt, the earlier turns, this turn's calls and results and the tools, fitted by
+    ///    `LocalToolFit` exactly as MLX fits them, the history then trimmed in batches;
+    ///  - an ordinary turn on a model only `common/chat` can render (Gemma 4's template), the same
+    ///    way with no tools;
+    ///  - otherwise the fixed-list template, as Plan DZ shipped it, now trimmed in batches too. A
+    ///    tool turn reaches this route only when `common/chat` could not read the model's
+    ///    templates: its tools then go as the Hermes instruction, as MLX does with no format.
+    private func preparePrompt(_ request: LocalGenerationRequest, resources: Resources,
+                               budget: Int) throws -> PreparedPrompt {
+        let system = Self.systemText(request.messages)
+        if let templates = resources.chatTemplates {
+            if let toolTurn = request.toolTurn {
+                do {
+                    return try prepareChat(templates: templates, system: system, history: toolTurn.history,
+                                           turn: toolTurn.turn, toolTurn: toolTurn, resources: resources,
+                                           budget: budget)
+                } catch let overflow as PromptOverflow {
+                    throw overflow
+                } catch where resources.templateProfile != nil {
+                    // The template would not render this turn with its tools: the Hermes
+                    // instruction over the fixed-list path, rather than no answer.
+                    PrivacyLog.localModel(.toolFormat, model: PrivacyToken(resources.installation.id.rawValue),
+                                          detail: PrivacyToken("gguf-render-failed"))
+                }
+            }
+            if resources.templateProfile == nil {
+                let messages = Self.loopMessages(request.messages)
+                return try prepareChat(templates: templates, system: system,
+                                       history: Array(messages.dropLast()), turn: Array(messages.suffix(1)),
+                                       toolTurn: nil, resources: resources, budget: budget)
+            }
+        }
+        guard let profile = resources.templateProfile else { throw LlamaEngineError.noChatTemplate }
+
+        var messages = request.messages
+        var fit: LocalToolFit.Report?
+        if let toolTurn = request.toolTurn {
+            // No `common/chat` for this model: the transcript in `messages` is already flattened by
+            // the caller, and the tools go as text.
+            if !toolTurn.tools.isEmpty, let first = messages.firstIndex(where: { $0.role == .system }) {
+                messages[first] = .system(messages[first].content + toolTurn.fallbackInstructions)
+            }
+            fit = LocalToolFit.fit(toolTurn, rendersTools: false, budget: budget,
+                                   window: resources.contextTokens) { _, _ in 0 }.report
+        }
+        let leadingSystem = messages.prefix { $0.role == .system }
+        let rest = Array(messages.dropFirst(leadingSystem.count))
+        let current = Array(rest.suffix(1))
+        let history = Array(rest.dropLast())
+        func tokens(_ kept: [LocalChatMessage]) throws -> [LlamaToken] {
+            let turns = LlamaCppChatTemplate.turns(
+                from: Array(leadingSystem) + kept + current,
+                mergingSystemIntoFirstUser: profile.mergesSystemIntoFirstUser)
+            let rendered = try engine.applyChatTemplate(profile.template, turns: turns, addAssistantHeader: true)
+            let addSpecial = LlamaCppChatTemplate.shouldAddSpecialTokens(
+                rendered: rendered, bosPiece: resources.bosPiece, vocabularyAddsBOS: resources.vocabularyAddsBOS)
+            return try engine.tokenize(resources.model, text: rendered, addSpecial: addSpecial, parseSpecial: true)
+        }
+        guard let kept = try LocalModelBudget.historyFittingBudgetInBatches(
+            history: history, budget: budget, startsExchange: { $0.role == .user },
+            tokenCount: { try tokens($0).count }) else {
+            throw PromptOverflow(promptTokens: try tokens([]).count)
+        }
+        if kept.count < history.count {
+            PrivacyLog.localModel(.historyTrimmed, count: kept.count, total: history.count, tokens: budget)
+        }
+        return PreparedPrompt(tokens: try tokens(kept), chat: nil, fit: fit)
+    }
+
+    private func prepareChat(templates: LlamaChatTemplatesHandle, system: String,
+                             history: [LocalToolLoop.Message], turn: [LocalToolLoop.Message],
+                             toolTurn: LocalToolTurn?, resources: Resources,
+                             budget: Int) throws -> PreparedPrompt {
+        func rendered(_ messages: [LocalToolLoop.Message],
+                      tools: [[String: Any]]) throws -> (json: String, render: LlamaToolChat.Render, tokens: [LlamaToken]) {
+            let json = try engine.renderChat(templates, requestJSON: LlamaToolChat.requestJSON(
+                system: system, messages: messages, tools: tools, thinkingOff: toolTurn?.thinkingOff ?? true))
+            let render = try LlamaToolChat.render(json)
+            let addSpecial = LlamaCppChatTemplate.shouldAddSpecialTokens(
+                rendered: render.prompt, bosPiece: resources.bosPiece, vocabularyAddsBOS: resources.vocabularyAddsBOS)
+            let tokens = try engine.tokenize(resources.model, text: render.prompt,
+                                             addSpecial: addSpecial, parseSpecial: true)
+            return (json, render, tokens)
+        }
+
+        // The definitions first, measured with no history (`LocalToolFit`, as MLX).
+        var keptSpecs: [[String: Any]] = []
+        var fit: LocalToolFit.Report?
+        if let toolTurn {
+            let fitted = try LocalToolFit.fit(toolTurn, rendersTools: true, budget: budget,
+                                              window: resources.contextTokens) { kept, detail in
+                try rendered(turn, tools: toolTurn.specs(kept: kept, detail: detail)).tokens.count
+            }
+            keptSpecs = fitted.turn.tools
+            fit = fitted.report
+        }
+
+        // Then the history, into the room they leave, a batch at a time (Plan MQ H3).
+        guard let kept = try LocalModelBudget.historyFittingBudgetInBatches(
+            history: history, budget: budget, startsExchange: { $0.role == .user },
+            tokenCount: { try rendered($0 + turn, tools: keptSpecs).tokens.count }) else {
+            throw PromptOverflow(promptTokens: try rendered(turn, tools: []).tokens.count)
+        }
+        if kept.count < history.count {
+            PrivacyLog.localModel(.historyTrimmed, count: kept.count, total: history.count, tokens: budget)
+        }
+
+        let final = try rendered(kept + turn, tools: keptSpecs)
+        var preserved = Set<LlamaToken>()
+        for piece in final.render.preservedTokens {
+            let ids = (try? engine.tokenize(resources.model, text: piece, addSpecial: false, parseSpecial: true)) ?? []
+            if ids.count == 1 { preserved.insert(ids[0]) }
+        }
+        return PreparedPrompt(tokens: final.tokens,
+                              chat: PreparedChat(renderJSON: final.json, render: final.render, preserved: preserved),
+                              fit: fit)
+    }
+
+    /// The leading system messages' text, joined as a template would join them.
+    static func systemText(_ messages: [LocalChatMessage]) -> String {
+        messages.prefix { $0.role == .system }
+            .map(\.content)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n\n")
+    }
+
+    /// An ordinary turn's messages after the system prompt, as the loop's messages.
+    static func loopMessages(_ messages: [LocalChatMessage]) -> [LocalToolLoop.Message] {
+        messages.drop { $0.role == .system }.compactMap { message in
+            switch message.role {
+            case .user: return .user(message.content)
+            case .assistant: return .assistant(message.content)
+            case .system: return nil
+            }
+        }
+    }
+
+    /// A conversation rendered through `common/chat` keeps its user turn: the load-time proof for a
+    /// template only `common/chat` can read.
+    static func chatRendersAConversation(_ engine: any LlamaEngine, _ templates: LlamaChatTemplatesHandle) -> Bool {
+        let probe = "OGPROBE-USER-7D2A"
+        guard let json = try? engine.renderChat(templates, requestJSON: LlamaToolChat.requestJSON(
+                  system: "OGPROBE-SYSTEM-7D2A", messages: [.user(probe)], tools: [], thinkingOff: true)),
+              let render = try? LlamaToolChat.render(json) else { return false }
+        return render.prompt.contains(probe)
+    }
+
+    // MARK: - Decode loop
+
+    /// A tool turn's reading of its completion (Plan MQ P2).
+    private struct ChatPlan: Sendable {
+        /// Nil when the render's parser could not be built: the text is then returned unparsed, and
+        /// the app's output policy reads it as it reads any other.
+        let parser: LlamaChatParserHandle?
+        let preserved: Set<LlamaToken>
     }
 
     /// Everything the decode loop needs, captured so the loop can run off the actor.
@@ -500,45 +783,69 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
         let context: LlamaContextHandle
         let sampler: LlamaSamplerHandle
         let promptTokens: [LlamaToken]
+        /// What the KV cache held when this generation was planned (Plan MQ H3).
+        let cachedTokens: [LlamaToken]
         let batchTokens: Int
         let contextTokens: Int
         let maxOutputTokens: Int
         let stopSequences: [String]
+        let chat: ChatPlan?
+        let fit: LocalToolFit.Report?
         let headroomAfterLoadBytes: Int64
         let promptStartedAt: UInt64
     }
 
-    /// Steps 5–10, off the actor so a cancel can reach it.
+    /// Steps 5–10, off the actor so a cancel can reach it. Returns the tokens the KV cache holds
+    /// afterwards, or none when the generation did not finish (the cache is then unknown).
     private nonisolated func runLoop(_ plan: GenerationPlan,
-                                     sampling: LocalSamplingConfiguration,
                                      preview: ((String) -> Void)?,
-                                     continuation: AsyncThrowingStream<String, Error>.Continuation) async {
-        // 5. Clear the KV cache for every request. Plan DZ's cache policy is full-history-per-call;
-        //    the sampler's penalty history is reset with it, or the previous turn's tokens would
-        //    keep penalising this one.
-        engine.clearMemory(plan.context)
+                                     output: Output) async -> [LlamaToken] {
+        defer { if let parser = plan.chat?.parser { engine.freeChatParser(parser) } }
+        // 5. Keep the KV cache's shared prefix and drop the rest (Plan MQ H3): a turn that starts as
+        //    the last one did prefills only from where they differ. The sampler's penalty history
+        //    is reset either way, or the previous turn's tokens would keep penalising this one.
+        let keep = LlamaPromptCache.reusablePrefix(cached: plan.cachedTokens, prompt: plan.promptTokens)
+        let kept = min(max(0, engine.keepPrefix(plan.context, tokens: keep)), keep)
         engine.resetSampler(plan.sampler)
 
         var accumulator = LlamaUTF8Accumulator()
         var matcher = LlamaStopSequenceMatcher(stopSequences: plan.stopSequences)
-        var position = 0
+        var position = kept
         var generated = 0
         var firstTokenAt: UInt64?
+        var decoded = plan.promptTokens
+        // A tool turn's raw completion, call markers included, for `common/chat`'s parser.
+        var raw = ""
+        var previewShown = ""
 
         func emit(_ text: String) -> Bool {
             guard !text.isEmpty else { return false }
             let (safe, stop) = matcher.consume(text)
             if !safe.isEmpty {
-                preview?(safe)
-                continuation.yield(safe)
+                if let chat = plan.chat {
+                    raw += safe
+                    // The reply so far, without the call it may be starting, for the preview only.
+                    if let preview, let parser = chat.parser,
+                       let json = try? engine.parseChat(parser, text: raw, partial: true),
+                       let parsed = try? LlamaToolChat.parsed(json) {
+                        let delta = LlamaToolChat.previewDelta(shown: previewShown, current: parsed.content)
+                        if !delta.isEmpty {
+                            previewShown += delta
+                            preview(delta)
+                        }
+                    }
+                } else {
+                    preview?(safe)
+                    output.text(safe)
+                }
             }
             return stop
         }
 
         do {
-            // 6. Prompt decode, partitioned to the context's own batch size, with a cancellation
-            //    check between chunks.
-            var offset = 0
+            // 6. Prompt decode from the first token the cache does not hold, partitioned to the
+            //    context's own batch size, with a cancellation check between chunks.
+            var offset = kept
             while offset < plan.promptTokens.count {
                 if Task.isCancelled { throw CancellationError() }
                 let end = min(offset + plan.batchTokens, plan.promptTokens.count)
@@ -551,10 +858,11 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                 offset = end
             }
             let promptDecodedAt = monotonicNanoseconds()
+            let decodedPromptTokens = plan.promptTokens.count - kept
             PrivacyLog.localModel(.promptDecoded,
                                   model: PrivacyToken(plan.installationID.rawValue),
-                                  count: (plan.promptTokens.count + plan.batchTokens - 1)
-                                      / plan.batchTokens,
+                                  count: (decodedPromptTokens + plan.batchTokens - 1) / plan.batchTokens,
+                                  total: kept,
                                   tokens: plan.promptTokens.count,
                                   detail: PrivacyToken("gguf"),
                                   milliseconds: Int((promptDecodedAt &- plan.promptStartedAt)
@@ -571,11 +879,15 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                 if firstTokenAt == nil { firstTokenAt = monotonicNanoseconds() }
 
                 // 8. Bytes, not characters: the accumulator holds a split sequence until it is whole.
-                if emit(accumulator.append(engine.tokenBytes(plan.model, token: token))) { break }
+                //    A tool turn renders the family's call markers, which its parser reads.
+                let special = plan.chat?.preserved.contains(token) ?? false
+                if emit(accumulator.append(engine.tokenBytes(plan.model, token: token,
+                                                             renderSpecial: special))) { break }
 
                 guard position < plan.contextTokens else { break }
                 try engine.decode(plan.context, tokens: [token], position: position,
                                   wantsLogitsForLast: true)
+                decoded.append(token)
                 position += 1
             }
 
@@ -583,22 +895,59 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                 _ = emit(accumulator.flush())
                 let tail = matcher.flush()
                 if !tail.isEmpty {
-                    preview?(tail)
-                    continuation.yield(tail)
+                    if plan.chat != nil {
+                        raw += tail
+                    } else {
+                        preview?(tail)
+                        output.text(tail)
+                    }
                 }
             }
             // 10. Drain the accelerator before anyone can free what it is still reading.
             engine.synchronize(plan.context)
+            let finishedAt = monotonicNanoseconds()
+
+            // What the runtime sent of a tool turn's tools, for the dispatcher — on the Hermes
+            // fallback too, where every offered tool went as text.
+            if let fit = plan.fit { output.event(.toolFit(fit)) }
+            if let chat = plan.chat {
+                // Plan MQ P2: the reply and its calls, read by the family's own parser. A completion
+                // that is not the family's format is never a call: its text goes back as it came,
+                // for the output policy to read.
+                var content = raw
+                var calls: [LocalToolCallEvent] = []
+                if let parser = chat.parser {
+                    if let json = try? engine.parseChat(parser, text: raw, partial: false),
+                       let parsed = try? LlamaToolChat.parsed(json) {
+                        content = parsed.content
+                        calls = parsed.calls
+                        if parsed.malformedCalls > 0 || !calls.isEmpty {
+                            PrivacyLog.localModel(.toolCall, model: PrivacyToken(plan.installationID.rawValue),
+                                                  count: calls.count, total: calls.count + parsed.malformedCalls,
+                                                  detail: PrivacyToken("gguf-parsed"))
+                        }
+                    } else {
+                        PrivacyLog.localModel(.toolCall, model: PrivacyToken(plan.installationID.rawValue),
+                                              count: 0, detail: PrivacyToken("gguf-unparsed"))
+                    }
+                }
+                if !content.isEmpty { output.text(content) }
+                for call in calls { output.event(.toolCall(call)) }
+            }
+            output.event(.stats(Self.stats(plan, generated: generated, firstTokenAt: firstTokenAt,
+                                           finishedAt: finishedAt)))
             recordCompletion(plan, generated: generated, firstTokenAt: firstTokenAt,
                              position: position)
-            continuation.finish()
+            output.finish(nil)
+            return decoded
         } catch is CancellationError {
             engine.synchronize(plan.context)
             PrivacyLog.localModel(.generationFailed,
                                   model: PrivacyToken(plan.installationID.rawValue),
                                   count: generated,
                                   detail: PrivacyToken("gguf-cancelled"))
-            continuation.finish(throwing: CancellationError())
+            output.finish(CancellationError())
+            return []
         } catch let error as LlamaEngineError {
             engine.synchronize(plan.context)
             let mapped: Error = error == .cancelled ? CancellationError()
@@ -608,11 +957,26 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                   count: generated,
                                   detail: PrivacyToken("gguf"),
                                   error: SafeErrorSummary(mapped))
-            continuation.finish(throwing: mapped)
+            output.finish(mapped)
+            return []
         } catch {
             engine.synchronize(plan.context)
-            continuation.finish(throwing: error)
+            output.finish(error)
+            return []
         }
+    }
+
+    /// The runtime's report for the qualification record (Plan MQ P3): time to first token as the
+    /// prompt time (render, tokenize and the prefill the cache did not save), and the decode after it.
+    private static func stats(_ plan: GenerationPlan, generated: Int, firstTokenAt: UInt64?,
+                              finishedAt: UInt64) -> LocalGenerationStats {
+        let first = firstTokenAt ?? finishedAt
+        return LocalGenerationStats(promptTokens: plan.promptTokens.count,
+                                    generatedTokens: generated,
+                                    promptSeconds: Double(first &- plan.promptStartedAt) / 1_000_000_000,
+                                    generateSeconds: Double(finishedAt &- first) / 1_000_000_000,
+                                    tokenCap: plan.maxOutputTokens,
+                                    stoppedAtCap: generated >= plan.maxOutputTokens)
     }
 
     /// 9. Load and decode timings, token counts, context usage, headroom delta and thermal state —

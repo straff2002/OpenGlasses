@@ -13,6 +13,8 @@ struct DeveloperPanelView: View {
     @AppStorage("wakeSpeechGateEnabled") private var wakeSpeechGateEnabled = false
     /// Plan HZ P1 — `Config.directSentenceStreamingEnabled`, the same key and default (on).
     @AppStorage("directSentenceStreamingEnabled") private var directSentenceStreamingEnabled = true
+    /// Plan NA — `Config.blindReplyCheckEnabled`, the same key and default (on). The kill switch.
+    @AppStorage("blindReplyCheckEnabled") private var blindReplyCheckEnabled = true
     /// Plan JM P0 — `Config.dictationVoiceProcessingEnabled`, the same key and default (off until
     /// measured on device).
     @AppStorage("dictationVoiceProcessingEnabled") private var dictationVoiceProcessingEnabled = false
@@ -127,6 +129,14 @@ struct DeveloperPanelView: View {
             ) {
                 OGRow("Speak as it writes", isOn: $directSentenceStreamingEnabled,
                       icon: "text.bubble")
+            }
+
+            OGSection(
+                header: "Reply Check",
+                footer: "Checks Blind Assistant answers before they are spoken. A sentence that says a way is safe or clear, or a number the phone could not read, is held back and the app says it can't tell. It does not make anything safe. Turn off only to rule it out when something goes wrong."
+            ) {
+                OGRow("Check Blind Assistant answers", isOn: $blindReplyCheckEnabled,
+                      icon: "checkmark.shield")
             }
 
             OGSection(

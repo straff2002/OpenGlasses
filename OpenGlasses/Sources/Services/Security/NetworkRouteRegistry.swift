@@ -226,7 +226,6 @@ enum NetworkRoute: String, CaseIterable, Sendable {
     case xaiOAuthToken
 
     // MARK: Local listeners
-    case webHUDMirrorListener
     case mcpGlassesListener
     case loopbackOAuthCallback
     /// Development-only (`DAT_MOCK_DISPLAY`, Debug Simulator builds): the simulated Display's test server.
@@ -304,7 +303,6 @@ extension NetworkRoute {
         case .chatGPTOAuthToken: return "Exchange or refresh an OAuth token for the model provider account."
         case .googleOAuthToken: return "Exchange or refresh an OAuth token for the linked Google account."
         case .xaiOAuthToken: return "Discover the sign-in endpoints, then exchange or refresh an OAuth token for the xAI account."
-        case .webHUDMirrorListener: return "Serve the HUD mirror to a browser on the wearer's own network."
         case .mcpGlassesListener: return "Serve the glasses MCP tool surface to a client on the wearer's own network."
         case .loopbackOAuthCallback: return "Receive the OAuth redirect on 127.0.0.1 during account linking."
         case .simulatedDisplayTestServer: return "Read the simulated Display's current frame from its test server on 127.0.0.1, in development-only Simulator builds."
@@ -388,8 +386,6 @@ extension NetworkRoute {
             return [.healthFact, .credential]
         case .claudeOAuthToken, .chatGPTOAuthToken, .googleOAuthToken, .xaiOAuthToken:
             return [.credential]
-        case .webHUDMirrorListener:
-            return [.frame, .transcript]
         case .mcpGlassesListener:
             return [.promptText, .frame]
         case .loopbackOAuthCallback:
@@ -423,7 +419,7 @@ extension NetworkRoute {
              .addOnAuthoringDocs:
             return .publicWeb
         case .homeAssistantCommand, .homeAssistantEntityCache, .hermesBridgeSession, .hermesAgentAPI,
-             .mcpHTTPTransport, .webHUDMirrorListener, .mcpGlassesListener, .jobRecordingOfficeSync,
+             .mcpHTTPTransport, .mcpGlassesListener, .jobRecordingOfficeSync,
              .openAICompatibleRealtimeSession:
             // The explicit compatible-server setting supports both LAN servers and TLS gateways.
             return .localNetwork
@@ -564,7 +560,6 @@ extension NetworkRoute {
         case .chatGPTOAuthToken: return ["ChatGPTOAuthService"]
         case .googleOAuthToken: return ["GoogleOAuthService"]
         case .xaiOAuthToken: return ["XAIOAuthService"]
-        case .webHUDMirrorListener: return ["WebHUDMirrorServer"]
         case .mcpGlassesListener: return ["MCPGlassesServer"]
         case .loopbackOAuthCallback: return ["LoopbackCallbackServer"]
         case .simulatedDisplayTestServer: return ["SimulatedDisplayLab"]

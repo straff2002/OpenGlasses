@@ -48,6 +48,8 @@ T's ConflictResolver row closed 2026-09-09 ([#443](https://github.com/straff2002
 Removed as verified shipped: [AK](standalone-chat-experience.md)'s SSE session seam and the three
 streaming defects (BM P9); [AM](embedding-quality-upgrade.md)'s two benchmark rows stay under A3 —
 the plan is code-complete and they are the optional default-flip evidence it names.
+Removed 2026-11-23: every [BP](BP-web-hud-mirror.md) row (P3–P5, the cloud-relay fallback and the
+web-view push question), the web mirror having been retired.
 Added, mostly from plans that did not exist or had not been audited on 08-22: the compliance-control
 remainders ([DN](DN-outbound-fetch-and-sideload-hardening.md),
 [DO](DO-local-network-transport-hardening.md), [DP](DP-release-entitlement-boundary.md),
@@ -152,7 +154,6 @@ evidence separately from the headless core.
 |---|---|---|
 | [S](S-plan-then-execute-and-safety-supervisor.md) | Phase 2 parallel-safe concurrent execution | Classifier and the DJ authorization hardening shipped; concurrency changes the executor model |
 | [AJ](additional-capabilities.md) | Declarative HUD widget board | Display Phase-5 concept; defer until X/Y are fully exercised |
-| [BP](BP-web-hud-mirror.md) | P5 — WebSocket push inlined in the rendered page, D-pad room-code pairing, iframe tabindex fix | Pure and fixture-testable today, but deliberately sequenced after the P3/P4 hardware experiments |
 | [AK](standalone-chat-experience.md) | Per-provider streaming backfill (Gemini) | The rest shipped as BM P9 |
 | [BX](BX-skill-packs.md) | P4 JavaScriptCore skill-pack handlers | Deferred by design |
 | [V](V-mcp-catalogue-and-transport-breadth.md) | OAuth device-code/PKCE + Keychain refresh | Deprioritized, and needs a real IdP anyway |
@@ -228,7 +229,6 @@ PR8) cannot move until it happens.
 | [ET](ET-iso27701-privacy.md) — Medical Compliance data at rest | Recording artefacts (audio and video recordings, both transcript copies, the sessions list) get `.completeUnlessOpen` + backup exclusion in the mode, in-progress recordings start in a folder carrying the class, and enabling the mode sweeps existing files; audit log and exports keep `.complete` ([#486](https://github.com/straff2002/OpenGlasses/pull/486)) | The simulator reports no protection class, so the class is unverified: with the mode on, record audio-only then video, lock for more than 10 s, stop by voice or from the glasses, unlock and confirm each recording plays and its transcript opens; confirm a file created in the protected folder inherits the class | A phone, Medical Compliance on, glasses for the locked stop |
 | [EN](EN-memory-distillation-and-external-graph-memory.md) | P1–P3 (distiller, ontology, enrichment policy/parser, catalog row) | The schema migration has only run against test-built databases, never a device's real `brain.sqlite` | A phone with an established brain |
 | [M](M-webrtc-infra-and-audio.md) | App-side WebRTC + audio coordinator | `RTCAudioSession` echo behaviour and session-wedge testing | Glasses + a live call |
-| [BP](BP-web-hud-mirror.md) | P1+P2 (payload, renderer, mirror server) | P3 — LAN HTTP reachability from phone to the glasses web view, falling back to tailnet HTTPS; P4 — Developer-Mode URL registration and QR enrolment, 600×600 legibility, D-pad feel, poll cadence vs battery, web-view lifecycle | Display glasses + a LAN |
 | [BA](BA-android-port.md) | — (roadmap; see §A) | Phase 0's confirmation on a test handset: Display-module availability and the permission gate | An Android handset + glasses |
 
 ## C. Backend / service-pending (gateway · relay · store products · external API)
@@ -252,7 +252,6 @@ is store products, a CI container, and two hosted services that have plans of th
 | [EI](EI-licence-issuance-portal.md) | — (unbuilt; see §A) | P2 — the hosted issuance service plus its isolated signing step | Somewhere to host it |
 | [BL](BL-ops-platform-agent-bridge.md) | — (unbuilt; see §A) | A real conforming peer: A2A `tasks.send`/`tasks.get`, an MCP server, a `glasses`-topic SSE stream with `Last-Event-ID` replay, and `submitReply`. The plan is explicit this is a contract, not something this repo builds | A peer implementation |
 | [EM](EM-work-record-and-parts.md) | P1+P2 (work record, parts request, delivery, endpoint sink) | P3's hand-off needs BL's peer | BL |
-| [BP](BP-web-hud-mirror.md) | P1+P2 | P3's third fallback — a cloud relay through the ops-platform bridge — only if LAN and tailnet both fail | BL |
 | [AK](standalone-chat-experience.md) | Chat tab + rich rendering + real SSE streaming, hardened in BM P9 | **Live-credential smoke only** | Real API keys on a device |
 | [EN](EN-memory-distillation-and-external-graph-memory.md) | P1–P3 headless (distiller, ontology, enrichment policy/parser, catalog row) | P2's model-assisted enrichment call has never run against a real provider; P3's catalog entry has never connected to a self-hosted graph-memory MCP server — it decodes, resolves and installs in tests only | A provider key; a self-hosted server |
 | [EE](EE-field-assist-commercial-licensing.md) | P1–P4 | App Store Connect product setup — the subscription and the one-time product | App Store Connect |
@@ -289,7 +288,6 @@ Nothing else in the repo collects these. Each waits on an owner call, not on cod
 - [AI](provider-auth-and-fallbacks.md) — whether Vertex streaming is worth its own path.
 - [BA](BA-android-port.md) — one repo or an `/android` directory; minimum SDK; on-device engine; whether to staff it at all.
 - [BL](BL-ops-platform-agent-bridge.md) — transport preference when both A2A and MCP could serve a request (proposal: MCP sync, A2A long-running).
-- [BP](BP-web-hud-mirror.md) — does the glasses web view support SSE/WebSocket, or is polling the ceiling? Answerable only at hardware contact, but the answer changes P5's shape.
 - [BR](BR-realtime-and-stream-hardening.md) — when to take the Gemini 3.1 Live migration; the rider is a checklist for that day, not a task now.
 - [CK](CK-sign-language.md) — whether to fund a larger model on a GPU run for a better CER/size trade.
 - [CO](CO-identity-budget-turn-taking.md) — does the identity-ambiguity outcome belong in the tool surface as well as auto-announce?

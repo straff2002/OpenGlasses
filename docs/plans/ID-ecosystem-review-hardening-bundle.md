@@ -1,7 +1,7 @@
 # Plan ID: Hardening Bundle from the October 2026 Ecosystem Review
 
 **Status:** 🚧 Item 1 shipped 2026-10-10 (PR #704); item 4 built 2026-10-21 ([#812](https://github.com/straff2002/OpenGlasses/pull/812)); item 5 built
-2026-10-21 ([#814](https://github.com/straff2002/OpenGlasses/pull/814)); item 7 built 2026-10-19 as Plan FG's P1a (PR #788); items 2, 3, 6 and 8 unbuilt. A checklist plan: each item is its own small,
+2026-10-21 ([#814](https://github.com/straff2002/OpenGlasses/pull/814)); item 7 built 2026-10-19 as Plan FG's P1a (PR #788); items 2, 6 and 8 unbuilt; item 3 withdrawn 2026-11-23 (the web mirror was retired, Plan [BP](BP-web-hud-mirror.md)). A checklist plan: each item is its own small,
 direct PR with a test, in any order, and is ticked here (with its PR number) when it merges. Item 7
 is tracked in Plan [FG](FG-workflow-vaults-and-enterprise-auth.md) and only referenced here.
 **Origin:** The [October 2026 ecosystem review](../ecosystem-review-2026-10.md), sections 3 and 4
@@ -24,7 +24,7 @@ string a user sees; this file's checklist and the index row updated in the same 
 - [x] **1. Stale navigation hazard advice expires** (S, Plan [J](J-low-vision-navigation.md)):
   done 2026-10-10, [#704](https://github.com/straff2002/OpenGlasses/pull/704).
 - [ ] **2. Broadcast frame pacing on a deadline** (S, Plan [CY](CY-broadcast-resilience-and-quality.md)'s surface).
-- [ ] **3. Web mirror page sized to the device and quiet while hidden** (XS, Plan [BP](BP-web-hud-mirror.md)).
+- [ ] ~~**3. Web mirror page sized to the device and quiet while hidden**~~ (XS, Plan [BP](BP-web-hud-mirror.md)) — withdrawn 2026-11-23: the web mirror was retired.
 - [x] **4. Gateway hosts typed without a scheme** (S): done 2026-10-21, [#812](https://github.com/straff2002/OpenGlasses/pull/812).
 - [x] **5. A second and third cloud voice: OpenAI and xAI** (S-M): done 2026-10-21, [#814](https://github.com/straff2002/OpenGlasses/pull/814) (live-key device check owed).
 - [ ] **6. `framegate-probe` replay script** (S).

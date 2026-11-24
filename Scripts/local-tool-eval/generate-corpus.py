@@ -11,6 +11,10 @@ and most answered manual questions get a near-miss twin that must be declined. A
 (small talk, job-adjacent chatter, the time, a timer) and the protocol cases (clean output,
 cancellation) are written here by hand.
 
+The body opens with one catalogue line per vault, `{"catalogue": {"vault", "procedures": [{id, title}]}}`:
+the procedures a turn may start, which the eval hands every case of that vault, as the app hands its
+router the vault's library (Plan MQ P3). It is written once rather than on every case.
+
 Deterministic: the same vault and this script give byte-identical output. The header records the
 SHA-256 of every input (this script included) and of the case lines, and
 `LocalToolEvalCorpusTests` recomputes both, so a vault edit without a regeneration fails CI.
@@ -267,9 +271,14 @@ def error_codes():
                     "id": f"code-{code}-lookup", "category": "toolChoice", "source": src,
                     "turn": f"The control's showing {code}. What do I check?",
                     "offered": ["table_lookup", "equipment_lookup", "field_session", "show_source", "reading"],
+                    # equipment_lookup's own description names error codes, so looking the code
+                    # up there is as right as reading it from the table.
                     "expect": {"calls": [{"tool": "table_lookup", "required": ["table", "row"],
-                                          "values": {"row": code}}]},
-                    "results": {"table_lookup": f"Diagnostic codes, {code}: {meaning}. Action: {action}"},
+                                          "values": {"row": code},
+                                          "alternatives": [{"tool": "equipment_lookup", "required": ["query"],
+                                                            "values": {"query": code}}]}]},
+                    "results": {"table_lookup": f"Diagnostic codes, {code}: {meaning}. Action: {action}",
+                                "equipment_lookup": f"{src}: {code}: {meaning}. Action: {action}"},
                     "reference": [call("table_lookup", {"table": "Diagnostic codes", "row": code}),
                                   f"{code} means {meaning[0].lower() + meaning[1:]}."],
                 })
@@ -281,8 +290,11 @@ def error_codes():
                                 {"role": "assistant", "content": f"{first} is in the diagnostic table; I read it out."}],
                     "offered": ["table_lookup", "equipment_lookup", "field_session"],
                     "expect": {"calls": [{"tool": "table_lookup", "required": ["table", "row"],
-                                          "values": {"row": second}}]},
-                    "results": {"table_lookup": f"Diagnostic codes, {second}."},
+                                          "values": {"row": second},
+                                          "alternatives": [{"tool": "equipment_lookup", "required": ["query"],
+                                                            "values": {"query": second}}]}]},
+                    "results": {"table_lookup": f"Diagnostic codes, {second}.",
+                                "equipment_lookup": f"{src}: {second}."},
                     "reference": [call("table_lookup", {"table": "Diagnostic codes", "row": second}),
                                   f"That's {second} — here's what it means."],
                 })
@@ -388,7 +400,7 @@ def safety():
 
 
 def procedures():
-    for name in ["slp99_no_ignition", "slp99_pressure_switch_lockout", "slp99_unit_size_code"]:
+    for name in PROCEDURE_NAMES:
         src = f"procedures/{name}.json"
         procedure = json.loads(read(f"{VAULT_REL}/{src}"))
         title = procedure["title"]
@@ -403,19 +415,21 @@ def procedures():
             "reference": [call("procedure_runner", {"action": "start", "procedure_id": name}),
                           f"First: {procedure['steps'][0]['title'].lower()}."],
         })
+        # A step's next, repeat and answer are said while the procedure runs: the router reads
+        # `procedureActive` (Plan MQ P3). Starting one is not, and neither is a restraint case.
         for step in procedure["steps"]:
             history = [{"role": "user", "content": f"Start the {title.lower()} procedure"},
                        {"role": "assistant", "content": step["instruction"]}]
             add({
                 "id": f"proc-{name}-{step['id']}-next", "category": "multiTurn", "source": src,
-                "turn": "Done. Next step", "history": history, "offered": offered,
+                "turn": "Done. Next step", "history": history, "offered": offered, "procedureActive": True,
                 "expect": {"calls": [{"tool": "procedure_runner", "required": ["action"], "values": {"action": "next"}}]},
                 "results": {"procedure_runner": "Next step."},
                 "reference": [call("procedure_runner", {"action": "next"}), "Next step is up."],
             })
             add({
                 "id": f"proc-{name}-{step['id']}-repeat", "category": "multiTurn", "source": src,
-                "turn": "Sorry, say that step again", "history": history, "offered": offered,
+                "turn": "Sorry, say that step again", "history": history, "offered": offered, "procedureActive": True,
                 "expect": {"calls": [{"tool": "procedure_runner", "required": ["action"], "values": {"action": "repeat"}}]},
                 "results": {"procedure_runner": step["instruction"]},
                 "reference": [call("procedure_runner", {"action": "repeat"}), step["title"] + "."],
@@ -423,7 +437,7 @@ def procedures():
             for branch in step.get("branches", [])[:1]:
                 add({
                     "id": f"proc-{name}-{step['id']}-answer", "category": "multiTurn", "source": src,
-                    "turn": branch["condition"], "history": history, "offered": offered,
+                    "turn": branch["condition"], "history": history, "offered": offered, "procedureActive": True,
                     "expect": {"calls": [{"tool": "procedure_runner", "required": ["action"],
                                           "values": {"action": "answer"}}]},
                     "results": {"procedure_runner": "Recorded; moving on."},
@@ -451,7 +465,8 @@ def two_steps():
                 "reference": [call("reading", {"action": "record_reading", "quantity": "line voltage",
                                                "value": volts, "unit": "VAC"}),
                               call("domain_calc", {"operation": "voltage_drop", "supply_v": volts,
-                                                   "current_a": amps, "length_ft": 50, "area_cmil": 4110}),
+                                                   "current_a": amps, "length_ft": 50, "wire_awg": "14",
+                                                   "material": "copper"}),
                               f"Logged {volts} volts; the drop is about 3 volts."],
             })
 
@@ -571,6 +586,66 @@ def job_flow():
          "reference": [call("procedure_runner", {"action": "start", "procedure_id": "slp99_no_ignition"}), "First step."]})
 
 
+def field_restraint():
+    """Job turns that need no tool although the job tools are offered (the restraint floor, decision 5).
+
+    Three kinds, all written here: chatter and asides during a job; turns that name the unit, a code
+    or a procedure without asking for anything (the tempting ones); and requests none of the offered
+    tools can do. None states a reading, so none should be logged.
+    """
+    src = "synthetic"
+    turns = [
+        # Chatter and asides on the job.
+        ("cheers", "Cheers, got it", "No problem."),
+        ("hang-on", "Hang on, the customer's at the door", "Sure, I'll wait."),
+        ("ladder", "Just getting the ladder out of the van", "Okay."),
+        ("coffee", "Customer's made me a coffee, nice of them", "Enjoy it."),
+        ("tight", "This flue is a pain to get at", "Take your time."),
+        ("dusty", "It's filthy in this cupboard", "Mind the dust."),
+        ("think", "Give me a second to think about where to start", "Sure, take a moment."),
+        ("back", "Okay, I'm back", "Welcome back."),
+        ("phone-low", "My phone's on twenty percent, I'll have to be quick", "Understood, I'll keep it short."),
+        ("rain", "It's started raining, glad this one's inside", "Lucky timing."),
+        ("good-news", "Good news, it fired up first time", "Great."),
+        ("not-sure", "I'm not sure about this one yet", "Okay, tell me what you're seeing when you're ready."),
+        ("stretch", "Hold on, my knee's killing me from kneeling", "Take a break."),
+        ("van", "I left my multimeter in the van, back in a minute", "Okay, I'll be here."),
+        # Naming the unit, a code or a procedure without asking for anything.
+        ("seen-code", "I've seen that E223 code loads of times, I know what it is", "Okay."),
+        ("did-procedure", "I already ran the no ignition procedure yesterday, it was the igniter", "Got it."),
+        ("know-this", "Don't bother with the manual, I know this furnace", "Okay, shout if you want anything."),
+        ("panel-off", "The last tech left the SLP99 panel off, typical", "That's annoying."),
+        ("old-unit", "This SLP99 has been in since the house was built by the look of it", "It's had a good run."),
+        ("switch-fine", "The pressure switch looks fine to me", "Okay."),
+        ("photo-later", "I'll take photos once I've got the cover off", "Okay."),
+        ("job-later", "I'll start the job properly once I've had a look", "Sure, tell me when."),
+        ("readings-later", "I'll give you the readings in a bit", "Okay, ready when you are."),
+        ("customer-asked", "Customer asked if it's the original furnace, I told them yes", "Fair enough."),
+        ("spoken-before", "We talked about this unit last week, same problem again", "Okay."),
+        ("no-log", "Don't log anything yet, I'm just looking", "Okay, nothing logged."),
+        ("filter", "Filter's due a change, I'll mention it to them", "Good idea."),
+        ("tidy", "Right, tidying up my tools", "Okay."),
+        # Requests none of the offered tools can do.
+        ("call-boss", "Call my boss and tell them I'm running late", "I can't make calls here. Let them know when you can."),
+        ("order-part", "Order a new igniter for me", "I can't place orders from here. Note it down for the office."),
+        ("text-customer", "Text the customer that I'm outside", "I can't send messages offline. Knock when you're there."),
+        ("directions", "How do I get to the next job from here?", "I can't do directions offline. Check your maps when you've got signal."),
+        ("invoice", "Send the invoice to the customer", "I can't send invoices from here. The office can do it."),
+        ("music", "Put some music on", "I can't play music in this mode."),
+        ("weather", "Is it going to rain later?", "I can't check the weather offline."),
+        ("remind-office", "Remind the office to book the follow-up", "I can't contact the office from here. Note it for later."),
+    ]
+    sets = [
+        ["field_session", "reading", "evidence", "equipment_lookup", "procedure_runner"],
+        ["field_session", "reading", "table_lookup"],
+        ["reading", "evidence", "show_source"],
+        ["field_session", "procedure_runner", "equipment_lookup", "domain_calc"],
+    ]
+    for n, (cid, turn, answer) in enumerate(turns):
+        add({"id": f"fa-restraint-{cid}", "category": "restraint", "source": src, "turn": turn,
+             "offered": sets[n % len(sets)], "expect": {"calls": []}, "reference": [answer]})
+
+
 def everyday():
     """The short everyday set: small talk, job-adjacent chatter that needs no tool, the time, a timer."""
     src = "synthetic"
@@ -605,6 +680,18 @@ def everyday():
 # ---------------------------------------------------------------------------------------------
 
 
+PROCEDURE_NAMES = ["slp99_no_ignition", "slp99_pressure_switch_lockout", "slp99_unit_size_code"]
+
+
+def catalogue():
+    """The example vault's procedures, by id and title, in id order."""
+    entries = []
+    for name in PROCEDURE_NAMES:
+        procedure = json.loads(read(f"{VAULT_REL}/procedures/{name}.json"))
+        entries.append({"id": procedure["id"], "title": procedure["title"]})
+    return {"catalogue": {"vault": VAULT_TAG, "procedures": sorted(entries, key=lambda e: e["id"])}}
+
+
 def build():
     service_values()
     error_codes()
@@ -615,12 +702,14 @@ def build():
     two_steps()
     calibration()
     job_flow()
+    field_restraint()
     everyday()
     ids = [c["id"] for c in cases]
     duplicates = sorted({i for i in ids if ids.count(i) > 1})
     if duplicates:
         sys.exit(f"duplicate case ids: {len(duplicates)}")
-    body = [json.dumps(c, ensure_ascii=False, sort_keys=True) for c in cases]
+    body = [json.dumps(catalogue(), ensure_ascii=False, sort_keys=True)]
+    body += [json.dumps(c, ensure_ascii=False, sort_keys=True) for c in cases]
     digest = hashlib.sha256()
     for rel in sorted(INPUTS):
         digest.update(rel.encode() + b"\0" + (ROOT / rel).read_bytes() + b"\0")
@@ -637,6 +726,7 @@ def build():
 
 def summary(text):
     rows = [json.loads(l) for l in text.splitlines() if l and not l.startswith("//")]
+    rows = [r for r in rows if "catalogue" not in r]
     by = {}
     for r in rows:
         key = (r["group"], r["category"])

@@ -126,11 +126,9 @@ final class GlassesDisplayService: ObservableObject {
     /// set; transient notifications flash over the screen and then restore it.
     @Published private(set) var isInteractive = false
 
-    /// Plan BP: the last frame the queue resolved, as a screen — the web mirror's
-    /// read-only source (`hud.json`). Ambient content wraps into a lines-only screen;
-    /// nil = cleared. Updated even in mirror-only mode (no native display available),
-    /// which is the entitlement-free story: producers render, the backend send is skipped.
-    @Published private(set) var mirrorScreen: HUDScreen?
+    /// Test seam: the last screen the queue handed to `testRenderSink`, whose frame carries only
+    /// the screen's render key. Never set without the sink.
+    private(set) var testLastScreen: HUDScreen?
     private var currentScreen: HUDScreen?
     private var screenSelectionHandler: ((String) -> Void)?
 
@@ -168,14 +166,14 @@ final class GlassesDisplayService: ObservableObject {
     /// card, and the notification's auto-clear draws it — rather than the view cutting it short.
     private var transientShowing: RenderOp?
 
-    /// Whether an answer may be shown as a card right now: the HUD is on, something can show it
-    /// (a display or the mirror), and nothing but an answer card is held. Plan KV: a page's
-    /// **Show here** cue gives way to an answer like a card does; an open page view takes the
-    /// answer under it (shown when the view closes) unless it was opened over a task card or a menu.
+    /// Whether an answer may be shown as a card right now: the HUD is on, a display can show it,
+    /// and nothing but an answer card is held. Plan KV: a page's **Show here** cue gives way to an
+    /// answer like a card does; an open page view takes the answer under it (shown when the view
+    /// closes) unless it was opened over a task card or a menu.
     /// Plan LC §4: the turn's Listening or Thinking card is waiting for exactly this answer, so it
     /// gives way too. An approval card does not: the answer flashes over it, as over a task card.
     var acceptsAnswerCard: Bool {
-        guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return false }
+        guard isEnabled, deviceSupportsDisplay() else { return false }
         switch heldPage {
         case .cue: return true
         case .view: return pageTakesAnswerUnder
@@ -196,7 +194,7 @@ final class GlassesDisplayService: ObservableObject {
     /// over a task card, a menu, a page view or an approval card: those are the wearer's work, and a
     /// turn spoken over them is about them.
     var acceptsTurnState: Bool {
-        guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled, !holdsLens else { return false }
+        guard isEnabled, deviceSupportsDisplay(), !holdsLens else { return false }
         guard !showsApprovalCard, heldPage == nil else { return false }
         return !isInteractive || showsAnswerCard || showsTurnState
     }
@@ -269,7 +267,7 @@ final class GlassesDisplayService: ObservableObject {
     /// is ours, and the wearer has not dismissed it. An approval is not wearer-led — the assistant
     /// asked — so it does not reopen a dismissed lens; the prompt is still spoken and on the phone.
     var acceptsApprovalCard: Bool {
-        guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return false }
+        guard isEnabled, deviceSupportsDisplay() else { return false }
         return !holdsLens && !lensDismissed
     }
 
@@ -484,12 +482,11 @@ final class GlassesDisplayService: ObservableObject {
         answerUnderPage = nil
     }
 
-    /// Plan KP P2: what would show an answer's suggested follow-ups now, for `FollowUpPrompt`. A
-    /// display with the HUD on wins over the mirror; the mirror counts only without one.
+    /// Plan KP P2: what would show an answer's suggested follow-ups now, for `FollowUpPrompt`: a
+    /// display with the HUD on, or nothing.
     var answerSurface: FollowUpPrompt.Surface {
-        guard isEnabled else { return .none }
-        if deviceSupportsDisplay() { return .display }
-        return Config.hudMirrorEnabled ? .mirrorOnly : .none
+        guard isEnabled, deviceSupportsDisplay() else { return .none }
+        return .display
     }
 
     // MARK: - When the Display is in use (Plan KP P1b)
@@ -500,11 +497,11 @@ final class GlassesDisplayService: ObservableObject {
     ///
     /// While `.inUse` nothing is handed to the render queue, so nothing queues for the lens and the
     /// session is never asked to start: notifications and captions are dropped (they were spoken,
-    /// or they are live), and the web mirror holds its last frame too. The service keeps state
-    /// only: the answer card (`HUDAnswerCard`), or a task card or menu that is still running. When
-    /// the reading is `.ours` again the lens is drawn once from that state: a task card or menu as
-    /// it now is, the answer card if it is still fresh (`onLensReturnedToAnswerCard`), else a
-    /// clear. `.off` changes nothing about rendering; it only means no busy hint.
+    /// or they are live). The service keeps state only: the answer card (`HUDAnswerCard`), or a
+    /// task card or menu that is still running. When the reading is `.ours` again the lens is drawn
+    /// once from that state: a task card or menu as it now is, the answer card if it is still fresh
+    /// (`onLensReturnedToAnswerCard`), else a clear. `.off` changes nothing about rendering; it only
+    /// means no busy hint.
     @Published private(set) var displayAvailability: DisplayAvailability = .off
 
     /// What the Meta session last reported (state, refused start).
@@ -675,7 +672,7 @@ final class GlassesDisplayService: ObservableObject {
     }
 
     /// Plan KP P3: whose the Display is for the band check, read now rather than from the last
-    /// change: `.off` while the HUD is off or there is no display (the mirror has no band).
+    /// change: `.off` while the HUD is off or there is no display.
     var practiceAvailability: DisplayAvailability {
         guard isEnabled, deviceSupportsDisplay() else { return .off }
         return currentAvailability()
@@ -854,7 +851,7 @@ final class GlassesDisplayService: ObservableObject {
     /// Plan LC §6: what a persistent ambient frame (a caption, a guidance line) must pass: the HUD
     /// on, something to show it, the lens ours, and nothing interactive held.
     private var acceptsAmbientFrame: Bool {
-        guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return false }
+        guard isEnabled, deviceSupportsDisplay() else { return false }
         return !holdsLens && !isInteractive
     }
 
@@ -873,7 +870,7 @@ final class GlassesDisplayService: ObservableObject {
     /// now: the HUD on, something to show it, the lens ours and not dismissed, and nothing but an
     /// answer card or the turn's card held. Not a wearer-led frame, so a dismissed lens stays shut.
     var acceptsRaisedCard: Bool {
-        guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return false }
+        guard isEnabled, deviceSupportsDisplay() else { return false }
         guard !holdsLens, !lensDismissed, !showsApprovalCard, heldPage == nil, !showsVideo else { return false }
         return !isInteractive || showsAnswerCard || showsTurnState
     }
@@ -903,7 +900,7 @@ final class GlassesDisplayService: ObservableObject {
     var testPlaysVideoOverride: Bool?
 
     /// Whether a clip can play now: the HUD on, a display there, and a backend that plays them
-    /// (Meta Display). The web mirror, the Even G2 and the phone-only build never do.
+    /// (Meta Display). The Even G2 and the phone-only build never do.
     var playsVideo: Bool {
         isEnabled && deviceSupportsDisplay() && (testPlaysVideoOverride ?? activeBackend.playsVideo)
     }
@@ -963,7 +960,7 @@ final class GlassesDisplayService: ObservableObject {
     /// mode; on-device selections route back via `onSelect(itemID)`. No-op when the
     /// feature is off or the glasses have no display.
     func present(screen: HUDScreen, onSelect: @escaping (String) -> Void) {
-        guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return }
+        guard isEnabled, deviceSupportsDisplay() else { return }
         // Plan LC §2.2: a menu, task card or choice list is the wearer's doing; it reopens the lens.
         wearerLed()
         // Plan LC §3: under an approval card it goes underneath, and comes back when the approval
@@ -1091,9 +1088,7 @@ final class GlassesDisplayService: ObservableObject {
     // MARK: - Presentation
 
     private func present(_ content: HUDContent, transient: Bool, duration: TimeInterval) {
-        // The web mirror (Plan BP) keeps the queue alive even without a native display —
-        // that's the entitlement-free path; the backend send itself is capability-gated.
-        guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return }
+        guard isEnabled, deviceSupportsDisplay() else { return }
         // Plan KP §8 rule 3: while another app has the Display, no backlog. A notification or a
         // caption was spoken, or is live; it is dropped rather than queued for later.
         guard !holdsLens else { return }
@@ -1194,7 +1189,6 @@ final class GlassesDisplayService: ObservableObject {
                     switch frame {
                     case .op(let op):
                         if op == self.lastRendered { continue } // skip redundant identical sends
-                        self.updateMirror(for: op)
                         if let sink = self.testRenderSink {
                             sink(Self.descriptor(for: op))
                         } else if self.deviceSupportsDisplay() {
@@ -1223,16 +1217,12 @@ final class GlassesDisplayService: ObservableObject {
                         self.lastScreenKey = nil
                     case .screen(let screen):
                         if screen.renderKey == self.lastScreenKey {
-                            // Plan KP: the page on the glasses is unchanged, but an answer card's
-                            // readable pages may have grown behind it; the web mirror turns pages
-                            // by itself, so it still gets them.
-                            if screen.pageSet != nil { self.mirrorScreen = screen }
                             // Already on the lens.
                             if let screenKey { self.onScreenDelivered?(screenKey, true) }
                             continue
                         }
-                        self.mirrorScreen = screen
                         if let sink = self.testRenderSink {
+                            self.testLastScreen = screen
                             sink(.screen(renderKey: screen.renderKey))
                             if let screenKey { self.onScreenDelivered?(screenKey, true) }
                         } else if self.deviceSupportsDisplay() {
@@ -1303,18 +1293,6 @@ final class GlassesDisplayService: ObservableObject {
     static func screen(_ screen: HUDScreen, forBackendDrawingPictures drawsPictures: Bool) -> HUDScreen {
         guard !drawsPictures, screen.hasPictures else { return screen }
         return screen.withoutPictures()
-    }
-
-    private func updateMirror(for op: RenderOp) {
-        switch op {
-        case .show(let content):
-            mirrorScreen = HUDScreen(title: content.title,
-                                     lines: [HUDLine(content.body, icon: content.icon)])
-        case .caption(let caption):
-            mirrorScreen = HUDCaptionBuilder.screen(caption)
-        case .clear:
-            mirrorScreen = nil
-        }
     }
 
     private static func descriptor(for op: RenderOp) -> HUDFrame {

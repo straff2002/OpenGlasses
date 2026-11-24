@@ -34,8 +34,7 @@ protocol GlassesDisplayBackend: AnyObject {
     var onTransportError: ((Error) -> Void)? { get set }
 
     /// Plan KV §6: whether the backend draws a screen's `HUDPicture`. Meta Display: yes. Even G2
-    /// (monochrome text cells) and the web mirror: no — they keep the cue line, and a picture is
-    /// never handed to them.
+    /// (monochrome text cells): no — it keeps the cue line, and a picture is never handed to it.
     var drawsPictures: Bool { get }
     /// The size of the last picture sent, in bytes as it went to the transport, for the support
     /// report. Nil when the backend sent none or cannot say.
@@ -49,8 +48,8 @@ protocol GlassesDisplayBackend: AnyObject {
     /// backend draws the three rows.
     func showCaption(_ caption: HUDCaption) async throws
 
-    /// Plan LC §6: whether the backend plays a clip (Meta Display: DAT's `VideoPlayer`). Even G2,
-    /// the web mirror and the phone-only build: no, and a task card on them never offers **Watch**.
+    /// Plan LC §6: whether the backend plays a clip (Meta Display: DAT's `VideoPlayer`). Even G2
+    /// and the phone-only build: no, and a task card on them never offers **Watch**.
     var playsVideo: Bool { get }
     /// Play `video` as the lens's whole frame. `onEnded` hears how it ended (it ran out, it was
     /// stopped, or the glasses reported an error), once.

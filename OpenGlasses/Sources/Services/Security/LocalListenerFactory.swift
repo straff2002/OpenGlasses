@@ -3,8 +3,8 @@ import Network
 
 /// What a legacy cleartext LAN service asks for when it wants to bind a socket.
 ///
-/// The two legacy servers (`MCPGlassesServer`, `WebHUDMirrorServer`) no longer construct an
-/// `NWListener` themselves; they describe the listener they want and hand the description to a
+/// The legacy server (`MCPGlassesServer`) no longer constructs an `NWListener` itself; it
+/// describes the listener it wants and hands the description to a
 /// ``LocalListenerFactory``. That indirection is the seam ``LocalServiceExposureCompositionTests``
 /// uses to prove — at the composition level, not only in the pure policy — that a
 /// Release-flavoured build never reaches listener construction at all.
@@ -59,7 +59,6 @@ enum LocalListenerProvider {
     static func debugBuildMarker(for service: LocalServiceExposurePolicy.Service) -> String {
         switch service {
         case .mcpGlasses: return "mcp-glasses-legacy-cleartext-listener-debug-only"
-        case .webHUDMirror: return "web-hud-mirror-legacy-cleartext-listener-debug-only"
         }
     }
 #endif

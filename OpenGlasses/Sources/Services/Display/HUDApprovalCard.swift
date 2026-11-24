@@ -5,7 +5,7 @@ import Foundation
 /// the lens until it is answered.
 ///
 /// **What it replaces.** The lens half of an approval was a ten-second ambient "Approve?" line the
-/// next frame could replace. Now, while the HUD is on and a display or the web mirror can show it
+/// next frame could replace. Now, while the HUD is on and a display can show it
 /// (`GlassesDisplayService.acceptsApprovalCard`), an approve/deny ask is a held card built by
 /// `HUDApprovalCardBuilder`: the action as the heading, who asks, one preview line, and **Approve**
 /// (primary, focused) · **Deny** · **Details** (when there is more). A text-reply ask (Plan FE P1)

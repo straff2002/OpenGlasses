@@ -134,4 +134,31 @@ final class AssistiveModePolicyTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "assistiveSocialEnabled")
         XCTAssertTrue(Config.assistiveSocialEnabled)
     }
+
+    // MARK: - Plan NA: the reply check
+
+    func testAssistiveAdviceThatSaysTheWayIsClearIsDropped() {
+        var corrected = false
+        let advice = AssistiveAdvice(advice: "A quiet residential street with trees. The road is clear.",
+                                     urgency: .low, followup: nil)
+        XCTAssertEqual(AssistiveModeService.screenedForSpeech(advice, alreadyCorrected: &corrected, enabled: true),
+                       "A quiet residential street with trees.")
+        XCTAssertFalse(corrected)
+    }
+
+    func testAssistiveFollowUpIsCheckedToo() {
+        var corrected = false
+        let advice = AssistiveAdvice(advice: "A bench to your left.", urgency: .medium,
+                                     followup: "You can cross when you're ready.")
+        XCTAssertEqual(AssistiveModeService.screenedForSpeech(advice, alreadyCorrected: &corrected, enabled: true),
+                       "A bench to your left. You can cross when you're ready. \(BlindReplyLine.safety.text(live: false))",
+                       "medium urgency: said, then corrected")
+        XCTAssertTrue(corrected)
+    }
+
+    func testAllDroppedAdviceIsNotSpoken() {
+        var corrected = true
+        let advice = AssistiveAdvice(advice: "It's all clear ahead of you now.", urgency: .high, followup: nil)
+        XCTAssertNil(AssistiveModeService.screenedForSpeech(advice, alreadyCorrected: &corrected, enabled: true))
+    }
 }

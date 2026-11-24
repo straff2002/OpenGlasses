@@ -4,14 +4,11 @@ import Foundation
 /// (Plan KP §4, P2).
 ///
 /// The model writes the follow-ups in the same reply, as a tagged tail (`FollowUpTail`), only when
-/// something shows them: a glasses display with the HUD on, or the web mirror. Decision 5 sets
-/// the defaults: **on for the Display, off for the mirror**. That is two settings, one per
-/// surface, read by `wanted(surface:onDisplay:onMirror:)`:
+/// something shows them: a glasses display with the HUD on. Decision 5 sets the default: **on for
+/// the Display**, read by `wanted(surface:onDisplay:)`:
 /// - a glasses display that can show answers (the HUD on, the active backend has a display) reads
-///   `Config.followUpsOnDisplayEnabled` (default on), whether or not the mirror is on too;
-/// - the mirror alone (the HUD on, no display, the mirror on) reads
-///   `Config.followUpsOnMirrorEnabled` (default off);
-/// - nothing showing answers: no clause, whatever the settings say.
+///   `Config.followUpsOnDisplayEnabled` (default on);
+/// - nothing showing answers: no clause, whatever the setting says.
 ///
 /// While another app has the Display (§8) the clause stays: the card is held and comes back.
 ///
@@ -30,8 +27,6 @@ enum FollowUpPrompt {
     enum Surface: Equatable {
         /// A glasses display (Meta Ray-Ban Display or Even G2) with the HUD on.
         case display
-        /// The web mirror, with the HUD on but no display.
-        case mirrorOnly
         /// Nothing shows answers.
         case none
     }
@@ -46,11 +41,10 @@ enum FollowUpPrompt {
         tags. It is never spoken or shown as text, so never mention it. Example: \(FollowUpTail.openTag)How long does it take?|What does it cost?\(FollowUpTail.closeTag)
         """
 
-    /// Pure: whether the clause is wanted for `surface` with these settings.
-    static func wanted(surface: Surface, onDisplay: Bool, onMirror: Bool) -> Bool {
+    /// Pure: whether the clause is wanted for `surface` with this setting.
+    static func wanted(surface: Surface, onDisplay: Bool) -> Bool {
         switch surface {
         case .display: return onDisplay
-        case .mirrorOnly: return onMirror
         case .none: return false
         }
     }
@@ -61,8 +55,6 @@ enum FollowUpPrompt {
 
     /// The clause for this turn's prompt, or nil.
     @MainActor static func clauseForPrompt() -> String? {
-        wanted(surface: currentSurface(),
-               onDisplay: Config.followUpsOnDisplayEnabled,
-               onMirror: Config.followUpsOnMirrorEnabled) ? clause : nil
+        wanted(surface: currentSurface(), onDisplay: Config.followUpsOnDisplayEnabled) ? clause : nil
     }
 }

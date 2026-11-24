@@ -1,6 +1,13 @@
 # Plan BP — Web App HUD Mirror (Ray-Ban Display, entitlement-free path)
 
-**Status:** ✅ P1+P2 shipped (2026-08-02); P3/P4 hardware-deferred as designed. P1:
+**Status:** ✅ **Shipped 2026-08-02 (P1+P2); retired 2026-11-23** — removed from the app. The native Display lens works now, so the stop-gap for while it waited on Meta's developer permission is no longer needed; and the glasses open only a public HTTPS address with a valid certificate, while the mirror served plain HTTP on the phone's own network (`http://<LAN-IP>:8766`), so as built it could never have loaded on them (Release builds already refused its listener). The
+server, page, payload, launcher files, settings screen, the display service's mirror tap and
+mirror-only mode, the follow-ups-on-the-mirror setting and the mirror's redaction of prepared cards
+are gone; at the first launch after the update `RetiredWebMirrorCleanup` deletes the mirror's
+Keychain token and its two preferences. P3–P5 are not owed. The phone's own HUD preview
+(`HUDMirrorView`) stays. History as it stood before retirement:
+
+✅ P1+P2 shipped (2026-08-02); P3/P4 hardware-deferred as designed. P1:
 `WebHUDPayload` (Codable DTO, stable wire names) + `WebHUDRenderer` (pure single-file HTML —
 additive-black asserted, amber non-cyan focus, `mrbd-web-app-capable` meta, D-pad keyboard nav,
 inline/polling modes sharing one client-side render function, `</`-escape so payload text can't

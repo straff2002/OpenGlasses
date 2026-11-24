@@ -6,8 +6,10 @@ import Foundation
 /// **Native tool calls** — the turn's tools passed as `ToolSpec`s for the model's own chat template
 /// to render, its calls read from mlx-swift-lm's parsers, and the bounded `LocalToolLoop` in place
 /// of the single shot — run only when `Config.localNativeToolCallsEnabled` is on **and** the model
-/// is on `allowlist` (decision 1: one model at a time, starting with Gemma 4 E2B) **and** it runs on
-/// MLX. GGUF has no tool parsing yet (P2).
+/// is on its runtime's allowlist (decision 1: one model at a time, starting with Gemma 4 E2B on
+/// MLX). GGUF models take their tools natively since P2, rendered and parsed by llama.cpp's
+/// `common/chat`, and only with GGUF switched on at all (`Config.ggufModelsEnabled`, which the
+/// GGUF runtime enforces by refusing to load anything while it is off).
 ///
 /// **Field Assist tools** go to a model that has earned them on a phone
 /// (`LocalModelCatalog.qualifiesForFieldAssistTools`, evidence only) or, with the flag on, to an
@@ -21,13 +23,30 @@ enum LocalNativeToolPolicy {
         "mlx-community/gemma-4-e2b-it-4bit",
     ]
 
+    /// Plan MQ P2: the GGUF targets the owner named — Gemma 4 E2B (the same model as the MLX
+    /// entry, so the two runtimes can be compared), Gemma 4 E4B and Qwen 3.5 4B — by their catalog
+    /// ids (`repository#file`), lowercased. Under qualification like the MLX entry: no badge.
+    static let ggufAllowlist: Set<String> = [
+        "ggml-org/gemma-4-e2b-it-gguf#gemma-4-e2b-it-q4_0.gguf",
+        "ggml-org/gemma-4-e4b-it-gguf#gemma-4-e4b-it-q4_0.gguf",
+        "ggml-org/qwen3.5-4b-gguf#qwen3.5-4b-q4_k_m.gguf",
+    ]
+
     static func isAllowlisted(_ modelID: String) -> Bool {
         allowlist.contains(modelID.lowercased())
     }
 
+    /// Allowlisted for `runtime`: an MLX id never qualifies a GGUF model, or the other way round.
+    static func isAllowlisted(_ modelID: String, runtime: LocalModelRuntime) -> Bool {
+        switch runtime {
+        case .mlx: return allowlist.contains(modelID.lowercased())
+        case .llamaCpp: return ggufAllowlist.contains(modelID.lowercased())
+        }
+    }
+
     /// The turn runs native tool calls and the loop.
     static func usesNativeToolCalls(modelID: String, runtime: LocalModelRuntime, flagOn: Bool) -> Bool {
-        flagOn && runtime == .mlx && isAllowlisted(modelID)
+        flagOn && isAllowlisted(modelID, runtime: runtime)
     }
 
     /// The model is offered the Field Assist tools while Field Assist is on: qualified by evidence,
@@ -61,12 +80,13 @@ enum LocalNativeToolPolicy {
     /// `FieldAssistLocalToolSet`), then the everyday tools the turn's words name, then the rest in
     /// the registry's order — at most `perTurnLimit`, each kept only while the definitions fit
     /// `budgetTokens`. Pure.
+    ///
+    /// The order returned is the turn's **priority order**, highest first, and it reaches the runtime
+    /// as it is (`LocalToolTurn.tools`): when the definitions don't fit the prompt, the runtime's fit
+    /// (`LocalToolFit`) drops from the end.
     static func nativeToolNames(field: [String], everyday: [String], utterance: String,
                                 estimatedTokens: (String) -> Int, budgetTokens: Int) -> [String] {
-        let words = Set(utterance.lowercased().split { !$0.isLetter }.map(String.init))
-        let remaining = everyday.filter { !field.contains($0) }
-        let hinted = remaining.filter { name in everydayCues[name]?.contains(where: words.contains) ?? false }
-        let ordered = field + hinted + remaining.filter { !hinted.contains($0) }
+        let ordered = ordered(field: field, everyday: everyday, utterance: utterance)
         var used = 0
         var kept: [String] = []
         for name in ordered where kept.count < perTurnLimit {
@@ -76,5 +96,15 @@ enum LocalNativeToolPolicy {
             kept.append(name)
         }
         return kept
+    }
+
+    /// The priority order before any budget: `field` as given, then the everyday tools the turn's
+    /// words name, then the rest in the given order. The device qualification app orders a case's
+    /// offered tools with this, so its runs drop what a turn would drop. Pure.
+    static func ordered(field: [String], everyday: [String], utterance: String) -> [String] {
+        let words = Set(utterance.lowercased().split { !$0.isLetter }.map(String.init))
+        let remaining = everyday.filter { !field.contains($0) }
+        let hinted = remaining.filter { name in everydayCues[name]?.contains(where: words.contains) ?? false }
+        return field + hinted + remaining.filter { !hinted.contains($0) }
     }
 }

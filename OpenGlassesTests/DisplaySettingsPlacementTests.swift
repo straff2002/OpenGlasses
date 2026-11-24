@@ -150,8 +150,7 @@ final class DisplaySettingsPlacementTests: XCTestCase {
                       "the link goes through the category's lock wrapper")
         let hardware = try XCTUnwrap(glasses.components(separatedBy: "struct HardwarePrivacyView: View {").dropFirst().first?
             .components(separatedBy: "// MARK: - Glasses Sub-View").first, "HardwarePrivacyView is gone")
-        for row in ["glassesDisplayEnabled", "hudChoiceButtonsEnabled", "HUDMirrorView(", "EvenDisplaySettingsView(",
-                    "WebHUDMirrorSettingsView("] {
+        for row in ["glassesDisplayEnabled", "hudChoiceButtonsEnabled", "HUDMirrorView(", "EvenDisplaySettingsView("] {
             XCTAssertFalse(hardware.contains(row), "\(row) is in Hardware & Privacy too; it has one home, Display & HUD")
         }
         let glassesPage = try XCTUnwrap(glasses.components(separatedBy: "struct GlassesSettingsView: View {").dropFirst()

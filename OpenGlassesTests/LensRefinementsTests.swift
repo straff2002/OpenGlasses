@@ -122,7 +122,7 @@ final class LensRefinementsTests: XCTestCase {
         display.showCaption(caption)
         await drain()
         XCTAssertEqual(frames.frames.last, .caption(rows: ["one", "two"], speaker: "Alice"))
-        XCTAssertEqual(display.mirrorScreen?.lines.first?.emphasis, .meta)
+        XCTAssertEqual(HUDCaptionBuilder.screen(caption).lines.first?.emphasis, .meta)
 
         display.present(screen: HUDScreen(title: "Task", items: [item("back", .outline)])) { _ in }
         await drain()

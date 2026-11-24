@@ -68,6 +68,11 @@ enum SpeechSource: String, CaseIterable, Sendable {
     /// the session's own limit lines.
     case hint
 
+    /// The app's own correction after the reply check withheld or stopped a sentence (Plan NA):
+    /// "I can't tell from the camera whether it's safe…". Said in the app's voice, never the
+    /// model's, during a live session as in a Direct turn.
+    case replyCheck
+
     /// The log token.
     var token: PrivacyToken { PrivacyToken(rawValue) }
 }

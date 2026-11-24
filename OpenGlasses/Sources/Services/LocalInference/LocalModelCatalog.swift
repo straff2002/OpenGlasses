@@ -69,6 +69,11 @@ enum LocalModelCatalog {
         /// What the entry would claim once a device run backs it. Not a claim: the descriptor's
         /// capabilities are this, filtered by `evidence` (`claimedCapabilities(_:evidence:)`).
         let pendingClaims: Set<LocalModelCapability>
+        /// The publisher's recommended sampling (Plan MQ H1), or nil for the global set.
+        var sampling: LocalModelSampling? = nil
+        /// The dated qualification record in `reports/` that backs `deviceVerified` (decision 8),
+        /// as a path from the repository root. A test fails when it names a file git does not track.
+        var evidenceRecord: String? = nil
 
         var id: LocalModelID { descriptor.id }
 
@@ -127,6 +132,19 @@ enum LocalModelCatalog {
                 return "claims \(badged.map(\.rawValue).sorted().joined(separator: ", "))"
                     + " without device evidence"
             }
+        } else if let reason = evidenceRecordError(entry.evidenceRecord) {
+            return reason
+        }
+        if let reason = entry.sampling?.validationError(supportsPresencePenalty: true) { return reason }
+        return nil
+    }
+
+    /// Decision 8: device evidence names its dated record in `reports/`. Nil when `record` is a
+    /// JSON file under `reports/`; that git tracks it is `LocalModelCatalogTests`' check.
+    static func evidenceRecordError(_ record: String?) -> String? {
+        guard let record, !record.isEmpty else { return "device evidence names no qualification record" }
+        guard record.hasPrefix("reports/"), record.hasSuffix(".json"), !record.contains("..") else {
+            return "the qualification record must be a JSON file under reports/"
         }
         return nil
     }
@@ -190,7 +208,8 @@ enum LocalModelCatalog {
                                          verifiedOn: "2026-09-15"),
               quantization: "4bit",
               notes: String(localized: "On-device agent — tool calling, 140+ languages, vision. Uses about 4 GB of memory while running."),
-              minimumRAMGB: 8),
+              minimumRAMGB: 8,
+              sampling: gemma4Sampling),
         entry(id: "mlx-community/gemma-4-e4b-it-4bit",
               displayName: "Gemma 4 E4B (Agent+)",
               snapshot: VerifiedSnapshot(revision: "475b9088d29754a3379866cf5aeb6b41acd313c2",
@@ -200,7 +219,8 @@ enum LocalModelCatalog {
                                          verifiedOn: "2026-09-15"),
               quantization: "4bit",
               notes: String(localized: "Bigger Gemma 4 — tool calling and vision with more room for quality. Needs a high-memory device (12 GB)."),
-              minimumRAMGB: 12),
+              minimumRAMGB: 12,
+              sampling: gemma4Sampling),
         // Vision models (can see photos from glasses)
         entry(id: "mlx-community/SmolVLM2-2.2B-Instruct-mlx",
               displayName: "SmolVLM2 2.2B (Vision)",
@@ -229,7 +249,8 @@ enum LocalModelCatalog {
                                          fileCount: 10,
                                          verifiedOn: "2026-09-15"),
               quantization: "4bit",
-              notes: String(localized: "Liquid AI hybrid reasoning model — thinks before every answer (expect a pause before speech starts), then answers with tool use and instruction following.")),
+              notes: String(localized: "Liquid AI hybrid reasoning model — thinks before every answer (expect a pause before speech starts), then answers with tool use and instruction following."),
+              sampling: lfm25Sampling),
         entry(id: "mlx-community/Qwen2.5-3B-Instruct-4bit",
               displayName: "Qwen 2.5 3B",
               snapshot: VerifiedSnapshot(revision: "4f83f8f146fdf28b512a06562b671d7af4fab457",
@@ -254,6 +275,24 @@ enum LocalModelCatalog {
               notes: String(localized: "Ultra-light, basic capability.")),
     ]
 
+    // MARK: - Publishers' sampling (Plan MQ H1)
+
+    /// Google's Gemma 4 model cards (E2B and E4B instruction-tuned), "Best Practices" › "1. Sampling
+    /// Parameters": one standardized configuration "across all use cases". The cards give no min-p,
+    /// no repetition penalty and nothing specific to tool calls, so those stay global. Read
+    /// 2026-11-22.
+    static let gemma4Sampling = LocalModelSampling(
+        general: .init(temperature: 1.0, topP: 0.95, topK: 64),
+        source: "Gemma 4 E2B/E4B model cards, Best Practices: Sampling Parameters (temperature 1.0, top-p 0.95, top-k 64), read 2026-11-22")
+
+    /// Liquid AI's LFM2.5 2.6B model card, "Model Details" › "Generation parameters". The values
+    /// `LocalLLMService.generateParameters(for:)` hard-coded for reasoning models before H1, moved
+    /// here. The card states no top-p, so the global top-p applies (it was the library's 1.0).
+    /// Read 2026-11-22.
+    static let lfm25Sampling = LocalModelSampling(
+        general: .init(temperature: 0.1, topK: 50, repetitionPenalty: 1.1),
+        source: "LFM2.5 2.6B model card, Model Details: Generation parameters (temperature 0.1, top-k 50, repetition penalty 1.1), read 2026-11-22")
+
     /// Build an entry, deriving every runtime fact from the one place that already owns it —
     /// context window from `LocalModelBudget`, working set from `MemoryHeadroom`, capabilities from
     /// the asserted sets above, and every byte count from the verified snapshot. Nothing is
@@ -268,7 +307,9 @@ enum LocalModelCatalog {
                               quantization: String?,
                               notes: String,
                               minimumRAMGB: Double = 0,
-                              evidence: Evidence = .fileMetadataOnly) -> Entry {
+                              evidence: Evidence = .fileMetadataOnly,
+                              evidenceRecord: String? = nil,
+                              sampling: LocalModelSampling? = nil) -> Entry {
         let weights = snapshot.weightsBytes
         let working = MemoryHeadroom.workingOverheadBytes
         var pending: Set<LocalModelCapability> = [.text]
@@ -299,7 +340,9 @@ enum LocalModelCatalog {
                      notes: notes,
                      minimumRAMGB: minimumRAMGB,
                      evidence: evidence,
-                     pendingClaims: pending)
+                     pendingClaims: pending,
+                     sampling: sampling,
+                     evidenceRecord: evidenceRecord)
     }
 
     // MARK: - Lookup

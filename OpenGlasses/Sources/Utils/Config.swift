@@ -582,6 +582,14 @@ struct Config {
     @UserDefaultsBacked("directSentenceStreamingEnabled", default: true)
     static var directSentenceStreamingEnabled: Bool
 
+    /// Plan NA: the reply check — a Blind Assistant answer that tells the wearer a way is safe or
+    /// clear, or states a number a reading did not show, is withheld before it is said or stopped
+    /// while it is (`BlindReplyCheck`, `BlindReplyGuard`). On by default; no wearer switch
+    /// (decision 10). This is the kill switch, in Settings › Advanced & Support › Advanced ›
+    /// Developer, so a bad table can be switched off without a build.
+    @UserDefaultsBacked("blindReplyCheckEnabled", default: true)
+    static var blindReplyCheckEnabled: Bool
+
     /// Plan LA: when something the wearer asked for has fully happened, a short done tone instead
     /// of a spoken reply (`QuietTurnJudge`). Off by default (decision 1); hidden and read as off in
     /// Simple Mode. Settings › Voice.
@@ -2400,7 +2408,8 @@ struct Config {
     @UserDefaultsBacked("localRuntimeCoordinatorEnabled", default: false)
     static var localRuntimeCoordinatorEnabled: Bool
 
-    /// Plan MQ P1: native tool calls on a downloaded model on `LocalNativeToolPolicy.allowlist` —
+    /// Plan MQ P1: native tool calls on a downloaded model on `LocalNativeToolPolicy`'s allowlists
+    /// (MLX, and GGUF since P2 with `ggufModelsEnabled` on too) —
     /// tools rendered by the model's own chat template, calls read from the runtime's parsers, the
     /// bounded `LocalToolLoop` in place of the single shot, and the Field Assist tools while a model
     /// is under qualification. Off by default (Developer panel); off is today's path.
@@ -4248,7 +4257,7 @@ struct Config {
     static func setFollowUpsOnDisplayEnabled(_ enabled: Bool) { followUpsOnDisplayEnabled = enabled }
 
     /// Display & HUD › Highlight colour: what the app draws itself on the lens (manual-page marks,
-    /// the turn arrow, the Web App's text and focus ring). Native lens text keeps the Display's own
+    /// the turn arrow). Native lens text keeps the Display's own
     /// white and grey. Standard by default (`LensHighlightColour`).
     static var lensHighlightColour: LensHighlightColour {
         get { LensHighlightColour.stored() }
@@ -4268,12 +4277,6 @@ struct Config {
         get { LensAnswerLifetime.stored() }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: LensAnswerLifetime.storageKey) }
     }
-
-    /// Plan KP §4: the same follow-ups when only the web mirror shows answers (no display). Off by
-    /// default (decision 5): the mirror is read-only, so its buttons can't be pressed there.
-    @UserDefaultsBacked("followUpsOnMirrorEnabled", default: false) static var followUpsOnMirrorEnabled: Bool
-
-    static func setFollowUpsOnMirrorEnabled(_ enabled: Bool) { followUpsOnMirrorEnabled = enabled }
 
     // MARK: - Memory loop (self-improving)
 

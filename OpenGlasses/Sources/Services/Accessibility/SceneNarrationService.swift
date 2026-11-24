@@ -179,6 +179,9 @@ final class SceneNarrationService: ObservableObject {
     /// An inference is in flight. The on-device model allows one generation at a time, and a
     /// second entrant would be refused by `LocalLLMService` anyway — better not to ask.
     private var describing = false
+    /// Plan NA: the reply check's correction has been said in this narration session (once per
+    /// session, decision 3). Cleared when the session is torn down.
+    private var replyCheckCorrected = false
     /// An utterance is being handed to TTS. Distinct from `isTTSBusy`, which reports the engine.
     private var emitting = false
 
@@ -454,6 +457,7 @@ final class SceneNarrationService: ObservableObject {
     }
 
     private func teardown() {
+        replyCheckCorrected = false
         invalidateTimer()
         gate.reset()
         frameGate.reset()
@@ -543,7 +547,14 @@ final class SceneNarrationService: ObservableObject {
         defer { describing = false }
 
         guard let raw = await describeFrame(data) else { return }
-        let description = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Plan NA §4: checked before the speech gate, the context and the arbiter, so a dropped
+        // "the way ahead is clear" is neither said nor kept as grounding for a later answer.
+        let screened = BlindReplyScreen.screenAmbient(
+            raw.trimmingCharacters(in: .whitespacesAndNewlines), surface: .narration, urgency: nil,
+            enabled: Config.blindReplyCheckEnabled, alreadyCorrected: &replyCheckCorrected,
+            appLanguageIsEnglish: BlindReplyScreen.appLanguageIsEnglish)
+        BlindReplyCheckRecorder.record(screened.screened, surface: .narration)
+        let description = screened.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !description.isEmpty else { return }
         // The session may have ended during the await.
         guard policy.state.isPerceiving else { return }

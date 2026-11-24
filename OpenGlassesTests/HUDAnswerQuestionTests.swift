@@ -68,7 +68,7 @@ final class HUDAnswerQuestionTests: XCTestCase {
         XCTAssertEqual(lines.first?.emphasis, .meta)
         XCTAssertTrue(lines.first?.text.contains("invented") == true || lines.first?.text.hasSuffix("…") == true)
 
-        // The web mirror's page set: the question is on its first page and no other.
+        // The card's page set: the question is on its first page and no other.
         let set = try XCTUnwrap(first.pageSet)
         XCTAssertEqual(set.pages.map { questionLines($0).count }, [1] + Array(repeating: 0, count: set.pages.count - 1))
 

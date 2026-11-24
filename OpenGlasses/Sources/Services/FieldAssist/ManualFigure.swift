@@ -110,7 +110,7 @@ enum ManualFigureAttachment {
 /// opened on the whole page, controls in sight, with the part the answer is about a press away
 /// (**Back to part**). This line is what is left: the cue on a page the app put up by itself (on a
 /// card with **Show here**, so it never covers the lens unasked), and the whole message on a lens
-/// that draws text only (Even G2, the web mirror).
+/// that draws text only (Even G2).
 enum ManualFigureCue {
 
     /// A photographed page (Plan IF): its paper is grey, which the lens drawing stretches first.
