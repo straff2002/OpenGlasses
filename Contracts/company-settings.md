@@ -80,6 +80,15 @@ The off-host copy answers the same way. A `304` is never cached as a `200`.
   value. One they chose stays and is listed on the organisation's page with *Use company default*.
   Owned values and ceilings follow at once (between jobs) and are clamped on read.
 
+## The company's AI key
+
+`credentials.aiModel` is the key for the provider `aiModel` pins, sealed under the company secret like
+`credentials.workiz` (same domain, name `aiModel`). `check` refuses it without a pinned `aiModel` whose provider
+takes a key (`checkSealedModelKey`; `keylessProviders` take none). It is set through the sealing call, never an
+edit: `credentials` stays outside `administratorEditableFields`. A phone that holds the company secret (enrolled
+with the activation key) installs the model with it and asks nothing; any other phone asks for the key as before.
+A re-sealed key replaces the one in use; a profile that stops carrying one leaves it in place until removal.
+
 ## Managed App Configuration
 
 For a company that deploys with an MDM. The dictionary iOS keeps at

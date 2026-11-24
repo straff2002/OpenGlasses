@@ -17,6 +17,16 @@ enum OrgCredentialSeal {
     /// a published profile would stop opening.
     static let sealingSigningDomain = "openglasses.org-credential.v1"
     static let workiz = "workiz"
+    /// Plan ND decision 9: the key for the provider the profile's `aiModel` pins
+    /// (`OrgProfileManager.reconcileModel` opens it; nobody types it).
+    static let aiModel = "aiModel"
+
+    /// The profile's sealed `aiModel` key, opened with this phone's company secret. Nil when the
+    /// profile carries none, or this phone cannot open it (no secret, or another company's).
+    static func modelKey(in profile: ConfigProfile, secrets: CompanySecretStore = .device) -> String? {
+        guard let box = profile.credentials?.boxes[aiModel], let secret = secrets.read() else { return nil }
+        return open(box, name: aiModel, profileId: profile.profileId, companySecret: secret)
+    }
 
     private static func key(_ secret: Data) -> SymmetricKey {
         HKDF<SHA256>.deriveKey(inputKeyMaterial: SymmetricKey(data: secret),

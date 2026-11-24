@@ -55,6 +55,8 @@ enum LaunchState: String {
     case publishedVaultRows = "-OGUITestPublishedVaultRows"
     /// A fixture vault's draft review screen, drawn over the app (Plan LW P1).
     case vaultAuthoring = "-OGUITestVaultAuthoring"
+    /// Plan ND P2: with `freshInstall`, the managed first run for an invented company.
+    case managedOnboarding = "-OGUITestManagedOnboarding"
 }
 
 // MARK: - Deferrals

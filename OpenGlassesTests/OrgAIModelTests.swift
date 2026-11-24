@@ -16,6 +16,8 @@ final class OrgAIModelTests: XCTestCase {
     private var forgotAdminCard = 0
     private var departures: [OrgDeparture.Reason] = []
     private var fetchResult: Result<Data, Error> = .failure(URLError(.notConnectedToInternet))
+    /// Plan ND decision 9: the company secret this phone holds, if any.
+    private var companySecret: Data?
     private let issued = Date(timeIntervalSince1970: 1_790_000_000)
     private let address = URL(string: "https://config.northbridge.example/profile.txt")!
     private let ownConfig = ModelConfig(id: "mine", name: "My Groq", provider: "groq", apiKey: "gsk-mine",
@@ -32,6 +34,7 @@ final class OrgAIModelTests: XCTestCase {
         forgotAdminCard = 0
         departures = []
         fetchResult = .failure(URLError(.notConnectedToInternet))
+        companySecret = nil
     }
 
     private var privateKeyBase64: String { vendorKey.rawRepresentation.base64EncodedString() }
@@ -67,17 +70,26 @@ final class OrgAIModelTests: XCTestCase {
         }
         seams.forgetAdminCard = { [unowned self] in self.forgotAdminCard += 1 }
         seams.beginDeparture = { [unowned self] reason, _, _ in self.departures.append(reason) }
+        let secrets = CompanySecretStore(read: { [unowned self] in self.companySecret },
+                                         write: { [unowned self] in self.companySecret = $0 },
+                                         erase: { [unowned self] in self.companySecret = nil })
+        seams.sealedModelKey = { OrgCredentialSeal.modelKey(in: $0, secrets: secrets) }
         return OrgProfileManager(seams: seams)
     }
 
-    private func document(_ aiModel: ConfigProfile.AIModel?) throws -> String {
+    private func document(_ aiModel: ConfigProfile.AIModel?, sealedKey: String? = nil) throws -> String {
+        let secret = Data(repeating: 4, count: OrgCredentialSeal.secretLength)
+        let credentials = try sealedKey.map {
+            ConfigProfile.SealedCredentials([OrgCredentialSeal.aiModel: try OrgCredentialSeal.seal(
+                $0, name: OrgCredentialSeal.aiModel, profileId: "northbridge", companySecret: secret)])
+        }
         let profile = ConfigProfile(keyId: "k", profileId: "northbridge", organizationName: "Northbridge Mechanical",
-                                    issued: issued, leaseDays: 30, aiModel: aiModel)
+                                    issued: issued, leaseDays: 30, aiModel: aiModel, credentials: credentials)
         return try ProfileVerification.makeDocument(profile, privateKeyBase64: privateKeyBase64)
     }
 
-    private func enrol(_ manager: OrgProfileManager, _ aiModel: ConfigProfile.AIModel?) throws {
-        let review = try manager.review(document: try document(aiModel), source: .link, sourceURL: address).get()
+    private func enrol(_ manager: OrgProfileManager, _ aiModel: ConfigProfile.AIModel?, sealedKey: String? = nil) throws {
+        let review = try manager.review(document: try document(aiModel, sealedKey: sealedKey), source: .link, sourceURL: address).get()
         try manager.apply(review).get()
     }
 
@@ -290,5 +302,48 @@ final class OrgAIModelTests: XCTestCase {
         XCTAssertEqual(service.stage, .applied("Northbridge Mechanical"))
         XCTAssertEqual(activeId, "org-1")
         XCTAssertEqual(refreshed, 1)
+    }
+    // MARK: - The company's sealed key (Plan ND decision 9)
+
+    private let theCompanysSecret = Data(repeating: 4, count: OrgCredentialSeal.secretLength)
+
+    func testASealedKeyMakesTheModelReadyWithNothingTyped() throws {
+        companySecret = theCompanysSecret
+        let manager = makeManager()
+        let review = try manager.review(document: try document(claude, sealedKey: "sk-ant-company-key"), source: .link).get()
+        XCTAssertTrue(review.suppliesModelKey, "the review says the company supplies the key")
+        try manager.apply(review).get()
+        XCTAssertFalse(manager.needsModelSetup)
+        let config = try XCTUnwrap(models.first { $0.id == "org-1" })
+        XCTAssertEqual(config.apiKey, "sk-ant-company-key")
+        XCTAssertEqual(activeId, "org-1")
+    }
+
+    func testWithoutTheCompanySecretTheKeyWaitsUntilItIsKept() throws {
+        let manager = makeManager()
+        try enrol(manager, claude, sealedKey: "sk-ant-company-key")
+        XCTAssertTrue(manager.needsModelSetup, "a phone set up from a link cannot open the box")
+
+        companySecret = theCompanysSecret          // the activation key's secret is kept after the apply
+        manager.reconcileOrganizationModel()
+        XCTAssertFalse(manager.needsModelSetup)
+        XCTAssertEqual(models.first { $0.id == "org-1" }?.apiKey, "sk-ant-company-key")
+    }
+
+    func testAReplacedSealedKeyReplacesTheOneInUse() async throws {
+        companySecret = theCompanysSecret
+        let manager = makeManager()
+        try enrol(manager, claude, sealedKey: "sk-ant-company-key")
+        fetchResult = .success(Data(try document(claude, sealedKey: "sk-ant-rotated-key").utf8))
+        await manager.renewIfDue(force: true)
+        XCTAssertEqual(models.first { $0.id == "org-1" }?.apiKey, "sk-ant-rotated-key")
+    }
+
+    func testASealedKeyForTheWrongProviderIsNotUsed() throws {
+        companySecret = theCompanysSecret
+        let manager = makeManager()
+        try enrol(manager, claude, sealedKey: "sk-openai-not-anthropic")
+        XCTAssertTrue(manager.needsModelSetup, "the same format check as a typed key")
+        XCTAssertEqual(models, [ownConfig])
     }
 }

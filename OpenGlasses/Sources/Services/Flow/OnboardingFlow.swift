@@ -9,17 +9,55 @@ import Foundation
 /// same page, because Field Assist technicians do use glasses, though not all the time.
 enum OnboardingFlow {
 
-    /// Every page, in the order a first run meets them. The raw value is the page index the view
-    /// and `OrgFirstRun` count in.
+    /// Every page a first run can meet. Which of them it meets, and in what order, is `route`.
     enum Page: Int, CaseIterable {
         case welcome
         case provider
         case accessKey
         case services
         case permissions
+        /// Plan ND: the language the app speaks, in one line. Only on a phone a company manages.
+        case language
         case assistantName
         case addDevice
         case ready
+    }
+
+    /// The pages of a first run on a phone nobody manages, in order: every page but the language line.
+    static let unmanagedRoute: [Page] = [.welcome, .provider, .accessKey, .services, .permissions,
+                                         .assistantName, .addDevice, .ready]
+
+    /// The pages this first run walks, in order (Plan ND P2). A phone a company manages walks
+    /// `ManagedOnboardingPlan`'s shorter list; any other walks `unmanagedRoute`.
+    static func route(managed: ManagedOnboardingPlan.Inputs?) -> [Page] {
+        guard let managed else { return unmanagedRoute }
+        return ManagedOnboardingPlan.pages(managed).flatMap { page -> [Page] in
+            switch page {
+            case .welcome: return [.welcome]
+            // The company's choices and the full list are both the provider page (narrowed to the
+            // choices), then the page that connects what was picked.
+            case .assistant, .providerList: return [.provider, .accessKey]
+            case .permissions: return [.permissions]
+            case .language: return [.language]
+            case .glasses: return [.addDevice]
+            case .ready: return [.ready]
+            }
+        }
+    }
+
+    /// The page after `page` on `route`; `nil` after its last page, where the flow completes. A page
+    /// the route does not hold (the company's profile arrived and changed the route under it) leads
+    /// to the first page after Welcome.
+    static func page(after page: Page, in route: [Page]) -> Page? {
+        guard let index = route.firstIndex(of: page) else { return route.dropFirst().first }
+        let next = route.index(after: index)
+        return next < route.endIndex ? route[next] : nil
+    }
+
+    /// Where Back leads from `page` on `route`: the page before it, or Welcome.
+    static func page(before page: Page, in route: [Page]) -> Page {
+        guard let index = route.firstIndex(of: page), index > route.startIndex else { return route.first ?? .welcome }
+        return route[route.index(before: index)]
     }
 
     /// The answers the "Add a device" step accepts.
@@ -30,13 +68,6 @@ enum OnboardingFlow {
         /// still be waiting for approval when the user carries on; the glasses finish connecting
         /// from Settings, and the phone works in the meantime.
         case glasses
-    }
-
-    static var pageCount: Int { Page.allCases.count }
-
-    /// The page after `page` on the forward path; `nil` after Ready, where the flow completes.
-    static func page(after page: Page) -> Page? {
-        Page(rawValue: page.rawValue + 1)
     }
 
     /// Where the device step leads. Both answers finish the step, so both lead to Ready.

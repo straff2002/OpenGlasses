@@ -1,8 +1,8 @@
 # Plan ND — Company Settings from the Portal (the administrator sets them once, every phone that joins follows)
 
-**Status:** 🚧 P0 and P1 built 2026-11-24 (headless; see [As built](#as-built)), on the recommended answer to each
-of the 15 [decisions](#decisions-for-greig), which stay the owner's to change. Owed: P2 (the short first run), P3
-(the MDM reader), P4 (the portal, private repository), P5 (catalog sync), P6 (device pass).
+**Status:** 🚧 P0, P1 and P2 built 2026-11-24 (see [As built](#as-built)), on the recommended answer to each of
+the 15 [decisions](#decisions-for-greig), which stay the owner's to change. Owed: P3 (the MDM reader), P4 (the
+portal, private repository), P5 (catalog sync), P6 (device pass).
 **Track:** Field Assist — fleet. The organisation profile, the licence portal, onboarding, Managed App
 Configuration.
 **Builds on:** Plan [CT](CT-org-configuration-profiles.md) (the signed profile, `SettingKey` and its directions,
@@ -418,6 +418,48 @@ generation, and the P0 contract is what the service builds against.
 - `PrivacyLog` channel `companyProfile` with `staleRefused`, `notModified` and `held`. The only field is the
   generation number.
 
-**Not done here:** the P2 pages, the P3 reader, the service (P4), the strings in the catalog (P5: the stale
+**Not done in P0 and P1:** the P2 pages (built next, below), the P3 reader, the service (P4), the strings in the catalog (P5: the stale
 refusal, the held notice, the *Your own choices* section, its footer and button, the version line, the kept
 choice line and its on / off / none words), and the device pass (P6).
+
+### P2 (2026-11-24)
+
+**The first run follows a route.** `OnboardingFlow.route(managed:)` is the page order, and the view walks it
+(`advance(from:)`, `page(before:in:)`), replacing `OrgFirstRun`'s page arithmetic (`pageAfterWelcome`,
+`pageBefore` and the two page constants are gone). A phone nobody manages walks `unmanagedRoute`, the eight pages
+it always had, so its header still says *Page n of 8*. A managed phone walks `ManagedOnboardingPlan.pages`:
+Welcome; the provider and connect pages only when the company pinned no model; Permissions; the new Language
+page; *Add a device* only when this copy offers glasses; Ready. No services page and no assistant-name page. The
+dots and *Page n of m* count the route, and the route is read live, so it changes under the welcome page the
+moment *Set up with my company* puts a profile in force.
+
+**The assistant page offers the company's choices.** With `aiChoices` and no pinned model the provider page is
+*Choose your assistant — Your company offers these.*, listing only `ManagedOnboardingPlan.offered`: the
+on-device model only where it can be downloaded, Apple Intelligence only where it runs. Nothing this phone can
+offer falls back to the full list rather than a page with nothing to pick. The connect page that follows is
+the existing one (ChatGPT sign-in, or the model download).
+
+**The language line** (decision 10): `OnboardingLanguage.line` names the app's language in itself (*English*,
+*Deutsch*) and says *like your phone* only when the app speaks the phone's first language. **Change** opens the
+app's page in iOS Settings, where its language is chosen.
+
+**The company's AI key** (decision 9): a profile may seal the key for the provider `aiModel` pins, as
+`credentials.aiModel`, under the company secret, exactly as the Workiz key travels. `ProfileContract` accepts the
+name and refuses it without a pinned provider that takes a key (`checkSealedModelKey`). On the phone
+`reconcileModel` opens it (`OrgCredentialSeal.modelKey`, through the `sealedModelKey` seam), runs the same format
+check as a typed key, and installs the organisation's model with it, or replaces the key in the model already
+installed. `OrgEnrolmentService.confirm` runs the model step again (`reconcileOrganizationModel`) once an
+activation key's secret is kept, so nobody types the key. A phone set up from a link holds no secret and asks for
+the key as before. A profile that stops sealing a key leaves the one in place until removal. The review says
+*Your company supplies the AI model's key*.
+
+**Tests:** `ManagedOnboardingRouteTests` (routes, back and forward, the offered choices, the language line),
+four sealed-key cases in `OrgAIModelTests`, one in the contract package, and `ManagedOnboardingUITests`, a walk
+from a fresh install to Ready on a managed fixture (`-OGUITestManagedOnboarding`, Debug only). A profile is
+signed by a key the app cannot hold, so the fixture supplies only the route's inputs and no enrolment is faked;
+every page is the shipping one. The new UI test is in the `conversation-setup` group of
+`Scripts/accessibility-groups.py`, beside the onboarding audit.
+
+**Strings owed to the catalog (P5):** *Choose your assistant*, *Your company offers these.*, *On this iPhone*, the
+three choice details, *Language*, *Avenkin speaks …, like your phone.* and its plain form, *Change* and its hint,
+and the review's sealed-key footer.

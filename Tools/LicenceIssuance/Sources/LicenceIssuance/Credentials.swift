@@ -18,8 +18,9 @@ extension ProfileContract {
     /// Mirrored by `OrgCredentialSeal` in the app (OpenGlasses/Sources/Services/OrgProfile); the two must
     /// stay byte-for-byte compatible.
     public enum Credential {
-        /// The credentials a profile may carry, by name. The app ignores any other.
-        public static let names: Set<String> = ["workiz"]
+        /// The credentials a profile may carry, by name. The app ignores any other. `aiModel` (Plan ND
+        /// decision 9) is the key for the provider `aiModel` pins, so no one types it on the phone.
+        public static let names: Set<String> = ["workiz", "aiModel"]
         public static let secretLength = 32
         /// **Signing domain.** Never change it: every sealed credential already published would stop opening.
         public static let sealingDomain = "openglasses.org-credential.v1"

@@ -13,20 +13,16 @@ final class OnboardingFlowTests: XCTestCase {
     // MARK: - Order
 
     func testTheAssistantPagesComeFirstAndTheDeviceStepLast() {
-        XCTAssertEqual(OnboardingFlow.Page.allCases, [
+        let route = OnboardingFlow.route(managed: nil)
+        XCTAssertEqual(route, [
             .welcome, .provider, .accessKey, .services, .permissions, .assistantName, .addDevice, .ready,
         ])
-        XCTAssertEqual(OnboardingFlow.pageCount, 8, "the header says \"Page n of 8\"; the UI test reads it")
-        XCTAssertEqual(OnboardingFlow.page(after: .assistantName), .addDevice,
+        XCTAssertEqual(route.count, 8, "the header says \"Page n of 8\"; the UI test reads it")
+        XCTAssertFalse(route.contains(.language), "the language line is for managed phones only")
+        XCTAssertEqual(OnboardingFlow.page(after: .assistantName, in: route), .addDevice,
                        "the device step follows the assistant's pages")
-        XCTAssertEqual(OnboardingFlow.page(after: .addDevice), .ready)
-    }
-
-    /// `OrgFirstRun` counts pages as integers; the device step moving must not move the pages it
-    /// jumps between.
-    func testTheOrganisationShortcutStillLandsOnTheSamePages() {
-        XCTAssertEqual(OrgFirstRun.providerPage, OnboardingFlow.Page.provider.rawValue)
-        XCTAssertEqual(OrgFirstRun.servicesPage, OnboardingFlow.Page.services.rawValue)
+        XCTAssertEqual(OnboardingFlow.page(after: .addDevice, in: route), .ready)
+        XCTAssertNil(OnboardingFlow.page(after: .ready, in: route))
     }
 
     // MARK: - The phone path
@@ -42,9 +38,9 @@ final class OnboardingFlowTests: XCTestCase {
             visited.append(current)
             page = current == .addDevice
                 ? OnboardingFlow.page(after: OnboardingFlow.DeviceAnswer.thisPhone)
-                : OnboardingFlow.page(after: current)
+                : OnboardingFlow.page(after: current, in: OnboardingFlow.unmanagedRoute)
         }
-        XCTAssertEqual(visited, OnboardingFlow.Page.allCases, "the phone path visits every page once")
+        XCTAssertEqual(visited, OnboardingFlow.unmanagedRoute, "the phone path visits every page once")
         XCTAssertEqual(visited.last, .ready, "the flow completes from Ready")
 
         XCTAssertFalse(OnboardingFlow.addsGlasses(.thisPhone),

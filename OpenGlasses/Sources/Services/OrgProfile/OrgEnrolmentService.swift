@@ -391,6 +391,8 @@ final class OrgEnrolmentService: ObservableObject {
             if let resolved = resolvedSecret, resolved.licenceCode == enteredLicence {
                 credentials.keep(resolved.secret)
                 if let profile = manager.profile { credentials.apply(profile) }
+                // Plan ND decision 9: the key the company sealed for its model opens now too.
+                manager.reconcileOrganizationModel()
             }
             resolvedSecret = nil
             if manager.needsModelSetup, let model = manager.organizationModel {
