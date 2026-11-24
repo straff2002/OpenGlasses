@@ -523,6 +523,15 @@ that score the model's own calls run without the router. The tool cases on the p
 procedure answer to a step that asks nothing, one two-step (a different case from the last run: the
 model varies), the show-source argument.
 
+**A step that asks nothing still takes its answer (2026-11-24).** That remaining procedure answer
+was a step whose instruction ends "…The control stores it and resets.": no question, so the router
+left "The code stopped blinking and the control reset" to Gemma, which said "Understood" and
+recorded nothing. The router's context now carries the running step's `expected_input` and branch
+conditions while nothing is recorded for it, and a short reply that shares at least two content
+words with one of them (and those are at least half of its own) is the step's answer. Over the
+corpus: procedure answers 12/12 routed (was 11; its floor is now 1.0), still no case that expects no
+call.
+
 **Not checked on the phone:** what the router and the argument steps say in the real app (the
 qualification run scores scripted tool results, so a reply after a refused call can still quote
 the script); the preview stream can show a Gemma or Python-style call line briefly before it is
