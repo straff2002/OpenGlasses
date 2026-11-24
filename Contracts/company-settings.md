@@ -80,6 +80,22 @@ The off-host copy answers the same way. A `304` is never cached as a `200`.
   value. One they chose stays and is listed on the organisation's page with *Use company default*.
   Owned values and ceilings follow at once (between jobs) and are clamped on read.
 
+## The fleet view (the seat renewal)
+
+A renewal (`SeatRenewRequest`, in the licence core) may carry `profileGeneration`: the highest
+generation the phone has applied (its gate's high-water mark), an integer. Absent on a phone that has
+applied none with a generation and on any build before it, so such a renewal is the bytes it was.
+
+```json
+{"build":"767","lease":"…","profileGeneration":13}
+```
+
+The service keeps it on the seat (`SeatPolicy.renew`, ignoring a negative value). A renewal without
+it keeps what the seat last reported. `SeatPolicy.fleetGenerations` counts the held seats by
+generation: *"7 of 9 phones on version 13"* is `onOrAfter(13)` of `held`. A seat whose phone has not
+reported is held and on no version. The claim carries none. It is disclosed beside the vaults in the
+privacy manifest and both Privacy footers.
+
 ## The company's AI key
 
 `credentials.aiModel` is the key for the provider `aiModel` pins, sealed under the company secret like

@@ -121,7 +121,7 @@ actor StubSeatService: DeviceSeatServer {
                   let key = Data(base64Encoded: seat.devicePublicKey),
                   (try? SeatWire.openEnvelope(wire, action: .renew, publicKeyX963: key)) != nil else { return reply(.refuse(.freed)) }
             return record(SeatPolicy.renew(lease, build: renew.build, profileId: profileId, licence: licence, seats: seats, now: now,
-                                           vaults: renew.vaults))
+                                           vaults: renew.vaults, profileGeneration: renew.profileGeneration))
         case .release:
             guard let release = try? decoder.decode(SeatReleaseRequest.self, from: body),
                   let lease = try? SeatWire.openLease(release.lease, publicKeys: [leaseKey.publicKey]),
@@ -228,6 +228,7 @@ final class DeviceSeatTests: XCTestCase {
         seams.now = { world.now }
         seams.entitlementChanged = {}
         seams.installedCompanyVaults = { [] }
+        seams.appliedProfileGeneration = { nil }
         return seams
     }
 
@@ -400,6 +401,37 @@ final class DeviceSeatTests: XCTestCase {
         XCTAssertEqual(renew.vaults, [SeatInstalledVault(vaultId: "lennox", version: "4")])
         let held = await server.seats
         XCTAssertEqual(SeatPolicy.fleetVersions(held, profileId: enrolment.profileId, now: world.now), ["lennox": ["4": 1]])
+    }
+
+    /// Plan ND P4 (decision 14): the renewal names the highest settings version the phone has
+    /// applied, and the service keeps it on the seat for "7 of 9 phones on version 13". The claim
+    /// carries none, and a later renewal without one keeps what the seat last reported.
+    func testTheRenewalReportsTheAppliedSettingsVersion() async throws {
+        var seams = seatSeams()
+        var applied: Int? = 13
+        seams.appliedProfileGeneration = { applied }
+        let seats = DeviceSeatService(seams: seams)
+        await seats.checkIn(enrolment, force: true)
+        await advance(days: 2)
+        await seats.checkIn(enrolment)
+        let received = await server.received
+        let claim = try XCTUnwrap(JSONSerialization.jsonObject(with: received[0].1) as? [String: Any])
+        XCTAssertNil(claim["profileGeneration"])
+        let renew = try SeatWire.decoder().decode(SeatRenewRequest.self, from: received[1].1)
+        XCTAssertEqual(renew.profileGeneration, 13)
+        var fleet = SeatPolicy.fleetGenerations(await server.seats, profileId: enrolment.profileId, now: world.now)
+        XCTAssertEqual(fleet, .init(held: 1, byGeneration: [13: 1]))
+        XCTAssertEqual(fleet.onOrAfter(13), 1)
+        XCTAssertEqual(fleet.onOrAfter(14), 0)
+
+        applied = nil
+        await advance(days: 2)
+        await seats.checkIn(enrolment)
+        let later = await server.received
+        let third = try XCTUnwrap(JSONSerialization.jsonObject(with: later[2].1) as? [String: Any])
+        XCTAssertNil(third["profileGeneration"])
+        fleet = SeatPolicy.fleetGenerations(await server.seats, profileId: enrolment.profileId, now: world.now)
+        XCTAssertEqual(fleet.byGeneration, [13: 1], "a renewal without a version keeps the seat's last one")
     }
 
     func testARenewalWithNoCompanyVaultsIsTheBytesItWas() async throws {
