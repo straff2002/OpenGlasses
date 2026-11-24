@@ -13,7 +13,7 @@ struct LocalModelQualificationApp: App {
         WindowGroup {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Local model qualification").font(.headline)
-                Text(runner.options.apple ? "Apple on-device model" : runner.options.modelID)
+                Text(runner.options.apple ? "Apple on-device model" : runner.options.ggufModelID ?? runner.options.modelID)
                     .font(.subheadline).foregroundStyle(.secondary)
                 Text(runner.status)
                 if runner.total > 0 {

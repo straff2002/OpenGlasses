@@ -5,7 +5,7 @@ import XCTest
 ///
 /// These run the real `common/chat` with no model: a template from source renders and parses fixed
 /// strings. The templates in `Fixtures/ChatTemplates` are the copies llama.cpp's own
-/// tests use, taken from the pinned checkout (`models/templates/` at v0.3.0): Gemma 4 (31B — the
+/// tests use, taken from the pinned checkout (`models/templates/`, identical at v0.3.0 and v1.0.0): Gemma 4 (31B — the
 /// family's template; the E-series carry the same call syntax), Qwen 3.5 4B and Qwen 3 0.6B.
 ///
 /// Not claimed here: that a real GGUF model calls a tool well. That is the phone run's.
@@ -63,15 +63,27 @@ final class LlamaToolChatTests: XCTestCase {
                 .user("and the low side is 60 psi")]
     }
 
+    /// Each render's templates and request, by its JSON: since llama.cpp v1.0.0 a parser is built
+    /// from the request, not read back from the render.
+    private var rendered: [String: (templates: LlamaChatTemplatesHandle, request: String)] = [:]
+
     private func render(_ name: String, tools: [[String: Any]] = [readingTool],
                         messages: [LocalToolLoop.Message] = transcript) throws -> (json: String, render: LlamaToolChat.Render) {
-        let json = try engine.renderChat(try templates(name), requestJSON: LlamaToolChat.requestJSON(
-            system: "You are Avenkin.", messages: messages, tools: tools, thinkingOff: true, now: Self.fixedNow))
+        let handle = try templates(name)
+        let request = LlamaToolChat.requestJSON(
+            system: "You are Avenkin.", messages: messages, tools: tools, thinkingOff: true, now: Self.fixedNow)
+        let json = try engine.renderChat(handle, requestJSON: request)
+        rendered[json] = (handle, request)
         return (json, try LlamaToolChat.render(json))
     }
 
+    private func parser(for renderJSON: String) throws -> LlamaChatParserHandle {
+        let source = try XCTUnwrap(rendered[renderJSON], "rendered by render(_:)")
+        return try engine.createChatParser(source.templates, requestJSON: source.request)
+    }
+
     private func parse(_ text: String, with renderJSON: String) throws -> LlamaToolChat.Parsed {
-        let parser = try engine.createChatParser(renderJSON: renderJSON)
+        let parser = try parser(for: renderJSON)
         defer { engine.freeChatParser(parser) }
         return try LlamaToolChat.parsed(try engine.parseChat(parser, text: text, partial: false))
     }
@@ -189,7 +201,7 @@ final class LlamaToolChatTests: XCTestCase {
 
     func testAPartialParseFeedsThePreviewWithoutTheCall() throws {
         let json = try render(Self.gemma4).json
-        let parser = try engine.createChatParser(renderJSON: json)
+        let parser = try parser(for: json)
         defer { engine.freeChatParser(parser) }
         let partial = try LlamaToolChat.parsed(try engine.parseChat(parser, text: "Logging it.<|tool_call>call:rea",
                                                                      partial: true))

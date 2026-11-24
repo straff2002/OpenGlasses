@@ -465,6 +465,29 @@ final class LocalTurnRouterTests: XCTestCase {
                        "not without domain_calc offered")
     }
 
+    // MARK: - Show me the source
+
+    func testAShowRequestNamingOneSourceIsRouted() {
+        for (turn, which) in [("Show me the last source you used", "last"), ("Show me the first source you used", "first"),
+                              ("Show me the page that table came from", "table"), ("OK, open Table 99", "Table 99"),
+                              ("Pull up all the pages", "all"), ("Can you show me the second one", "second")] {
+            let routed = route(turn, offered: ["show_source", "table_lookup"])
+            XCTAssertEqual(routed?.kind, .showSource, turn)
+            XCTAssertEqual(routed?.arguments, ["which": which], turn)
+            XCTAssertEqual(routed?.speech, .model, turn)
+        }
+    }
+
+    func testAShowRequestThatIsNotPlainlyASourceIsLeftToTheModel() {
+        for turn in ["Show me where it says that", "Show me the first source and the last one",
+                     "Show me the wiring diagram on the last page", "Can you show me the last source?",
+                     "Don't open the last source yet", "Show me a photo of the last one", "What was the last source?",
+                     "Open a new job for the SLP99 furnace"] {
+            XCTAssertNil(route(turn, offered: ["show_source", "table_lookup"]), turn)
+        }
+        XCTAssertNil(route("Show me the last source you used", offered: ["table_lookup"]), "not without show_source offered")
+    }
+
     // MARK: - A reading logged in one breath
 
     func testALogCommandWithOneValueAndWhatWasMeasuredIsRecorded() {
@@ -601,12 +624,13 @@ final class LocalTurnRouterTests: XCTestCase {
     /// The turn shapes the router exists for, by case id.
     private enum Target: String, CaseIterable {
         case errorCode, modelNumber, procedureStart, procedureNextRepeat, procedureAnswer
-        case jobCommand, evidence, readingFollowUp, readingLogged, twoStep
+        case jobCommand, evidence, readingFollowUp, readingLogged, twoStep, showSource
 
         init?(id: String) {
             if id.hasPrefix("code-"), id.hasSuffix("-lookup") || id.hasSuffix("-followup") { self = .errorCode }
             else if id.hasPrefix("job-") { self = .jobCommand }
             else if id.hasPrefix("twostep-") { self = .twoStep }
+            else if id.hasPrefix("source-") { self = .showSource }
             else if id.hasPrefix("evidence-") { self = .evidence }
             else if id.hasPrefix("sv-"), id.hasSuffix("-followup") { self = .readingFollowUp }
             else if id.hasPrefix("sv-"), id.hasSuffix("-log-in") || id.hasSuffix("-log-out") { self = .readingLogged }
@@ -621,7 +645,7 @@ final class LocalTurnRouterTests: XCTestCase {
             switch self {
             case .errorCode, .modelNumber: return 0.9
             case .procedureStart, .procedureNextRepeat, .procedureAnswer, .jobCommand, .evidence, .readingFollowUp,
-                 .readingLogged, .twoStep: return 1.0
+                 .readingLogged, .twoStep, .showSource: return 1.0
             }
         }
     }

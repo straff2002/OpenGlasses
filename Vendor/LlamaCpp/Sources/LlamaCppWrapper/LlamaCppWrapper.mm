@@ -550,6 +550,78 @@ int32_t og_llama_context_keep_prefix(OGLlamaContext *context, int32_t keep_token
     return keep_tokens;
 }
 
+#pragma mark - Prefix snapshots
+
+struct OGLlamaStateSnapshot {
+    std::vector<uint8_t> bytes;
+};
+
+bool og_llama_model_memory_can_trim(const OGLlamaModel *model) {
+    if (model == nullptr || model->model == nullptr) {
+        return true;
+    }
+    return !(llama_model_is_recurrent(model->model) || llama_model_is_hybrid(model->model));
+}
+
+OGLlamaStatus og_llama_state_snapshot_save(OGLlamaContext *context, int64_t max_bytes,
+                                           OGLlamaStateSnapshot **out_snapshot) {
+    if (context == nullptr || context->context == nullptr || out_snapshot == nullptr) {
+        return OGLlamaStatusInvalidArgument;
+    }
+    *out_snapshot = nullptr;
+    const size_t needed = llama_state_seq_get_size(context->context, 0);
+    if (needed == 0) {
+        return OGLlamaStatusInvalidArgument;
+    }
+    if (max_bytes > 0 && needed > static_cast<uint64_t>(max_bytes)) {
+        return OGLlamaStatusAllocationFailed;
+    }
+    auto *snapshot = new (std::nothrow) OGLlamaStateSnapshot();
+    if (snapshot == nullptr) {
+        return OGLlamaStatusAllocationFailed;
+    }
+    try {
+        snapshot->bytes.resize(needed);
+    } catch (const std::bad_alloc &) {
+        delete snapshot;
+        return OGLlamaStatusAllocationFailed;
+    }
+    // Synchronizes with the accelerator itself before it reads the cells.
+    const size_t written = llama_state_seq_get_data(context->context, snapshot->bytes.data(), needed, 0);
+    if (written == 0 || written > needed) {
+        delete snapshot;
+        return OGLlamaStatusDecodeFailed;
+    }
+    snapshot->bytes.resize(written);
+    *out_snapshot = snapshot;
+    return OGLlamaStatusOK;
+}
+
+int64_t og_llama_state_snapshot_size(const OGLlamaStateSnapshot *snapshot) {
+    return snapshot == nullptr ? 0 : static_cast<int64_t>(snapshot->bytes.size());
+}
+
+OGLlamaStatus og_llama_state_snapshot_restore(OGLlamaContext *context,
+                                              const OGLlamaStateSnapshot *snapshot) {
+    if (context == nullptr || context->context == nullptr || snapshot == nullptr || snapshot->bytes.empty()) {
+        return OGLlamaStatusInvalidArgument;
+    }
+    llama_memory_t memory = llama_get_memory(context->context);
+    // The sequence is replaced, not merged: whatever it held is dropped first.
+    llama_memory_seq_rm(memory, 0, -1, -1);
+    const size_t read = llama_state_seq_set_data(context->context, snapshot->bytes.data(),
+                                                 snapshot->bytes.size(), 0);
+    if (read == 0) {
+        llama_memory_clear(memory, /*data=*/true);
+        return OGLlamaStatusDecodeFailed;
+    }
+    return OGLlamaStatusOK;
+}
+
+void og_llama_state_snapshot_free(OGLlamaStateSnapshot *snapshot) {
+    delete snapshot;
+}
+
 void og_llama_context_set_cancelled(OGLlamaContext *context, bool cancelled) {
     if (context == nullptr) {
         return;

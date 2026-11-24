@@ -244,6 +244,9 @@ enum LocalToolLoop {
         /// Arguments set, replaced or taken off model-made calls from what the technician said
         /// (`LocalArgumentCompletion`). A count only.
         var argumentsCompleted = 0
+        /// Model-made calls left unrun because the turn did not ask for them (`screened(_:turn:routed:)`).
+        /// Not repeats: counted apart from `callsNotRun`. A count only.
+        var callsScreened = 0
     }
 
     // MARK: - Parsing
@@ -356,6 +359,7 @@ enum LocalToolLoop {
         var multiCall = 0
         var dropped = 0
         var completedArguments = 0
+        var screenedCalls = 0
         // The turn first, then the earlier user messages, newest first.
         let completion = LocalArgumentCompletion.Context(
             userMessages: [userMessage] + history.filter { $0.role == .user }.reversed().map(\.content),
@@ -410,6 +414,7 @@ enum LocalToolLoop {
             outcome.multiCallGenerations = multiCall
             outcome.argumentsDropped = dropped
             outcome.argumentsCompleted = completedArguments
+            outcome.callsScreened = screenedCalls
             return outcome
         }
 
@@ -506,6 +511,10 @@ enum LocalToolLoop {
                 // Past the cap: only reachable when the cap is 0, a model calls after tools were
                 // withheld, or one generation asked for more calls than the cap has left.
                 guard executed.count < cap else { notRun += 1; continue }
+                // A call the turn did not ask for is left unrun, and the turn is answered without
+                // it (`screened(_:turn:routed:)`).
+                let routedTools = Set(executed.filter(\.routed).map(\.call.name))
+                guard !LocalToolLoop.screened(call, turn: userMessage, routed: routedTools) else { screenedCalls += 1; continue }
                 guard seen.insert(call.signature).inserted else { notRun += 1; continue }
 
                 if call.fromReasoning { fromReasoning += 1 }
@@ -585,6 +594,79 @@ enum LocalToolLoop {
         guard let first = rest.first else { return "" }
         return first.uppercased() + rest.dropFirst()
     }
+
+    /// Whether a model-made `call` is one the turn did not ask for, and so is not run. Qwen 3.5 4B
+    /// on the phone made each of these on a restraint case or after a routed lookup:
+    /// - a reading with no number in its value (`isReadingWithoutNumber`);
+    /// - a reading on a question about numbers the technician said, with no word asking to log
+    ///   them ("The suction was 118 and superheat came out at 12, so that's fine, right?"); a
+    ///   question that states no number ("and the other one?") is left alone;
+    /// - a change to the job on a turn that says nothing of the job: closing it on "Thanks, that's
+    ///   all for this one", starting one on "Call my boss and tell them I'm running late", a job
+    ///   reference on "The pressure switch looks fine to me" (the next unit and the status are left
+    ///   alone; the router makes those);
+    /// - after a routed call, another call to that tool or any lookup (the router's turn is one
+    ///   request, already answered: Qwen looked a routed E271 up again as E223, and a routed E331
+    ///   up in a table);
+    /// - opening a source on a turn that does not ask to see one ("I've seen that E223 code loads
+    ///   of times").
+    /// A call the router made is never screened: its arguments are what the turn said.
+    static func screened(_ call: Call, turn: String, routed: Set<String>) -> Bool {
+        if isReadingWithoutNumber(call) { return true }
+        if !routed.isEmpty, routed.contains(call.name) || lookupTools.contains(call.name) { return true }
+        let words = Set(LocalTurnRouter.normalised(turn).split(separator: " ").map(String.init))
+        switch call.name {
+        case "reading":
+            return turn.contains("?") && words.isDisjoint(with: logWords)
+                && !LocalTurnRouter.statedValues(in: turn).isEmpty
+        case "field_session":
+            let action = (call.arguments["action"] as? String)?.lowercased() ?? ""
+            guard !["status", "query", "next_unit", ""].contains(action) else { return false }
+            return words.isDisjoint(with: jobWords)
+        case "show_source":
+            return !asksToSee(turn, words: words) && LocalArgumentCompletion.sourcesSaid(in: turn).isEmpty
+        default:
+            return false
+        }
+    }
+
+    /// Whether the turn asks to see a page or a source: "show", "see", "open", "view", "display",
+    /// "where does it say".
+    static func asksToSee(_ turn: String, words: Set<String>) -> Bool {
+        if !words.isDisjoint(with: ["show", "see", "open", "view", "display"]) { return true }
+        let spoken = " " + LocalTurnRouter.normalised(turn) + " "
+        return [" where does it say ", " where is that written ", " let me look ", " can i look "].contains { spoken.contains($0) }
+    }
+
+    static let lookupTools: Set<String> = ["equipment_lookup", "table_lookup", "manual_lookup", "manual_figure", "show_source"]
+    static let logWords: Set<String> = ["log", "logged", "record", "recorded", "note", "save", "enter", "write"]
+    /// Words a turn about the job uses: the job itself, opening, closing, pausing and resuming it,
+    /// and its reference.
+    static let jobWords: Set<String> = [
+        "job", "jobs", "work", "order", "session", "start", "open", "begin", "new", "end", "close", "closed", "finish",
+        "finished", "wrap", "complete", "completed", "done", "pause", "resume", "back", "reference", "ref", "number",
+    ]
+
+    /// A `reading` record or correction whose `value` is there but holds no number, as digits or as a number
+    /// word ("seven", "twelve point five"): the tool takes "the number alone", so a value like
+    /// "outside" or "not applicable" is the model filling a slot, not a reading.
+    static func isReadingWithoutNumber(_ call: Call) -> Bool {
+        guard call.name == "reading" else { return false }
+        let action = (call.arguments["action"] as? String)?.lowercased() ?? "record_reading"
+        guard action == "record_reading" || action == "correct_reading" else { return false }
+        // A missing or blank value is the tool's to ask about ("Say what was measured and the
+        // value"), as when the grounding filter took off a number nobody said.
+        guard let value = (call.arguments["value"] as? String)?.trimmingCharacters(in: .whitespaces),
+              !value.isEmpty, !value.contains(where: \.isNumber) else { return false }
+        let words = value.lowercased().split(whereSeparator: { !$0.isLetter })
+        return !words.contains { numberWords.contains(String($0)) }
+    }
+
+    static let numberWords: Set<String> = [
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
+        "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty",
+        "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred", "thousand", "half", "quarter", "point",
+    ]
 
     /// The longest tool result `spokenResult(of:)` will say in place of an empty reply.
     static let spokenResultLimit = 240

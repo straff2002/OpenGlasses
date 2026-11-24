@@ -36,6 +36,24 @@ enum FieldAssistLocalToolSet {
     /// Tools offered on one turn (decision 3).
     static let perTurnLimit = 5
 
+    /// The order a native turn's tools are **rendered** in, whatever the turn said (Plan MQ): the
+    /// Field Assist tools by `priority`, then every other tool by name. Which tools a turn offers,
+    /// and which the fit drops first, still follow the turn's words (`ordered`, `LocalToolFit`);
+    /// only the definitions' order in the prompt is fixed, so two turns offering the same tools
+    /// render the same tools section and share its tokens (Qwen 3.5's template puts it first).
+    static func renderOrder(_ names: [String]) -> [String] {
+        names.enumerated().sorted { a, b in
+            let ra = renderRank(a.element), rb = renderRank(b.element)
+            if ra.rank != rb.rank { return ra.rank < rb.rank }
+            if ra.name != rb.name { return ra.name < rb.name }
+            return a.offset < b.offset
+        }.map(\.element)
+    }
+
+    private static func renderRank(_ name: String) -> (rank: Int, name: String) {
+        (priority.firstIndex(of: name) ?? priority.count, name)
+    }
+
     struct Candidate: Equatable {
         let name: String
         let estimatedTokens: Int

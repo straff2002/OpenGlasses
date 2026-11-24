@@ -116,6 +116,9 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         var reason: String
         /// The prompt budget on that window.
         var toolTurnPromptBudget: Int
+        /// A GGUF run's prefill batch, logical and physical (`--gguf-batch`, Plan MQ); nil for MLX
+        /// and Apple runs and in older records. Part of the window, so a run resumes only with the same.
+        var ggufBatchTokens: Int? = nil
     }
 
     struct Gate: Codable, Equatable {
@@ -164,6 +167,13 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         var hotRunsExcludedFromTiming: Int?
         /// The excluded runs' decode rate, to show what heat cost.
         var hotDecodeTokensPerSecond: Distribution?
+        /// Generations by where their prompt was read from (Plan MQ: `fromStart`, `trimmedPrefix`,
+        /// `restoredSnapshot`), over every run; nil when no generation said.
+        var promptSources: [String: Int]?
+        /// Time to first token per source, over cool runs.
+        var firstTokenSecondsBySource: [String: Distribution]?
+        /// The largest prefix snapshot a generation saved, in bytes.
+        var largestSnapshotBytes: Int?
     }
 
     struct Distribution: Codable, Equatable {
@@ -213,6 +223,12 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         /// Tokens prefilled, per generation.
         var promptTokens: [Int]
         var decodeTokensPerSecond: [Double]
+        /// Per generation, beside `promptTokens` (Plan MQ): where the prompt was read from
+        /// (`fromStart`, `trimmedPrefix`, `restoredSnapshot`), the tokens that saved, and the bytes
+        /// of a prefix snapshot saved (0 when none). Nil in older records.
+        var promptSources: [String]? = nil
+        var reusedPromptTokens: [Int]? = nil
+        var snapshotBytes: [Int]? = nil
         /// What the runtime's fit sent of the tools (Plan MQ P3; counts only): offered and kept on
         /// the first generation that offered tools, generations that dropped one or went compact,
         /// whether an expected tool was dropped, and the window used.
@@ -230,6 +246,7 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         /// Arguments the loop set, replaced or took off the model's calls from what the technician
         /// said (Plan MQ P3; a count only); nil in older records.
         var argumentsCompleted: Int?
+        var callsScreened: Int?
         /// `QualificationRunGate.Thermal`'s raw value when the case started; nil in older records.
         var thermalAtStart: Int?
         var seconds: Double
@@ -312,7 +329,7 @@ struct LocalModelQualificationRecord: Codable, Equatable {
     mutating func add(_ run: LocalToolEval.Run, repeat index: Int, flagged: Bool, seconds: Double,
                       thermalAtStart: QualificationRunGate.Thermal? = nil, recomputing: Bool = true) {
         let m = run.measurements
-        let entry = RunEntry(
+        var entry = RunEntry(
             key: Self.key(caseID: run.caseID, repeat: index), caseHash: Self.caseHash(run.caseID), repeatIndex: index,
             category: run.category.rawValue, group: run.group.rawValue,
             grades: Dictionary(uniqueKeysWithValues: run.grades.map { ($0.key.rawValue, $0.value) }),
@@ -323,8 +340,11 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             toolsOffered: m.toolsOffered, toolsKept: m.toolsKept, fitDroppedGenerations: m.fitDroppedGenerations,
             compactGenerations: m.compactGenerations, expectedToolDropped: m.expectedToolDropped,
             contextWindow: m.contextWindow, routedCalls: m.routedCalls, argumentsDropped: m.argumentsDropped,
-            argumentsCompleted: m.argumentsCompleted,
+            argumentsCompleted: m.argumentsCompleted, callsScreened: m.callsScreened,
             thermalAtStart: thermalAtStart?.rawValue, seconds: seconds)
+        entry.promptSources = m.promptSources
+        entry.reusedPromptTokens = m.reusedPromptTokens
+        entry.snapshotBytes = m.snapshotBytes
         runs.removeAll { $0.key == entry.key }
         runs.append(entry)
         if recomputing { recompute() }
@@ -347,6 +367,9 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             measurements.promptSeconds = entry.promptSeconds
             measurements.promptTokens = entry.promptTokens
             measurements.decodeTokensPerSecond = entry.decodeTokensPerSecond
+            measurements.promptSources = entry.promptSources ?? []
+            measurements.reusedPromptTokens = entry.reusedPromptTokens ?? []
+            measurements.snapshotBytes = entry.snapshotBytes ?? []
             measurements.toolsOffered = entry.toolsOffered
             measurements.toolsKept = entry.toolsKept
             measurements.fitDroppedGenerations = entry.fitDroppedGenerations
@@ -356,6 +379,7 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             measurements.routedCalls = entry.routedCalls ?? 0
             measurements.argumentsDropped = entry.argumentsDropped ?? 0
             measurements.argumentsCompleted = entry.argumentsCompleted ?? 0
+            measurements.callsScreened = entry.callsScreened ?? 0
             // The id is not kept; the hash stands in for it, which is all the report groups by.
             return LocalToolEval.Run(caseID: entry.caseHash, category: category, group: group, grades: grades,
                                      measurements: measurements)
@@ -423,6 +447,19 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         timing.decodeTokensPerSecond = Distribution(coolRuns.flatMap(\.decodeTokensPerSecond))
         timing.hotRunsExcludedFromTiming = hotRuns.count
         timing.hotDecodeTokensPerSecond = Distribution(hotRuns.flatMap(\.decodeTokensPerSecond))
+        // Where prompts were read from: every run's generations, and the cool ones' timing per source.
+        var sources: [String: Int] = [:]
+        for source in runs.flatMap({ $0.promptSources ?? [] }) { sources[source, default: 0] += 1 }
+        timing.promptSources = sources.isEmpty ? nil : sources
+        var bySource: [String: [Double]] = [:]
+        for entry in coolRuns {
+            guard let entrySources = entry.promptSources, entrySources.count == entry.promptSeconds.count else { continue }
+            for (source, seconds) in zip(entrySources, entry.promptSeconds) { bySource[source, default: []].append(seconds) }
+        }
+        let distributions = bySource.compactMapValues { Distribution($0) }
+        timing.firstTokenSecondsBySource = distributions.isEmpty ? nil : distributions
+        let largest = runs.flatMap { $0.snapshotBytes ?? [] }.max() ?? 0
+        timing.largestSnapshotBytes = largest > 0 ? largest : nil
     }
 
     // MARK: - Writing

@@ -8,10 +8,12 @@
 # that commit was, and the build script verifies the two still agree upstream before building,
 # so a re-pointed tag fails loudly instead of silently building different sources.
 #
-# Why v0.3.0: it is the newest non-prerelease release of ggml-org/llama.cpp (published
-# 2026-08-25). Every `bNNNNN` tag upstream publishes is marked prerelease — those are the
-# nightly build tags — so pinning one would be pinning a nightly. Never pin a branch.
+# Why v1.0.0: it is the newest non-prerelease release of ggml-org/llama.cpp (published
+# 2026-11-13; the tag peels to b12359), moved to from v0.3.0 for Qwen 3.5's gated delta-net fixes
+# and the newer `common/chat` (Plan MQ). Every `bNNNNN` tag upstream publishes is marked
+# prerelease — those are the nightly build tags — so pinning one would be pinning a nightly.
+# Never pin a branch.
 
 repository=https://github.com/ggml-org/llama.cpp.git
-tag=v0.3.0
-commit=c1d0e7a004015f23bc0233470b747b596f29b264
+tag=v1.0.0
+commit=b1b770d90d94cad9e9ea5b993bdbc383a522fb28

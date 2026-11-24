@@ -395,6 +395,37 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         XCTAssertEqual(older.evalRuns.first?.measurements.argumentsCompleted, 0)
     }
 
+    /// Plan MQ: each generation says where its prompt was read from, so a phone run shows a GGUF
+    /// prefix snapshot working; the record counts the sources and times each. Older records decode.
+    func testWhereEachPromptWasReadFromIsCountedAndTimed() throws {
+        var record = record()
+        var m = LocalToolEval.Measurements()
+        m.add(LocalGenerationStats(promptTokens: 3_147, generatedTokens: 39, promptSeconds: 17.2, generateSeconds: 5,
+                                   tokenCap: 512, stoppedAtCap: false, snapshotBytes: 120_000_000))
+        m.add(LocalGenerationStats(promptTokens: 3_190, generatedTokens: 20, promptSeconds: 2.1, generateSeconds: 3,
+                                   tokenCap: 512, stoppedAtCap: false, promptSource: .restoredSnapshot,
+                                   reusedPromptTokens: 2_600))
+        record.add(LocalToolEval.Run(caseID: "ts-001", category: .toolChoice, group: .fieldAssist,
+                                     grades: [.toolName: true], measurements: m), repeat: 0, flagged: false, seconds: 1)
+        let entry = try XCTUnwrap(record.runs.first)
+        XCTAssertEqual(entry.promptSources, ["fromStart", "restoredSnapshot"])
+        XCTAssertEqual(entry.reusedPromptTokens, [0, 2_600])
+        XCTAssertEqual(entry.snapshotBytes, [120_000_000, 0])
+        XCTAssertEqual(record.timing.promptSources, ["fromStart": 1, "restoredSnapshot": 1])
+        XCTAssertEqual(record.timing.firstTokenSecondsBySource?["restoredSnapshot"]?.median, 2.1)
+        XCTAssertEqual(record.timing.largestSnapshotBytes, 120_000_000)
+        XCTAssertEqual(record.evalRuns.first?.measurements.promptSources, ["fromStart", "restoredSnapshot"])
+
+        let data = try record.encoded()
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var runs = try XCTUnwrap(object["runs"] as? [[String: Any]])
+        for key in ["promptSources", "reusedPromptTokens", "snapshotBytes"] { runs[0].removeValue(forKey: key) }
+        object["runs"] = runs
+        let older = try XCTUnwrap(LocalModelQualificationRecord.decode(JSONSerialization.data(withJSONObject: object)))
+        XCTAssertNil(older.runs.first?.promptSources)
+        XCTAssertEqual(older.evalRuns.first?.measurements.promptSources, [])
+    }
+
     // MARK: - The runtime's tool fit (Plan MQ P3)
 
     /// A run tells "the fit dropped the expected tool" from "the model missed it": the dispatcher

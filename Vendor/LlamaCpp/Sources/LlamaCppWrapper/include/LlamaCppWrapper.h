@@ -237,6 +237,29 @@ void og_llama_context_clear_memory(OGLlamaContext *context);
 /// then cleared, and the caller prefills from the start. `keep_tokens <= 0` clears it.
 int32_t og_llama_context_keep_prefix(OGLlamaContext *context, int32_t keep_tokens);
 
+#pragma mark - Prefix snapshots (Plan MQ, for a cache that cannot be cut back)
+
+/// A copy of sequence 0's whole state (its KV cells and, on a recurrent or hybrid model, its
+/// recurrent state) at one moment, held in host memory. Bytes only: it names no token or text.
+typedef struct OGLlamaStateSnapshot OGLlamaStateSnapshot;
+
+/// Whether `og_llama_context_keep_prefix` can ever keep anything for this model: false for a
+/// recurrent or hybrid model (Qwen 3.5), whose state cannot be cut back to an earlier position.
+bool og_llama_model_memory_can_trim(const OGLlamaModel *model);
+
+/// Copies sequence 0's state. `OGLlamaStatusAllocationFailed` when it would take more than
+/// `max_bytes` (<= 0: no limit) or cannot be allocated; nothing is handed back then.
+OGLlamaStatus og_llama_state_snapshot_save(OGLlamaContext *context, int64_t max_bytes,
+                                           OGLlamaStateSnapshot **out_snapshot);
+/// The snapshot's size in bytes.
+int64_t og_llama_state_snapshot_size(const OGLlamaStateSnapshot *snapshot);
+/// Replaces sequence 0's state with the snapshot's. On failure the sequence is cleared and
+/// `OGLlamaStatusDecodeFailed` returned, so the caller prefills from the start. The logits of the
+/// snapshot's last token are not part of it: decode at least one token before sampling.
+OGLlamaStatus og_llama_state_snapshot_restore(OGLlamaContext *context,
+                                              const OGLlamaStateSnapshot *snapshot);
+void og_llama_state_snapshot_free(OGLlamaStateSnapshot *snapshot);
+
 #pragma mark - Cancellation
 
 /// Cancellation is a flag on the context, not a callback Swift has to vend. Setting it makes an
@@ -338,21 +361,25 @@ OGLlamaStatus og_llama_chat_templates_from_source(const char *source,
 
 void og_llama_chat_templates_free(OGLlamaChatTemplates *templates);
 
-/// Renders a request:
+/// Renders a request (Plan MQ P2; the `parser` key went with v1.0.0, whose parser has no text form):
 ///   {"messages": [OpenAI-style messages, tool calls and `tool` results included],
 ///    "tools": [OpenAI-style function specs], "tool_choice": "auto" | "required" | "none",
 ///    "parallel_tool_calls": bool, "enable_thinking": bool, "add_generation_prompt": bool,
 ///    "reasoning_format": "auto" | "none", "now": seconds since 1970 (optional)}
 /// into:
 ///   {"prompt", "format", "format_name", "grammar", "grammar_lazy", "grammar_triggers": [{"type",
-///    "value"}], "preserved_tokens", "additional_stops", "generation_prompt", "parser",
+///    "value"}], "preserved_tokens", "additional_stops", "generation_prompt",
 ///    "reasoning_format", "supports_thinking", "tools_rendered"}.
 OGLlamaStatus og_llama_chat_render(const OGLlamaChatTemplates *templates,
                                    const char *request_json,
                                    char **out_json);
 
-/// A parser for completions of one render, from that render's JSON.
-OGLlamaStatus og_llama_chat_parser_create(const char *render_json, OGLlamaChatParser **out_parser);
+/// A parser for the completions of one request: `request_json` is the request that was rendered
+/// (the same JSON `og_llama_chat_render` took). It is rendered again here, because llama.cpp
+/// v1.0.0 keeps the family's parser only in memory.
+OGLlamaStatus og_llama_chat_parser_create(const OGLlamaChatTemplates *templates,
+                                          const char *request_json,
+                                          OGLlamaChatParser **out_parser);
 void og_llama_chat_parser_free(OGLlamaChatParser *parser);
 
 /// Parses `length` bytes of completion into {"content", "reasoning_content", "tool_calls":

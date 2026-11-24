@@ -148,6 +148,79 @@ final class LocalToolLoopTests: XCTestCase {
 
     // MARK: - Repeats
 
+    // MARK: - A reading with no number
+
+    func testAReadingWhoseValueHoldsNoNumberIsNotRun() async throws {
+        let model = ScriptedModel([
+            call("reading", #"{"action": "record_reading", "value": "outside"}"#),
+            "I can't send texts from here.",
+        ])
+        let tools = ToolLog()
+        let outcome = try await run(model, tools, message: "Text the customer that I'm outside")
+        XCTAssertTrue(tools.calls.isEmpty, "nothing measured, nothing recorded")
+        XCTAssertTrue(outcome.executed.isEmpty)
+        XCTAssertEqual(outcome.callsScreened, 1)
+        XCTAssertEqual(outcome.callsNotRun, 0, "not a repeat")
+        XCTAssertEqual(outcome.text, "I can't send texts from here.")
+        XCTAssertFalse(model.requests[1].toolsOffered, "answered without tools")
+        XCTAssertFalse(model.requests[1].messages.contains { $0.toolName == "reading" }, "the call is not in the transcript")
+    }
+
+    func testACallTheTurnDidNotAskForIsScreened() {
+        func c(_ name: String, _ arguments: [String: Any]) -> LocalToolLoop.Call { .init(id: "call_1", name: name, arguments: arguments) }
+        let reading = c("reading", ["action": "record_reading", "quantity": "suction", "value": "118"])
+        XCTAssertTrue(LocalToolLoop.screened(reading, turn: "The suction was 118 and superheat came out at 12, so that's fine, right?", routed: []))
+        XCTAssertFalse(LocalToolLoop.screened(reading, turn: "Suction is 118, can you log that?", routed: []))
+        XCTAssertFalse(LocalToolLoop.screened(reading, turn: "Suction's 118", routed: []))
+        XCTAssertFalse(LocalToolLoop.screened(c("reading", ["action": "record_reading", "value": "1.22"]),
+                                              turn: "and the other one?", routed: []), "a follow-up states no number")
+        let end = c("field_session", ["action": "end", "outcome": "resolved"])
+        XCTAssertTrue(LocalToolLoop.screened(end, turn: "Thanks, that's all for this one", routed: []))
+        for turn in ["That's it, close the job", "We're done here", "Wrap it up, it's finished"] {
+            XCTAssertFalse(LocalToolLoop.screened(end, turn: turn, routed: []), turn)
+        }
+        XCTAssertFalse(LocalToolLoop.screened(c("field_session", ["action": "status"]), turn: "Thanks, that's all", routed: []))
+        XCTAssertTrue(LocalToolLoop.screened(c("field_session", ["action": "start"]), turn: "Call my boss and tell them I'm running late", routed: []))
+        XCTAssertTrue(LocalToolLoop.screened(c("field_session", ["action": "set_job_reference", "job_reference": "1005"]),
+                                             turn: "The pressure switch looks fine to me", routed: []))
+        XCTAssertFalse(LocalToolLoop.screened(c("field_session", ["action": "set_job_reference", "job_reference": "2231"]),
+                                              turn: "The work order number is 2231", routed: []))
+        XCTAssertFalse(LocalToolLoop.screened(c("field_session", ["action": "next_unit"]),
+                                              turn: "Moving on to the second furnace in the plant room", routed: []))
+        XCTAssertTrue(LocalToolLoop.screened(c("table_lookup", ["table": "error_codes.md", "row": "E331"]),
+                                             turn: "and if it's E331 instead?", routed: ["equipment_lookup"]),
+                      "any lookup after a routed one")
+        XCTAssertTrue(LocalToolLoop.screened(c("show_source", ["which": "first"]),
+                                             turn: "I've seen that E223 code loads of times, I know what it is", routed: []))
+        let lookup = c("equipment_lookup", ["query": "SLP99 E228 procedure"])
+        XCTAssertTrue(LocalToolLoop.screened(lookup, turn: "The control's showing E228. What do I check?", routed: ["equipment_lookup"]),
+                      "the router already looked it up")
+        XCTAssertFalse(LocalToolLoop.screened(lookup, turn: "The control's showing E228. What do I check?", routed: []))
+        let show = c("show_source", ["which": "E228"])
+        XCTAssertTrue(LocalToolLoop.screened(show, turn: "The control's showing E228. What do I check?", routed: []))
+        XCTAssertFalse(LocalToolLoop.screened(show, turn: "Show me where it says that", routed: []))
+        XCTAssertFalse(LocalToolLoop.screened(show, turn: "the page that table came from", routed: []))
+    }
+
+    func testAReadingWithANumberOrANumberWordRuns() {
+        for value in ["118", "0.6", "seven", "twelve point five", "about 140"] {
+            let call = LocalToolLoop.Call(id: "call_1", name: "reading", arguments: ["action": "record_reading", "value": value])
+            XCTAssertFalse(LocalToolLoop.isReadingWithoutNumber(call), value)
+        }
+        for value in ["outside", "not applicable", "N/A"] {
+            let call = LocalToolLoop.Call(id: "call_1", name: "reading", arguments: ["action": "record_reading", "value": value])
+            XCTAssertTrue(LocalToolLoop.isReadingWithoutNumber(call), value)
+        }
+        XCTAssertFalse(LocalToolLoop.isReadingWithoutNumber(
+            LocalToolLoop.Call(id: "call_1", name: "reading", arguments: ["action": "record_reading", "value": NSNumber(value: 7)])))
+        XCTAssertFalse(LocalToolLoop.isReadingWithoutNumber(
+            LocalToolLoop.Call(id: "call_1", name: "evidence", arguments: ["value": "outside"])), "only reading")
+        for arguments in [["action": "record_reading"], ["action": "record_reading", "value": "  "]] as [[String: Any]] {
+            XCTAssertFalse(LocalToolLoop.isReadingWithoutNumber(LocalToolLoop.Call(id: "call_1", name: "reading", arguments: arguments)),
+                           "a missing or blank value is the tool's to ask about")
+        }
+    }
+
     func testARepeatWithReorderedArgumentsEndsTheLoop() async throws {
         let model = ScriptedModel([
             call("reading", #"{"action": "record_reading", "value": "118"}"#),

@@ -120,16 +120,37 @@ final class LocalModelSamplingTests: XCTestCase {
         XCTAssertEqual(options.minP, 0.1)
         XCTAssertEqual(options.topK, LlamaSamplerOptions.defaultTopK)
         XCTAssertEqual(options.penaltyRepeat, LlamaSamplerOptions.defaultRepeatPenalty)
+        XCTAssertEqual(options.penaltyPresence, 0, "no presence penalty unless the entry names one")
         XCTAssertEqual(LlamaSamplerOptions(LocalSamplingConfiguration()).minP, LlamaSamplerOptions.defaultMinP)
     }
 
-    func testAGGUFEntryWithoutASetOrWithAnUnsupportedOneIsHandled() throws {
+    func testAGGUFEntryWithoutASetKeepsTheGGUFDefaults() throws {
         let (plain, plainRejected) = try ggufCatalog(sampling: nil)
         XCTAssertEqual(plainRejected, [])
         XCTAssertNil(plain.entries.first?.sampling)
-        let (refused, rejected) = try ggufCatalog(sampling: ["presencePenalty": 1.5, "source": "card"])
-        XCTAssertTrue(refused.entries.isEmpty, "the GGUF sampler has no presence penalty")
-        XCTAssertEqual(rejected.count, 1)
+        let options = LlamaSamplerOptions(LocalModelSampling.configuration(
+            for: try XCTUnwrap(plain.entries.first).id.rawValue, toolTurn: true, ggufEntries: { plain.entries }))
+        XCTAssertEqual(options.minP, LlamaSamplerOptions.defaultMinP)
+        XCTAssertEqual(options.penaltyRepeat, LlamaSamplerOptions.defaultRepeatPenalty)
+        XCTAssertEqual(options.penaltyPresence, 0)
+        XCTAssertEqual(options.topK, LlamaSamplerOptions.defaultTopK)
+    }
+
+    func testAGGUFEntryMayNameMinPRepetitionAndPresencePenalties() throws {
+        let (document, rejected) = try ggufCatalog(sampling: ["minP": 0.0, "repetitionPenalty": 1.0,
+                                                              "presencePenalty": 1.5, "source": "card"])
+        XCTAssertEqual(rejected, [], "the GGUF sampler takes a presence penalty")
+        let entry = try XCTUnwrap(document.entries.first)
+        XCTAssertEqual(entry.sampling?.general, .init(minP: 0, repetitionPenalty: 1.0, presencePenalty: 1.5))
+        let options = LlamaSamplerOptions(LocalModelSampling.configuration(
+            for: entry.id.rawValue, toolTurn: true, ggufEntries: { document.entries }))
+        XCTAssertEqual(options.minP, 0, "an explicit 0 turns min-p off, not back to the default")
+        XCTAssertEqual(options.penaltyRepeat, 1.0)
+        XCTAssertEqual(options.penaltyPresence, 1.5)
+
+        let (refused, refusedNames) = try ggufCatalog(sampling: ["repetitionPenalty": 0, "source": "card"])
+        XCTAssertTrue(refused.entries.isEmpty, "a value the sampler cannot take is still refused")
+        XCTAssertEqual(refusedNames.count, 1)
     }
 
     func testTheBundledGGUFCatalogStillLoadsWhole() throws {
@@ -138,13 +159,26 @@ final class LocalModelSamplingTests: XCTestCase {
         let (document, rejected) = try LocalModelCatalogDocument.loadStrict(from: Data(contentsOf: url))
         XCTAssertEqual(rejected, [])
         XCTAssertEqual(document.entries.count, 6)
-        // Plan MQ P2: the Gemma 4 GGUF entries cite their model card, as the MLX entries do; Qwen 3.5's
-        // card asks for a presence penalty the GGUF sampler does not take, so it carries none.
+        // Plan MQ P2: every GGUF entry cites its model card, as the MLX entries do.
         let sampled = document.entries.filter { $0.sampling != nil }.map(\.id.rawValue).sorted()
-        XCTAssertEqual(sampled, ["ggml-org/gemma-4-E2B-it-GGUF#gemma-4-E2B-it-Q4_0.gguf",
+        XCTAssertEqual(sampled, ["ggml-org/Qwen3.5-4B-GGUF#Qwen3.5-4B-Q4_K_M.gguf",
+                                 "ggml-org/gemma-4-E2B-it-GGUF#gemma-4-E2B-it-Q4_0.gguf",
                                  "ggml-org/gemma-4-E4B-it-GGUF#gemma-4-E4B-it-Q4_0.gguf"])
-        for entry in document.entries where entry.sampling != nil {
+        for entry in document.entries where entry.sampling != nil && entry.id.rawValue.contains("gemma-4") {
             XCTAssertEqual(entry.sampling?.general, LocalModelCatalog.gemma4Sampling.general)
         }
+        // Qwen 3.5 4B: its card's instruct (non-thinking) set, which a tool turn (thinking off) runs.
+        let qwen = try XCTUnwrap(document.entries.first { $0.id.rawValue.hasPrefix("ggml-org/Qwen3.5-4B") })
+        XCTAssertEqual(qwen.sampling?.general, .init(temperature: 0.7, topP: 0.8, topK: 20, minP: 0,
+                                                     repetitionPenalty: 1.0, presencePenalty: 1.5))
+        XCTAssertTrue(qwen.sampling?.source.contains("Qwen3.5-4B model card") ?? false)
+        let options = LlamaSamplerOptions(LocalModelSampling.configuration(
+            for: qwen.id.rawValue, toolTurn: true, ggufEntries: { document.entries }))
+        XCTAssertEqual(options.temperature, 0.7)
+        XCTAssertEqual(options.topP, 0.8)
+        XCTAssertEqual(options.topK, 20)
+        XCTAssertEqual(options.minP, 0)
+        XCTAssertEqual(options.penaltyRepeat, 1.0)
+        XCTAssertEqual(options.penaltyPresence, 1.5)
     }
 }

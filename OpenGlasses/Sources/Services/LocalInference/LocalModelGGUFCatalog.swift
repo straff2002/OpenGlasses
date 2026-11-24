@@ -143,9 +143,9 @@ extension LocalModelCatalog {
         if entry.evidence == .deviceVerified, let reason = evidenceRecordError(entry.evidenceRecord) {
             return reason
         }
-        // The GGUF wrapper's sampler has no presence penalty, so a set that needs one is refused
-        // rather than silently run without it.
-        if let reason = entry.sampling?.validationError(supportsPresencePenalty: false) { return reason }
+        // The GGUF sampler takes a presence penalty since Plan MQ's Qwen 3.5 set (llama.cpp's
+        // penalties sampler, over its 64-token window).
+        if let reason = entry.sampling?.validationError(supportsPresencePenalty: true) { return reason }
         if descriptor.license.requiresAcceptance && descriptor.license.revision == nil {
             return "licence requires acceptance but names no revision to accept"
         }

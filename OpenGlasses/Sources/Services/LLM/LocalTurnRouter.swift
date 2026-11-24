@@ -57,6 +57,15 @@ import Foundation
 /// calculation as it does a model's (`LocalArgumentCompletion`): the wire, the metal and the supply
 /// come from the technician's words, never from the router. The model says the result.
 ///
+/// ### Show me the source
+/// On the GGUF runtime Gemma 4 E2B met "Show me the last source you used" and "Show me the page that
+/// table came from" with a question ("What table are you referring to?") on all three cases, where
+/// the MLX runtime called `show_source`. A turn that opens with show, open, pull up or bring up and
+/// names exactly one source (`LocalArgumentCompletion.sourcesSaid`: an ordinal on a source, the cited
+/// table, a table number, every source) is routed with that `which`; the tool says itself when there
+/// is nothing to show. "Show me where it says that", a source and a photo, or two sources, go to the
+/// model.
+///
 /// ### What is not routed
 /// Error codes through `table_lookup`: it needs a real table id, which only the passages give.
 enum LocalTurnRouter {
@@ -96,7 +105,7 @@ enum LocalTurnRouter {
 
     enum Kind: String, CaseIterable, Sendable {
         case errorCode, modelNumber, procedureStart, procedureNext, procedureRepeat, procedureAnswer
-        case jobCommand, evidence, readingFollowUp, readingLogged, voltageDrop
+        case jobCommand, evidence, readingFollowUp, readingLogged, voltageDrop, showSource
     }
 
     /// How a routed call's result reaches the wearer.
@@ -118,7 +127,8 @@ enum LocalTurnRouter {
 
         var speech: Speech {
             switch kind {
-            case .errorCode, .modelNumber, .jobCommand, .evidence, .readingFollowUp, .readingLogged, .voltageDrop:
+            case .errorCode, .modelNumber, .jobCommand, .evidence, .readingFollowUp, .readingLogged, .voltageDrop,
+                 .showSource:
                 return .model
             case .procedureStart, .procedureNext, .procedureRepeat, .procedureAnswer: return .result
             }
@@ -166,6 +176,9 @@ enum LocalTurnRouter {
         }
         if context.offered.contains("reading"), let arguments = loggedReading(text) {
             return Route(kind: .readingLogged, tool: "reading", arguments: arguments)
+        }
+        if context.offered.contains("show_source"), let arguments = shownSource(text) {
+            return Route(kind: .showSource, tool: "show_source", arguments: arguments)
         }
         let lookup = context.offered.contains("equipment_lookup") && !asksAnotherTool(text)
         if lookup, let code = askedErrorCode(text) {
@@ -957,6 +970,30 @@ enum LocalTurnRouter {
         guard matches.count == 1, let range = Range(matches[0].range(at: 1), in: text) else { return nil }
         return String(text[range])
     }
+
+    /// The `show_source` call for "Show me the last source you used", "Show me the page that table
+    /// came from", "Open Table 99", or nil: a show verb at the front, exactly one source named, and
+    /// nothing else asked for, deferred or questioned.
+    static func shownSource(_ text: String) -> [String: String]? {
+        guard !text.contains("?") else { return nil }
+        let words = normalised(text).split(separator: " ").map(String.init)
+        guard !defers(words, text: text) else { return nil }
+        var rest = ArraySlice(words)
+        while let first = rest.first, logOpeners.contains(first) || first == "can" || first == "you" { rest = rest.dropFirst() }
+        let joined = rest.joined(separator: " ")
+        guard showOpeners.contains(where: { joined.hasPrefix($0 + " ") }),
+              rest.allSatisfy({ !sourceRouteExclusions.contains($0) }) else { return nil }
+        let said = LocalArgumentCompletion.sourcesSaid(in: text)
+        guard said.count == 1, let which = said.first else { return nil }
+        return ["which": which]
+    }
+
+    private static let showOpeners = ["show me", "show", "open", "open up", "pull up", "bring up", "let me see", "put up"]
+    /// Words that ask for something other than a cited source.
+    private static let sourceRouteExclusions: Set<String> = [
+        "photo", "photos", "picture", "pictures", "diagram", "diagrams", "figure", "figures", "wiring", "drawing",
+        "video", "log", "record", "calculate", "send", "email", "procedure", "job", "map", "route", "camera",
+    ]
 
     static let logVerbs: Set<String> = ["log", "record"]
     private static let logOpeners: Set<String> = ["ok", "okay", "right", "so", "now", "and", "alright", "please", "then", "um"]

@@ -93,6 +93,28 @@ common_json message_json(const common_chat_msg &msg) {
     return out;
 }
 
+/// A request's inputs, as `common_chat_templates_apply` takes them. Throws on malformed JSON.
+common_chat_templates_inputs inputs_from_request(const common_json &request) {
+    common_chat_templates_inputs inputs;
+    inputs.messages = common_chat_msgs_parse_oaicompat(request.at("messages"));
+    if (request.contains("tools") && request.at("tools").is_array() && !request.at("tools").empty()) {
+        inputs.tools = common_chat_tools_parse_oaicompat(request.at("tools"));
+    }
+    inputs.tool_choice = tool_choice_named(request.value("tool_choice", std::string("auto")));
+    inputs.parallel_tool_calls = request.value("parallel_tool_calls", true);
+    inputs.enable_thinking = request.value("enable_thinking", false);
+    inputs.add_generation_prompt = request.value("add_generation_prompt", true);
+    inputs.reasoning_format =
+        common_reasoning_format_from_name(request.value("reasoning_format", std::string("auto")));
+    inputs.use_jinja = true;
+    // A fixed clock makes a render repeatable; the app passes the real time.
+    if (request.contains("now")) {
+        const auto seconds = request.at("now").get<int64_t>();
+        inputs.now = std::chrono::system_clock::time_point(std::chrono::seconds(seconds));
+    }
+    return inputs;
+}
+
 }  // namespace
 
 extern "C" {
@@ -186,29 +208,13 @@ OGLlamaStatus og_llama_chat_render(const OGLlamaChatTemplates *templates,
     *out_json = nullptr;
     try {
         const common_json request = common_json::parse(request_json);
-
-        common_chat_templates_inputs inputs;
-        inputs.messages = common_chat_msgs_parse_oaicompat(request.at("messages"));
-        if (request.contains("tools") && request.at("tools").is_array() && !request.at("tools").empty()) {
-            inputs.tools = common_chat_tools_parse_oaicompat(request.at("tools"));
-        }
-        inputs.tool_choice = tool_choice_named(request.value("tool_choice", std::string("auto")));
-        inputs.parallel_tool_calls = request.value("parallel_tool_calls", true);
-        inputs.enable_thinking = request.value("enable_thinking", false);
-        inputs.add_generation_prompt = request.value("add_generation_prompt", true);
-        const std::string reasoning = request.value("reasoning_format", std::string("auto"));
-        inputs.reasoning_format = common_reasoning_format_from_name(reasoning);
-        inputs.use_jinja = true;
-        // A fixed clock makes a render repeatable; the app passes the real time.
-        if (request.contains("now")) {
-            const auto seconds = request.at("now").get<int64_t>();
-            inputs.now = std::chrono::system_clock::time_point(std::chrono::seconds(seconds));
-        }
-
+        const common_chat_templates_inputs inputs = inputs_from_request(request);
         const common_chat_params params = common_chat_templates_apply(templates->templates.get(), inputs);
 
         common_json out = common_json::object();
-        out["prompt"] = params.prompt;
+        // v1.0.0 keeps the prompt as parts, marking the ones that came from user input; joined
+        // here into the one text the backend tokenizes, as before.
+        out["prompt"] = params.prompt.str();
         out["format"] = static_cast<int>(params.format);
         out["format_name"] = std::string(common_chat_format_name(params.format));
         out["grammar"] = params.grammar;
@@ -224,8 +230,7 @@ OGLlamaStatus og_llama_chat_render(const OGLlamaChatTemplates *templates,
         out["preserved_tokens"] = params.preserved_tokens;
         out["additional_stops"] = params.additional_stops;
         out["generation_prompt"] = params.generation_prompt;
-        out["parser"] = params.parser;
-        out["reasoning_format"] = reasoning;
+        out["reasoning_format"] = request.value("reasoning_format", std::string("auto"));
         out["supports_thinking"] = params.supports_thinking;
         out["tools_rendered"] = !inputs.tools.empty();
         return hand_over(out.dump(), out_json);
@@ -238,24 +243,24 @@ OGLlamaStatus og_llama_chat_render(const OGLlamaChatTemplates *templates,
 
 #pragma mark - Parse
 
-OGLlamaStatus og_llama_chat_parser_create(const char *render_json, OGLlamaChatParser **out_parser) {
-    if (render_json == nullptr || out_parser == nullptr) {
+OGLlamaStatus og_llama_chat_parser_create(const OGLlamaChatTemplates *templates,
+                                          const char *request_json,
+                                          OGLlamaChatParser **out_parser) {
+    if (templates == nullptr || !templates->templates || request_json == nullptr || out_parser == nullptr) {
         return OGLlamaStatusInvalidArgument;
     }
     *out_parser = nullptr;
     silence_common_log();
     try {
-        const common_json render = common_json::parse(render_json);
+        // v1.0.0's parser is an in-memory PEG arena with no serialized form, so it is taken from
+        // a render of the same request rather than read back from the render's JSON.
+        const common_json request = common_json::parse(request_json);
+        common_chat_params params = common_chat_templates_apply(templates->templates.get(),
+                                                                inputs_from_request(request));
         auto *handle = new OGLlamaChatParser();
-        handle->params.format = static_cast<common_chat_format>(render.value("format", 0));
-        handle->params.generation_prompt = render.value("generation_prompt", std::string());
-        handle->params.reasoning_format =
-            common_reasoning_format_from_name(render.value("reasoning_format", std::string("auto")));
-        handle->params.parse_tool_calls = true;
-        const std::string parser = render.value("parser", std::string());
-        if (!parser.empty()) {
-            handle->params.parser.load(parser);
-        }
+        handle->params.format = params.format;
+        handle->params.generation_prompt = common_chat_input(params.generation_prompt);
+        handle->params.parser = std::move(params.parser);
         *out_parser = handle;
         return OGLlamaStatusOK;
     } catch (const std::bad_alloc &) {
@@ -278,7 +283,7 @@ OGLlamaStatus og_llama_chat_parse(const OGLlamaChatParser *parser,
     }
     *out_json = nullptr;
     try {
-        const std::string input(text != nullptr ? text : "", static_cast<size_t>(length));
+        const common_chat_input input(std::string(text != nullptr ? text : "", static_cast<size_t>(length)));
         const common_chat_msg msg = common_chat_parse(input, partial, parser->params);
         return hand_over(message_json(msg).dump(), out_json);
     } catch (const std::bad_alloc &) {

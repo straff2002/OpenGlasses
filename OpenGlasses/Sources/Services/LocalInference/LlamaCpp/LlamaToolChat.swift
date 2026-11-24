@@ -191,4 +191,50 @@ enum LlamaPromptCache {
         while shared < limit, cached[shared] == prompt[shared] { shared += 1 }
         return min(shared, max(0, prompt.count - 1))
     }
+
+    // MARK: - Prefix snapshots (Plan MQ, a cache that cannot be cut back)
+
+    /// What the stable start is found against: the same system prompt and tools rendered over one
+    /// user message holding only this, a private-use character no turn starts with. A tokenizer
+    /// merges nothing across it, so the render's tokens part from a real prompt's exactly where the
+    /// first conversation message's own words begin.
+    static let stableStartProbe = "\u{E000}"
+
+    /// A snapshot shorter than this is not worth its copy.
+    static let minimumSnapshotTokens = 64
+
+    /// Where `prompt`'s stable start ends: the tokens it shares with `probe`, the render of its own
+    /// system prompt and tools over `stableStartProbe` — the system/tools section, up to where the
+    /// first message's words begin. Less one when that is the whole prompt, as `reusablePrefix`.
+    static func stableStart(prompt: [LlamaToken], probe: [LlamaToken]) -> Int {
+        var shared = 0
+        let limit = min(probe.count, prompt.count)
+        while shared < limit, probe[shared] == prompt[shared] { shared += 1 }
+        return min(shared, max(0, prompt.count - 1))
+    }
+
+    /// What to do with the one snapshot before a prompt's prefill.
+    struct SnapshotStep: Equatable {
+        /// The snapshot holds the prompt's first tokens: restore it and prefill from its end.
+        let restore: Bool
+        /// Where the prefill starts when the restore works.
+        let resumeAt: Int
+        /// Save a new snapshot once the prefill reaches this position (replacing the old one), or
+        /// nil to keep what there is.
+        let saveAt: Int?
+    }
+
+    /// The snapshot is restored when the prompt begins with exactly its tokens and runs past them
+    /// (the sampler needs a decoded token's logits). A new one is saved at the prompt's stable start
+    /// when nothing was restored, or when that start runs past the restored one: one snapshot,
+    /// replaced when the start changes. A stable start under `minimumTokens` is not saved.
+    static func snapshotStep(snapshot: [LlamaToken]?, prompt: [LlamaToken], stableStart: Int?,
+                             minimumTokens: Int = minimumSnapshotTokens) -> SnapshotStep {
+        let target = stableStart.map { min($0, max(0, prompt.count - 1)) }.flatMap { $0 >= minimumTokens ? $0 : nil }
+        if let snapshot, !snapshot.isEmpty, snapshot.count < prompt.count, prompt.starts(with: snapshot) {
+            let grow = target.flatMap { $0 > snapshot.count ? $0 : nil }
+            return SnapshotStep(restore: true, resumeAt: snapshot.count, saveAt: grow)
+        }
+        return SnapshotStep(restore: false, resumeAt: 0, saveAt: target)
+    }
 }

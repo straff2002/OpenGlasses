@@ -273,6 +273,11 @@ enum LocalToolEval {
         var promptTokens: [Int] = []
         /// Decode rate per generation: generated tokens a second.
         var decodeTokensPerSecond: [Double] = []
+        /// Per generation: where its prompt was read from (`LocalPromptSource`'s raw value), the
+        /// prompt tokens that saved, and the bytes of a prefix snapshot it saved (0 when none).
+        var promptSources: [String] = []
+        var reusedPromptTokens: [Int] = []
+        var snapshotBytes: [Int] = []
 
         // Plan MQ P3: what the runtime's fit (`LocalToolFit`) sent of the offered tools. Counts only.
         /// Tools offered on the run's first generation that offered any.
@@ -296,6 +301,8 @@ enum LocalToolEval {
         /// Arguments the loop set, replaced or took off the model's calls from what the technician
         /// said (`LocalArgumentCompletion`, Plan MQ P3). A count only.
         var argumentsCompleted = 0
+        /// Model-made calls the loop left unrun because the turn did not ask for them.
+        var callsScreened = 0
 
         mutating func add(_ stats: LocalGenerationStats?) {
             generations += 1
@@ -306,6 +313,9 @@ enum LocalToolEval {
             promptSeconds.append(stats.promptSeconds)
             promptTokens.append(stats.promptTokens)
             if let rate = stats.decodeTokensPerSecond { decodeTokensPerSecond.append(rate) }
+            promptSources.append(stats.promptSource.rawValue)
+            reusedPromptTokens.append(stats.reusedPromptTokens)
+            snapshotBytes.append(stats.snapshotBytes ?? 0)
         }
 
         /// One generation's fit report, on a generation that offered tools; `expected` the case's
@@ -638,6 +648,7 @@ enum LocalToolEval {
             measured.noteRouted(outcome.routedCalls)
             measured.noteDropped(outcome.argumentsDropped)
             measured.noteCompleted(outcome.argumentsCompleted)
+            measured.noteScreened(outcome.callsScreened)
             grades.merge(grade(testCase, outcome: outcome, schema: environment.schema,
                                measurements: measured.value)) { $1 }
             if testCase.cancel != nil { grades[.cancellation] = false }
@@ -687,6 +698,7 @@ enum LocalToolEval {
         func noteRouted(_ count: Int) { lock.lock(); measurements.routedCalls += count; lock.unlock() }
         func noteDropped(_ count: Int) { lock.lock(); measurements.argumentsDropped += count; lock.unlock() }
         func noteCompleted(_ count: Int) { lock.lock(); measurements.argumentsCompleted += count; lock.unlock() }
+        func noteScreened(_ count: Int) { lock.lock(); measurements.callsScreened += count; lock.unlock() }
         func noteError(_ error: Error) { lock.lock(); measurements.errorKind = LocalToolEval.errorKind(error); lock.unlock() }
     }
 
