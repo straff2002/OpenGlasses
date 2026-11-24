@@ -651,6 +651,7 @@ struct OrganisationProfilePage: View {
                 lines(review.startingValueLines)
             }
         }
+        companySettingsSections(record: record)
         if !review.adminLines.isEmpty {
             OGSection(header: "What this phone shows") {
                 lines(review.adminLines)
@@ -712,6 +713,55 @@ struct OrganisationProfilePage: View {
             Text("Its locks lift, the settings it chose go back to yours, and a licence it brought is removed.")
         }
         .id(Self.leaveSection)
+    }
+
+    /// Plan ND: the generation in force, one waiting for the open job, and each default the person
+    /// chose differently from the company's, with a way back to the company's.
+    @ViewBuilder
+    private func companySettingsSections(record: OrgEnrolmentRecord) -> some View {
+        if record.heldProfileDocument != nil {
+            OGNotice(text: "Company settings updated. They apply after this job.", systemImage: "clock")
+        }
+        let kept = manager.keptChoices
+        if !kept.isEmpty {
+            OGSection(header: "Your own choices",
+                      footer: "You changed these on this phone, so they stay as you set them.") {
+                ForEach(Array(kept.enumerated()), id: \.element.id) { index, choice in
+                    if index > 0 { OGDivider() }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(verbatim: Self.keptChoiceLine(choice))
+                            .font(.body)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Use company default") { manager.useCompanyDefault(choice.key) }
+                            .buttonStyle(.ogQuiet)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+            }
+        }
+        if let generation = manager.profileGeneration {
+            OGSection {
+                lines([String(localized: "Company settings version \(generation)")])
+            }
+        }
+    }
+
+    /// "Refrigeration answers start in psi, °C and kg. You chose bar, °C and kg."
+    static func keptChoiceLine(_ choice: StartingValueFollow.KeptChoice) -> String {
+        let company = choice.key.startingValueDescription(choice.companyValue)
+        return String(localized: "\(company). You chose \(Self.valueDescription(choice.key, choice.personsValue)).")
+    }
+
+    static func valueDescription(_ key: SettingKey, _ value: ProfileValue) -> String {
+        switch value {
+        case .bool(let on): return on ? String(localized: "on") : String(localized: "off")
+        case .string(let text):
+            if key == .refrigerationUnits, let units = RefrigerationUnits(encoded: text) { return units.spokenList }
+            return text
+        case .strings(let list): return list.isEmpty ? String(localized: "none") : list.joined(separator: ", ")
+        }
     }
 
     /// One plain line per entry, as the enrolment review listed them.

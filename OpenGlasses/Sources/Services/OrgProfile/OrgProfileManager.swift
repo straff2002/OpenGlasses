@@ -72,6 +72,21 @@ struct OrgEnrolmentRecord: Codable, Equatable, Sendable {
     /// What this phone holds of the company's vaults, and the catalog generation high-water mark.
     /// Nil on every record from before company vaults, and on a phone that has none.
     var companyVaults: CompanyVaultState?
+
+    // Plan ND — company settings from the portal.
+
+    /// The highest `profileGeneration` applied here. A lower one, or none after one was seen, is
+    /// refused (`ProfileGenerationGate`). Nil until a profile with a generation is applied.
+    var profileGenerationHighWater: Int?
+    /// For each starting value, the value the profile last wrote on this phone — so a renewal can
+    /// tell a default the person never touched (it follows the company) from one they chose (it
+    /// stays). Nil on records from before ND (`StartingValueFollow.migratedLastWritten`).
+    var lastWrittenStartingValues: [String: ProfileValue]?
+    /// A verified newer generation that arrived while a job was open. Applied when the job closes;
+    /// the lease renewed from it already.
+    var heldProfileDocument: String?
+    /// When the profile's address was last asked whether it changed (`ProfileRefreshPolicy`).
+    var lastConditionalCheck: Date?
 }
 
 /// What the person holding the phone is shown before a profile is applied: who it is from, what it
@@ -189,6 +204,8 @@ final class OrgProfileManager: ObservableObject {
         /// Joining an office by its code chose an enrolment identifier before the profile arrived,
         /// and this phone's enrolment no longer matches it.
         case enrolmentChanged
+        /// Plan ND: a copy of the profile in force older than the one already applied here.
+        case staleProfile
 
         var errorDescription: String? {
             switch self {
@@ -203,6 +220,7 @@ final class OrgProfileManager: ObservableObject {
             case .officePackage: return String(localized: "The office licence and profile do not verify as one organisation. Ask your organisation for a new setup package.")
             case .notRemovable: return String(localized: "Your organisation's device management applied this profile, so it can only be removed there.")
             case .enrolmentChanged: return String(localized: "This phone's organisation setup changed while it was joining the office. Scan the office's code again.")
+            case .staleProfile: return String(localized: "This is an older copy of your organisation's profile than the one on this phone, so nothing in it was applied.")
             }
         }
     }
@@ -223,6 +241,8 @@ final class OrgProfileManager: ObservableObject {
         var clearEnvelope: () -> Void = { PolicyEnvelope.clear() }
         var newEnrolmentId: () -> String = { String(UUID().uuidString.prefix(8)).lowercased() }
         var fetch: (URL) async throws -> Data = OrgEnrolmentService.boundedFetch
+        /// Plan ND: ask the profile's address whether its copy is still this generation (`304`).
+        var fetchIfChanged: (URL, Int) async -> ProfileConditionalFetch = OrgEnrolmentService.boundedConditionalFetch
         var activeJobId: @MainActor () -> String? = { FieldSessionService.shared.activeSession?.id }
         var closeManagedAccess: @MainActor (_ enrolledAt: Date) -> Void = { _ in }
         var withholdLicence: (String?) -> Void = { PolicyEnvelope.withholdLicence($0) }
@@ -363,7 +383,11 @@ final class OrgProfileManager: ObservableObject {
         jobObservation = FieldSessionService.shared.$activeSession
             .dropFirst()
             .sink { [weak self] _ in
-                Task { @MainActor in self?.evaluateLease() }
+                Task { @MainActor in
+                    // Plan ND: a generation held for the job applies once it has closed.
+                    self?.applyHeldProfileIfFree()
+                    self?.evaluateLease()
+                }
             }
     }
 
@@ -477,6 +501,13 @@ final class OrgProfileManager: ObservableObject {
             return .failure(.verification(refusal))
         }
 
+        // Plan ND: an older copy of the profile already in force applies nothing.
+        if let current = profile, current.profileId == review.profile.profileId,
+           ProfileGenerationGate.judge(incoming: review.profile.profileGeneration,
+                                       highWater: record?.profileGenerationHighWater) == .stale {
+            return .failure(.staleProfile)
+        }
+
         // Another organisation's profile is in force: only a reviewed move replaces it, and only
         // the enrolment it was reviewed against.
         var leaving: OrgEnrolmentRecord?
@@ -523,7 +554,8 @@ final class OrgProfileManager: ObservableObject {
 
         var priors = record?.priorStartingValues ?? [:]
         var wrote = Set(record?.wroteStartingKeys ?? [])
-        writeStartingValues(writable, onlyNewKeys: false, priors: &priors, wrote: &wrote)
+        var lastWritten = record?.lastWrittenStartingValues ?? [:]
+        writeStartingValues(writable, onlyNewKeys: false, priors: &priors, wrote: &wrote, lastWritten: &lastWritten)
 
         let now = seams.now()
         var newRecord = OrgEnrolmentRecord(
@@ -545,6 +577,9 @@ final class OrgProfileManager: ObservableObject {
         newRecord.modelSetupPending = record?.modelSetupPending
         // The same company's vaults stay; a move's went with the organisation it left.
         newRecord.companyVaults = leaving == nil ? record?.companyVaults : nil
+        newRecord.lastWrittenStartingValues = lastWritten
+        newRecord.profileGenerationHighWater = ProfileGenerationGate.raised(
+            leaving == nil ? record?.profileGenerationHighWater : nil, by: review.profile.profileGeneration)
         reconcileModel(review.result.aiModel, organizationName: review.profile.organizationName,
                        record: &newRecord)
         seams.saveRecord(newRecord)
@@ -611,9 +646,11 @@ final class OrgProfileManager: ObservableObject {
             }
             var priors = latest.priorStartingValues
             var wrote = Set(latest.wroteStartingKeys)
-            writeStartingValues(ready, onlyNewKeys: false, priors: &priors, wrote: &wrote)
+            var lastWritten = latest.lastWrittenStartingValues ?? [:]
+            writeStartingValues(ready, onlyNewKeys: false, priors: &priors, wrote: &wrote, lastWritten: &lastWritten)
             latest.priorStartingValues = priors
             latest.wroteStartingKeys = wrote.sorted()
+            latest.lastWrittenStartingValues = lastWritten
             latest.pendingPackId = nil
             latest.packInstallError = nil
             latest.heldStartingValues = nil
@@ -644,7 +681,8 @@ final class OrgProfileManager: ObservableObject {
     /// and a renewal writes only keys it has never written, so it does not undo what the person
     /// changed since.
     private func writeStartingValues(_ result: ProfileApplier.Result, onlyNewKeys: Bool,
-                                     priors: inout [String: ProfileValue], wrote: inout Set<String>) {
+                                     priors: inout [String: ProfileValue], wrote: inout Set<String>,
+                                     lastWritten: inout [String: ProfileValue]) {
         for (key, value) in result.startingValues {
             let isNew = !wrote.contains(key.rawValue)
             if onlyNewKeys && !isNew { continue }
@@ -653,7 +691,75 @@ final class OrgProfileManager: ObservableObject {
                 wrote.insert(key.rawValue)
             }
             seams.writeSetting(key, value)
+            lastWritten[key.rawValue] = value
         }
+    }
+
+    /// Plan ND — a renewal's starting values: a default the person never touched follows the
+    /// company, one they chose stays theirs (`StartingValueFollow`). Priors are still recorded only
+    /// the first time a key is written, so removal puts back what the person had before enrolment.
+    private func followStartingValues(_ result: ProfileApplier.Result, priors: inout [String: ProfileValue],
+                                      wrote: inout Set<String>, lastWritten: inout [String: ProfileValue]) {
+        for key in result.startingValues.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+            guard let value = result.startingValues[key] else { continue }
+            let name = key.rawValue
+            let stored = seams.readSetting(key)
+            let decision = StartingValueFollow.decide(profileValue: value, lastWritten: lastWritten[name],
+                                                      wroteBefore: wrote.contains(name), stored: stored)
+            switch decision {
+            case .write(let new), .adopt(let new):
+                if !wrote.contains(name) {
+                    if let stored { priors[name] = stored }
+                    wrote.insert(name)
+                }
+                if case .write = decision { seams.writeSetting(key, new) }
+                lastWritten[name] = new
+            case .keepPersonsChoice, .nothing:
+                break
+            }
+        }
+    }
+
+    // MARK: - Company settings the person changed (Plan ND)
+
+    /// The starting values the person set differently from the company's default, for the managed
+    /// page. Values still waiting for the pack are not listed.
+    var keptChoices: [StartingValueFollow.KeptChoice] {
+        guard let profile, let record, record.revoked != true else { return [] }
+        var company = ProfileApplier.apply(profile: profile, resolvableVaultIds: seams.resolvableVaultIds()).startingValues
+        for name in (record.heldStartingValues ?? [:]).keys {
+            if let key = SettingKey(rawValue: name) { company.removeValue(forKey: key) }
+        }
+        return StartingValueFollow.keptChoices(companyValues: company, stored: seams.readSetting)
+    }
+
+    /// *Use company default* on a kept choice: write the company's value, and let the key follow the
+    /// company from here.
+    func useCompanyDefault(_ key: SettingKey) {
+        guard var current = record, current.revoked != true, let profile else { return }
+        let company = ProfileApplier.apply(profile: profile, resolvableVaultIds: seams.resolvableVaultIds()).startingValues
+        guard let value = company[key] else { return }
+        var priors = current.priorStartingValues
+        var wrote = Set(current.wroteStartingKeys)
+        var lastWritten = current.lastWrittenStartingValues ?? [:]
+        var single = ProfileApplier.Result()
+        single.startingValues[key] = value
+        writeStartingValues(single, onlyNewKeys: false, priors: &priors, wrote: &wrote, lastWritten: &lastWritten)
+        current.priorStartingValues = priors
+        current.wroteStartingKeys = wrote.sorted()
+        current.lastWrittenStartingValues = lastWritten
+        seams.saveRecord(current)
+        record = current
+    }
+
+    /// The generation in force, for the managed page ("Company settings version 13").
+    var profileGeneration: Int? { record?.profileGenerationHighWater }
+
+    /// The generation waiting for the open job to close, if one is.
+    var heldGeneration: Int? {
+        guard let text = record?.heldProfileDocument,
+              case .profile(let held)? = try? ProfileVerification.verify(text, keys: seams.verificationKeys) else { return nil }
+        return held.profileGeneration
     }
 
     // MARK: - The organisation's AI model (Plan CT 3a)
@@ -864,20 +970,51 @@ final class OrgProfileManager: ObservableObject {
             return
         }
         let now = seams.now()
-        if !force, let last = current.lastRenewalAttempt, last <= now,
-           now.timeIntervalSince(last) < ProfileLease.renewalInterval {
+        let action = ProfileRefreshPolicy.action(trigger: force ? .forced : .routine,
+                                                 lastFullAttempt: current.lastRenewalAttempt,
+                                                 lastConditionalCheck: current.lastConditionalCheck,
+                                                 knownGeneration: current.profileGenerationHighWater, now: now)
+        let data: Data?
+        switch action {
+        case .skip:
+            applyHeldProfileIfFree()
             evaluateLease()
             return
+        case .conditional(let generation):
+            current.lastConditionalCheck = now
+            seams.saveRecord(current)
+            record = current
+            switch await seams.fetchIfChanged(url, generation) {
+            case .document(let body):
+                data = body
+                // A whole copy came back: it is the lease's fetch too.
+                if var latest = record, latest.enrolmentId == current.enrolmentId {
+                    latest.lastRenewalAttempt = now
+                    seams.saveRecord(latest)
+                    record = latest
+                }
+            case .notModified:
+                PrivacyLog.transfer(.companyProfile, .notModified, version: PrivacyToken(String(generation)))
+                applyHeldProfileIfFree()
+                evaluateLease()
+                return
+            case .unavailable:
+                applyHeldProfileIfFree()
+                evaluateLease()
+                return
+            }
+        case .full:
+            current.lastRenewalAttempt = now
+            seams.saveRecord(current)
+            record = current
+            data = try? await seams.fetch(url)
         }
-        current.lastRenewalAttempt = now
-        seams.saveRecord(current)
-        record = current
 
-        let data = try? await seams.fetch(url)
         // The phone may have been un-managed or re-enrolled while the fetch was out.
         guard record?.enrolmentId == current.enrolmentId, self.profile?.profileId == profile.profileId,
               let data, let text = String(data: data, encoding: .utf8),
               let document = try? ProfileVerification.verify(text, keys: seams.verificationKeys) else {
+            applyHeldProfileIfFree()
             evaluateLease()
             return
         }
@@ -885,8 +1022,19 @@ final class OrgProfileManager: ObservableObject {
         case .revocation(let revocation) where revocation.profileId == profile.profileId:
             markRevoked()
         case .profile(let renewed) where renewed.profileId == profile.profileId:
+            let highWater = record?.profileGenerationHighWater
+            let verdict = ProfileGenerationGate.judge(incoming: renewed.profileGeneration, highWater: highWater)
+            if verdict == .stale {
+                // Nothing in an older copy is used: not its settings, not its revocations, not its lease.
+                PrivacyLog.transfer(.companyProfile, .staleRefused,
+                                    version: PrivacyToken(renewed.profileGeneration.map(String.init) ?? "none"))
+                break
+            }
             if (renewed.revokedEnrolmentIds ?? []).contains(current.enrolmentId) {
                 markRevoked()
+            } else if verdict == .newer, seams.activeJobId() != nil, record?.lapseErasedAt == nil {
+                // A change the company made waits for the open job; the lease renews from it now.
+                holdForJob(text, generation: renewed.profileGeneration)
             } else {
                 renew(with: renewed, document: text)
                 // A renewal after a lapse erasure reinstalls the pack now, not at the next pass.
@@ -896,6 +1044,42 @@ final class OrgProfileManager: ObservableObject {
             break
         }
         evaluateLease()
+    }
+
+    /// Keep a verified newer generation until the open job closes, and renew the lease from it.
+    private func holdForJob(_ document: String, generation: Int?) {
+        guard var current = record else { return }
+        current.heldProfileDocument = document
+        current.lastRenewedAt = seams.now()
+        current.leaseLock = nil
+        seams.saveRecord(current)
+        record = current
+        PrivacyLog.transfer(.companyProfile, .held, version: PrivacyToken(generation.map(String.init) ?? "none"))
+    }
+
+    /// Apply a generation held for a job, once no job is open. It is verified again, and applied only
+    /// if it is still at least the generation in force.
+    func applyHeldProfileIfFree() {
+        guard let current = record, let text = current.heldProfileDocument else { return }
+        guard seams.activeJobId() == nil else { return }
+        var cleared = current
+        cleared.heldProfileDocument = nil
+        seams.saveRecord(cleared)
+        record = cleared
+        guard current.revoked != true, let profile,
+              case .profile(let held)? = try? ProfileVerification.verify(text, keys: seams.verificationKeys),
+              held.profileId == profile.profileId,
+              ProfileGenerationGate.judge(incoming: held.profileGeneration,
+                                          highWater: current.profileGenerationHighWater) != .stale,
+              !(held.revokedEnrolmentIds ?? []).contains(current.enrolmentId) else { return }
+        let renewedAt = current.lastRenewedAt
+        renew(with: held, document: text)
+        // The held copy was fetched when the job was open; the lease runs from that fetch, not now.
+        if var latest = record, let renewedAt {
+            latest.lastRenewedAt = renewedAt
+            seams.saveRecord(latest)
+            record = latest
+        }
     }
 
     private func markRevoked() {
@@ -939,13 +1123,20 @@ final class OrgProfileManager: ObservableObject {
         }
         var priors = current.priorStartingValues
         var wrote = Set(current.wroteStartingKeys)
-        writeStartingValues(writable, onlyNewKeys: true, priors: &priors, wrote: &wrote)
+        var lastWritten = current.lastWrittenStartingValues ?? StartingValueFollow.migratedLastWritten(
+            wroteKeys: current.wroteStartingKeys,
+            profileInForce: profile.map { ProfileApplier.apply(profile: $0, resolvableVaultIds: seams.resolvableVaultIds()).startingValues } ?? [:])
+        followStartingValues(writable, priors: &priors, wrote: &wrote, lastWritten: &lastWritten)
 
         // The record is updated in place, so nothing a later phase added to it — the pack still
         // pending, the licence entered by hand — is lost on renewal.
         current.document = document
         current.priorStartingValues = priors
         current.wroteStartingKeys = wrote.sorted()
+        current.lastWrittenStartingValues = lastWritten
+        current.profileGenerationHighWater = ProfileGenerationGate.raised(current.profileGenerationHighWater,
+                                                                          by: renewed.profileGeneration)
+        current.heldProfileDocument = nil
         current.lastRenewedAt = seams.now()
         current.revoked = false
         current.leaseLock = nil

@@ -1,6 +1,8 @@
 # Plan ND — Company Settings from the Portal (the administrator sets them once, every phone that joins follows)
 
-**Status:** 📝 Drafted 2026-11-24; nothing built; 15 [decisions](#decisions-for-greig) with recommendations.
+**Status:** 🚧 P0 and P1 built 2026-11-24 (headless; see [As built](#as-built)), on the recommended answer to each
+of the 15 [decisions](#decisions-for-greig), which stay the owner's to change. Owed: P2 (the short first run), P3
+(the MDM reader), P4 (the portal, private repository), P5 (catalog sync), P6 (device pass).
 **Track:** Field Assist — fleet. The organisation profile, the licence portal, onboarding, Managed App
 Configuration.
 **Builds on:** Plan [CT](CT-org-configuration-profiles.md) (the signed profile, `SettingKey` and its directions,
@@ -375,4 +377,47 @@ generation, and the P0 contract is what the service builds against.
 
 ## As built
 
-Nothing yet.
+### P0 and P1 (2026-11-24)
+
+**The contract** (`Tools/LicenceIssuance/Sources/LicenceIssuance/ProfileContract.swift`):
+- `allowList` now lists all 64 `SettingKey`s with their kind and direction, `stringCeiling:office` included
+  (it listed 24). `ProfileContractParityTests` in the app's bundle fails on any key, kind or direction that
+  differs, and on any of the contract's mirrored enumerations (delivery channels, tool-definition modes,
+  transcript rules, stock places, connectors and reasons, manual search models, trades) that differs from
+  the app's own type.
+- `contentProblem` mirrors the app's value rules for every key outside `phoneCheckedSettings` (the expert
+  list, the technician's name and ID, the default vault, the support and pilot addresses), and is at least as
+  strict. A table of values in the parity tests holds it to the property that matters: the contract never
+  accepts a value the phone's `ProfileApplier` drops. `checkSetting` runs it, so presets and the existing
+  `make-org-profile` path get the same refusals.
+- `administratorEditableSettings` (every starting value and the company's own values),
+  `administratorEditableFields` (`aiModel`, `aiChoices`, `lockdown.open`, `lockdown.lock`) and
+  `checkAdministratorEdit(from:to:)`, which names the first vendor-only field or key an edit changes.
+- `profileGeneration` and `aiChoices` on `Input` and `Document`, omitted when nil; `nextGeneration(after:)`;
+  `checkAIChoices` (non-empty, no repeats, only `chatgpt`, `local`, `appleOnDevice`, never beside `aiModel`).
+- [`Contracts/company-settings.md`](../../Contracts/company-settings.md) for the service, linked from the
+  contracts README.
+
+**The phone** (`OpenGlasses/Sources/Services/OrgProfile/`):
+- `ConfigProfile.profileGeneration` and `aiChoices` (lossy, like `credentials`).
+- Pure: `ProfileGenerationGate`, `StartingValueFollow` (with the migration and `keptChoices`),
+  `ProfileRefreshPolicy` and `ProfileConditionalFetch`, `ManagedOnboardingPlan`, `ManagedConfigReading` and
+  `ManagedConfigAbsence`. The last two and the onboarding plan are not wired yet (P2, P3).
+- `OrgEnrolmentRecord` gains `profileGenerationHighWater`, `lastWrittenStartingValues`, `heldProfileDocument`
+  and `lastConditionalCheck`.
+- `OrgProfileManager`: enrolment records the generation and the values it wrote, and a re-scanned older copy of
+  the profile in force is refused (`Refusal.staleProfile`). `renewProfileIfDue` asks `ProfileRefreshPolicy`:
+  the daily full fetch as before, and between them a conditional fetch through a new seam,
+  `OrgEnrolmentService.boundedConditionalFetch` (the hardened client's one-hop `send` with `If-None-Match`).
+  A stale copy is refused before anything in it is read, revocations included, and renews nothing. A newer
+  generation with a job open is held and the lease renews from it; `applyHeldProfileIfFree` applies it on the
+  next pass or when the job closes (`observeJobs`). `renew(with:)` runs `StartingValueFollow` instead of
+  writing only new keys. `keptChoices` and `useCompanyDefault(_:)` back the page.
+- The organisation's page (`OrgProfileViews.swift`): *"Company settings updated. They apply after this job."*,
+  a *Your own choices* section with **Use company default** on each, and *Company settings version N*.
+- `PrivacyLog` channel `companyProfile` with `staleRefused`, `notModified` and `held`. The only field is the
+  generation number.
+
+**Not done here:** the P2 pages, the P3 reader, the service (P4), the strings in the catalog (P5: the stale
+refusal, the held notice, the *Your own choices* section, its footer and button, the version line, the kept
+choice line and its on / off / none words), and the device pass (P6).
