@@ -1,6 +1,6 @@
 # Plan NE — Settings Search and Pins (find any screen or setting by typing, and keep the ones you use most at the top)
 
-**Status:** 🚧 P0–P2 built 2026-11-25 (headless: focused suites green; Release build owed — not run, the machine was out of disk); P3 catalog
+**Status:** 🚧 P0–P2 built 2026-11-25 (headless: focused suites green; checked by CI, no local Release build); P3 catalog
 sync + translation owed as its own PR; P4 deferred. Built on the recommended answers below (still
 the owner's to change). The index holds 172 entries: 87 screens (15 categories' own screens and 72
 screens inside them) and 85 individual settings. See "As built" at the end for where the build
