@@ -63,13 +63,18 @@ enum LocalTurnRouter {
         var procedureAwaitsConfirmation: Bool = false
         /// The procedures the vault lets this turn start, by id and title. Empty: no start is routed.
         var procedures: [CatalogueEntry] = []
+        /// What the running step takes as its answer, when nothing is recorded for it yet: its
+        /// `expected_input` and its branch conditions. A step whose instruction asks no question
+        /// ("…The control stores it and resets.") still takes a reply that says one of these.
+        var stepReplies: [String] = []
 
         init(offered: Set<String>, procedureActive: Bool, procedureAwaitsConfirmation: Bool = false,
-             procedures: [CatalogueEntry] = []) {
+             procedures: [CatalogueEntry] = [], stepReplies: [String] = []) {
             self.offered = offered
             self.procedureActive = procedureActive
             self.procedureAwaitsConfirmation = procedureAwaitsConfirmation
             self.procedures = procedures
+            self.stepReplies = stepReplies
         }
     }
 
@@ -146,7 +151,8 @@ enum LocalTurnRouter {
         if lookup, let model = identifiedModelNumber(text) {
             return Route(kind: .modelNumber, tool: "equipment_lookup", arguments: ["query": model])
         }
-        if procedure, !context.procedureAwaitsConfirmation, isStepAnswer(text, history: history) {
+        if procedure, !context.procedureAwaitsConfirmation,
+           isStepAnswer(text, history: history, stepReplies: context.stepReplies) {
             return Route(kind: .procedureAnswer, tool: "procedure_runner",
                          arguments: ["action": "answer", "value": text])
         }
@@ -326,9 +332,13 @@ enum LocalTurnRouter {
     /// words. Sixteen words at most: two readings with their ranges are said in about fifteen
     /// ("low 0.20 to 0.40 … and high 0.95 to 1.25"); an aside is usually longer or opens with a
     /// request word ("hang on", "I'll").
-    static func isStepAnswer(_ text: String, history: [LocalToolLoop.Message]) -> Bool {
-        guard let last = history.last, last.role == .assistant, asksForReply(last.content),
-              !text.contains("?") else { return false }
+    ///
+    /// A step whose instruction asks nothing still takes its answer when the turn plainly says
+    /// one of `stepReplies` (`saysStepReply`): "The code stopped blinking and the control reset"
+    /// after "…hold the button until the code stops blinking. The control stores it and resets."
+    static func isStepAnswer(_ text: String, history: [LocalToolLoop.Message], stepReplies: [String] = []) -> Bool {
+        guard let last = history.last, last.role == .assistant, !text.contains("?"),
+              asksForReply(last.content) || saysStepReply(text, replies: stepReplies) else { return false }
         // Counted as spoken, so "0.20" is one word.
         let spokenWords = text.split(whereSeparator: { $0.isWhitespace }).count
         guard (1...stepAnswerWordLimit).contains(spokenWords),
@@ -340,6 +350,31 @@ enum LocalTurnRouter {
     }
 
     static let stepAnswerWordLimit = 16
+
+    /// Whether `text` says one of the step's expected replies: it shares at least two content
+    /// words with one of them, and those are at least half of its own. "The code stopped blinking
+    /// and the control reset" says the stored branch; "it's hot in here" and "the control" say
+    /// nothing.
+    static func saysStepReply(_ text: String, replies: [String]) -> Bool {
+        let said = contentWords(text)
+        guard said.count >= 2 else { return false }
+        return replies.contains { reply in
+            let shared = said.intersection(contentWords(reply)).count
+            return shared >= 2 && shared * 2 >= said.count
+        }
+    }
+
+    /// The words of `text` that carry meaning: `normalised(_:)`, without function words.
+    static func contentWords(_ text: String) -> Set<String> {
+        Set(normalised(text).split(separator: " ").map(String.init)).subtracting(functionWords)
+    }
+
+    static let functionWords: Set<String> = [
+        "a", "an", "the", "and", "or", "but", "of", "to", "in", "on", "at", "for", "with", "by", "from",
+        "it", "its", "it's", "is", "was", "are", "were", "be", "been", "has", "have", "had", "this", "that",
+        "then", "there", "now", "just", "so", "yes", "yeah", "ok", "okay", "i", "i've", "we", "you", "my",
+        "our", "up", "out", "off", "all", "any", "some", "no",
+    ]
 
     /// Whether what was said ends by asking the wearer for something: a question, or a last
     /// sentence that asks to be told ("Tell me both readings…", "Report what you find.").

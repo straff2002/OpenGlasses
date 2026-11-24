@@ -420,6 +420,9 @@ def procedures():
         for step in procedure["steps"]:
             history = [{"role": "user", "content": f"Start the {title.lower()} procedure"},
                        {"role": "assistant", "content": step["instruction"]}]
+            # What the app's router reads as the running step's answers (Plan MQ P3).
+            replies = [step["expected_input"]] if step.get("expected_input") else []
+            replies += [b["condition"] for b in step.get("branches", [])]
             add({
                 "id": f"proc-{name}-{step['id']}-next", "category": "multiTurn", "source": src,
                 "turn": "Done. Next step", "history": history, "offered": offered, "procedureActive": True,
@@ -438,6 +441,7 @@ def procedures():
                 add({
                     "id": f"proc-{name}-{step['id']}-answer", "category": "multiTurn", "source": src,
                     "turn": branch["condition"], "history": history, "offered": offered, "procedureActive": True,
+                    "stepReplies": replies,
                     "expect": {"calls": [{"tool": "procedure_runner", "required": ["action"],
                                           "values": {"action": "answer"}}]},
                     "results": {"procedure_runner": "Recorded; moving on."},

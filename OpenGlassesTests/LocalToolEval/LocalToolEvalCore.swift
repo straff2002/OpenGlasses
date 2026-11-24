@@ -135,6 +135,8 @@ enum LocalToolEval {
         /// A Field Assist procedure is running when the turn is said: a step of it ("next",
         /// "say that again", the step's answer). The loop's router reads it (Plan MQ P3).
         var procedureActive: Bool?
+        /// The running step's expected input and branch conditions, as the app's router sees them.
+        var stepReplies: [String]?
         /// What a passing model emits, raw, one entry per generation.
         var reference: [String]?
         /// The procedures the case's vault lets a turn start, by id and title: never on a case's own
@@ -602,7 +604,8 @@ enum LocalToolEval {
                 if environment.routesTurns {
                     configuration.routing = LocalTurnRouter.Context(offered: Set(testCase.offered),
                                                                     procedureActive: testCase.procedureActive ?? false,
-                                                                    procedures: testCase.procedures ?? [])
+                                                                    procedures: testCase.procedures ?? [],
+                                                                    stepReplies: testCase.stepReplies ?? [])
                 }
                 let outcome = try await LocalToolLoop.run(
                     history: history, userMessage: testCase.turn, configuration: configuration,

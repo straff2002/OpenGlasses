@@ -6671,8 +6671,8 @@ class LLMService: ObservableObject {
 
     /// What `LocalTurnRouter` reads on a native local turn: the offer, the Field Assist procedure
     /// running now, if any, and the procedures the session's vault lets `procedure_runner` start (its
-    /// library, as `availableProcedureDefinitions()` lists it). A step waiting on a read-back or a
-    /// corrective note is left to the model.
+    /// library, as `availableProcedureDefinitions()` lists it), and what the running step takes as
+    /// its answer. A step waiting on a read-back or a corrective note is left to the model.
     static func localTurnRouting(offered: Set<String>) -> LocalTurnRouter.Context {
         let fieldAssist = Config.fieldAssistActive
         let service = FieldSessionService.shared
@@ -6680,10 +6680,16 @@ class LLMService: ObservableObject {
         let procedures = fieldAssist && offered.contains("procedure_runner")
             ? service.availableProcedureDefinitions().map { LocalTurnRouter.CatalogueEntry(id: $0.id, title: $0.title) }
             : []
+        // The running step's expected replies, while nothing is recorded for it.
+        let stepReplies = presentation.flatMap { step -> [String]? in
+            guard step.recorded == nil else { return nil }
+            return ([step.step.expectedInput].compactMap { $0 } + step.step.branches.map(\.condition))
+                .filter { !$0.isEmpty }
+        } ?? []
         return LocalTurnRouter.Context(
             offered: offered, procedureActive: presentation != nil,
             procedureAwaitsConfirmation: presentation.map { $0.pendingReadBack != nil || $0.needsCorrectiveNote } ?? false,
-            procedures: procedures)
+            procedures: procedures, stepReplies: stepReplies)
     }
 
     /// One call from the native loop. A tool the turn did not offer, or arguments that cannot be
