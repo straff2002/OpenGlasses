@@ -20,7 +20,7 @@ GROUPS = {
                          "DynamicTypeAccessibilityTests"],
     "day-debrief": ["GoalsActivityAccessibilityTests", "JobDebriefScreenshotTests",
                     "FieldAssistModeUITests"],
-    "conversation-setup": ["OnboardingAccessibilityTests", "SessionSurfaceAccessibilityTests",
+    "conversation-setup": ["OnboardingAccessibilityTests", "ManagedOnboardingUITests", "SessionSurfaceAccessibilityTests",
                            "VaultLinkScreenshotTests", "AdaptiveWorkspaceUITests",
                            "ConversationPageTests", "RealtimeModelSetupUITests",
                            "PrivateConversationUITests"],

@@ -35,7 +35,7 @@ struct OnboardingView: View {
     /// reads from the top instead of leaving focus wherever the last button was.
     @AccessibilityFocusState private var focusedPage: Int?
 
-    @State private var page = 0
+    @State private var page: OnboardingFlow.Page = .welcome
     @State private var selectedProvider: LLMProvider?
     @State private var apiKey = ""
     @State private var modelName = ""
@@ -121,7 +121,47 @@ struct OnboardingView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var logoSize: CGFloat = 76
     @ScaledMetric(relativeTo: .largeTitle) private var successGlyph: CGFloat = 56
 
-    private let totalPages = OnboardingFlow.pageCount
+    /// The pages this first run walks (Plan ND P2): the managed route on a phone a company
+    /// manages, every page but the language line on any other. Read live, so the route changes
+    /// under the welcome page the moment "Set up with my company" puts a profile in force.
+    private var route: [OnboardingFlow.Page] { OnboardingFlow.route(managed: managedInputs) }
+
+    /// What the company decided, when one manages this phone.
+    private var managedInputs: ManagedOnboardingPlan.Inputs? {
+        #if DEBUG
+        if let fixture = UITestSupport.managedOnboardingFixture { return fixture.inputs }
+        #endif
+        guard let profile = orgProfile.profile else { return nil }
+        return ManagedOnboardingPlan.Inputs(
+            organisationChoseModel: orgChoseModel,
+            aiChoices: ManagedOnboardingPlan.knownChoices(profile.aiChoices?.providers),
+            editionUsesGlasses: GlassesSupportPolicy.isSupported)
+    }
+
+    /// The company that manages this phone, by name.
+    private var managedOrganization: String? {
+        #if DEBUG
+        if let fixture = UITestSupport.managedOnboardingFixture { return fixture.organization }
+        #endif
+        return orgProfile.profile?.organizationName
+    }
+
+    /// The company's assistant choices this phone can offer, or nil for the full provider list.
+    private var offeredChoices: [LLMProvider]? {
+        guard let inputs = managedInputs, !inputs.organisationChoseModel else { return nil }
+        return ManagedOnboardingPlan.offered(choices: inputs.aiChoices,
+                                             appleIntelligence: FirstRunDefaults.appleIntelligenceAvailable,
+                                             localModel: offlineModelIsOfferable)
+    }
+
+    /// On to the page after `current` on this run's route, or finish after its last.
+    private func advance(from current: OnboardingFlow.Page) {
+        if let next = OnboardingFlow.page(after: current, in: route) {
+            go(to: next)
+        } else {
+            completeOnboarding()
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -134,29 +174,29 @@ struct OnboardingView: View {
                 // so text fields on the API key page respond to taps immediately
                 // (paged TabView's swipe gestures steal focus from text fields)
                 Group {
-                    switch OnboardingFlow.Page(rawValue: page) {
+                    switch page {
                     case .welcome: welcomePage
                     case .provider: providerPage
                     case .accessKey: apiKeyPage
                     case .services: servicesPage
                     case .permissions: permissionsPage
+                    case .language: languagePage
                     case .assistantName: assistantNamePage
                     case .addDevice: addDevicePage
                     case .ready: readyPage
-                    case nil: EmptyView()
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animation(pageChange, value: page)
             }
         }
-        .onChange(of: page) { _, newPage in focusedPage = newPage }
+        .onChange(of: page) { _, newPage in focusedPage = newPage.rawValue }
         .onChange(of: orgProfile.isManaged) { wasManaged, isManaged in
             guard OrgFirstRun.continuesFromWelcome(
-                tookCompanyRoute: tookCompanyRoute, onWelcomePage: page == OnboardingFlow.Page.welcome.rawValue,
+                tookCompanyRoute: tookCompanyRoute, onWelcomePage: page == .welcome,
                 wasManaged: wasManaged, isManaged: isManaged) else { return }
             tookCompanyRoute = false
-            go(to: OrgFirstRun.pageAfterWelcome(organisationChoseModel: orgChoseModel))
+            advance(from: .welcome)
         }
         .onAppear { refreshOfflineOffer() }
     }
@@ -167,11 +207,9 @@ struct OnboardingView: View {
         reduceMotion ? nil : .easeInOut(duration: 0.3)
     }
 
-    private func go(to next: Int) {
+    private func go(to next: OnboardingFlow.Page) {
         withAnimation(pageChange) { page = next }
     }
-
-    private func go(to next: OnboardingFlow.Page) { go(to: next.rawValue) }
 
     // MARK: - Header
 
@@ -180,10 +218,10 @@ struct OnboardingView: View {
     private var header: some View {
         ZStack {
             HStack(spacing: 8) {
-                ForEach(0..<totalPages, id: \.self) { i in
+                ForEach(route, id: \.self) { dot in
                     Capsule()
-                        .fill(i == page ? accent : Color(.tertiarySystemFill))
-                        .frame(width: i == page ? 24 : 8, height: 4)
+                        .fill(dot == page ? accent : Color(.tertiarySystemFill))
+                        .frame(width: dot == page ? 24 : 8, height: 4)
                         .animation(pageChange, value: page)
                 }
             }
@@ -194,10 +232,10 @@ struct OnboardingView: View {
             // actually asked. See `pagePosition`.
             .accessibilityHidden(true)
 
-            if page > 0 {
+            if page != .welcome {
                 HStack {
                     Button {
-                        go(to: OrgFirstRun.pageBefore(page, organisationChoseModel: orgChoseModel))
+                        go(to: OnboardingFlow.page(before: page, in: route))
                     } label: {
                         Image(systemName: "chevron.backward")
                             .font(.body.weight(.semibold))
@@ -219,7 +257,10 @@ struct OnboardingView: View {
 
     /// Where in the flow this page sits, spoken as the title's *value* so it is heard on arrival
     /// and re-heard on every page change, without becoming a stop of its own.
-    private var pagePosition: String { String(localized: "Page \(page + 1) of \(totalPages)") }
+    private var pagePosition: String {
+        let position = (route.firstIndex(of: page) ?? 0) + 1
+        return String(localized: "Page \(position) of \(route.count)")
+    }
 
     /// The title block every page opens with — the VoiceOver landing point.
     private func pageTitle(_ title: LocalizedStringKey, _ subtitle: LocalizedStringKey? = nil, page index: OnboardingFlow.Page) -> some View {
@@ -376,7 +417,7 @@ struct OnboardingView: View {
 
                 // A phone set up from an organisation's code still needs its AI provider: a
                 // profile never carries a key (Plan CT), so onboarding carries on from here.
-                if let organization = orgProfile.profile?.organizationName {
+                if let organization = managedOrganization {
                     if orgChoseModel {
                         OGNotice(text: "Managed by \(organization). Your organisation chose the AI model, so there is nothing to pick.",
                                  systemImage: "building.2")
@@ -392,9 +433,9 @@ struct OnboardingView: View {
 
             pageFooter {
                 primaryButton("Get Started") {
-                    go(to: OrgFirstRun.pageAfterWelcome(organisationChoseModel: orgChoseModel))
+                    advance(from: .welcome)
                 }
-                if !orgProfile.isManaged {
+                if managedOrganization == nil {
                     Button("Set up with my company") {
                         orgEntryMessage = nil
                         tookCompanyRoute = true
@@ -491,7 +532,59 @@ struct OnboardingView: View {
 
     // MARK: - Page 2: Choose Provider
 
+    @ViewBuilder
     private var providerPage: some View {
+        if let choices = offeredChoices {
+            companyChoicesPage(choices)
+        } else {
+            fullProviderPage
+        }
+    }
+
+    /// Plan ND P2: the assistants the company offers, and nothing else. Only on a managed phone
+    /// whose profile names `aiChoices` and pins no model.
+    private func companyChoicesPage(_ choices: [LLMProvider]) -> some View {
+        VStack(spacing: 0) {
+            pageTitle("Choose your assistant", "Your company offers these.", page: .provider)
+
+            List {
+                Section {
+                    ForEach(choices, id: \.self) { provider in
+                        switch provider {
+                        case .chatgpt:
+                            providerRow(.chatgpt, name: "ChatGPT", model: "Codex",
+                                        detail: "Sign in with your own ChatGPT account",
+                                        icon: "person.crop.circle.badge.checkmark")
+                        case .local:
+                            providerRow(.local, name: String(localized: "On this iPhone"), model: offeredLocalModelId,
+                                        detail: "Downloads a model now. No account, works offline.",
+                                        icon: "iphone")
+                        case .appleOnDevice:
+                            providerRow(.appleOnDevice, name: String(localized: "On this iPhone"), model: "Apple Intelligence",
+                                        detail: "Runs on this iPhone. Nothing to download.",
+                                        icon: "iphone")
+                        default:
+                            providerRow(provider, name: provider.displayName, model: provider.defaultModel,
+                                        detail: "Offered by your company", icon: "sparkles")
+                        }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .ogFormStyle()
+
+            if selectedProvider != nil {
+                pageFooter {
+                    primaryButton("Continue") {
+                        configureDefaults()
+                        advance(from: .provider)
+                    }
+                }
+            }
+        }
+    }
+
+    private var fullProviderPage: some View {
         VStack(spacing: 0) {
             pageTitle("Choose your AI", "Pick a provider. You can add more later in Settings.", page: .provider)
 
@@ -601,7 +694,7 @@ struct OnboardingView: View {
                 pageFooter {
                     primaryButton("Continue") {
                         configureDefaults()
-                        go(to: .accessKey)
+                        advance(from: .provider)
                     }
                 }
             }
@@ -667,12 +760,12 @@ struct OnboardingView: View {
                 if needsAccount {
                     primaryButton("Continue") {
                         saveModel()
-                        go(to: .services)
+                        advance(from: .accessKey)
                     }
                     if !chatgptOAuth.isConnected {
                         Button("I'll sign in later") {
                             saveModel()
-                            go(to: .services)
+                            advance(from: .accessKey)
                         }
                         .buttonStyle(.ogQuiet)
                     }
@@ -680,7 +773,7 @@ struct OnboardingView: View {
                     if keyValid || claudeConnected {
                         primaryButton("Continue") {
                             saveModel()
-                            go(to: .services)
+                            advance(from: .accessKey)
                         }
                     } else {
                         primaryButton(isValidating ? "Validating..." : "Validate Key") {
@@ -693,13 +786,13 @@ struct OnboardingView: View {
                         if !apiKey.trimmingCharacters(in: .whitespaces).isEmpty {
                             saveModel()
                         }
-                        go(to: .services)
+                        advance(from: .accessKey)
                     }
                     .buttonStyle(.ogQuiet)
                 } else {
                     primaryButton("Continue") {
                         saveModel()
-                        go(to: .services)
+                        advance(from: .accessKey)
                     }
                 }
             }
@@ -1220,7 +1313,7 @@ struct OnboardingView: View {
                         Config.setPerplexityAPIKey(perplexityKey)
                     }
                     Config.setSearXNGBaseURL(searxngBaseURL)
-                    go(to: .permissions)
+                    advance(from: .services)
                 }
                 skipButton()
             }
@@ -1296,7 +1389,7 @@ struct OnboardingView: View {
             .ogFormStyle()
 
             pageFooter {
-                primaryButton("Continue") { go(to: .assistantName) }
+                primaryButton("Continue") { advance(from: .permissions) }
                 // Typed conversations work without microphone access, so permission denial must
                 // not block onboarding.
                 skipButton()
@@ -1606,7 +1699,7 @@ struct OnboardingView: View {
         if OnboardingFlow.addsGlasses(answer) {
             Config.glassesAdded = true
         }
-        go(to: OnboardingFlow.page(after: answer))
+        advance(from: .addDevice)
     }
 
     #if !AVENKIN_PHONE_ONLY
@@ -1699,16 +1792,59 @@ struct OnboardingView: View {
             .ogFormStyle()
 
             pageFooter {
-                primaryButton("Continue") { go(to: .addDevice) }
+                primaryButton("Continue") { advance(from: .assistantName) }
                 Button("Skip — call it \(AssistantIdentity.defaultName)") {
                     Config.resetAssistantDisplayName()
                     assistantName = AssistantIdentity.defaultName
                     assistantNameRefused = false
-                    go(to: .addDevice)
+                    advance(from: .assistantName)
                 }
                 .buttonStyle(.ogQuiet)
             }
         }
+    }
+
+    // MARK: - Language (Plan ND P2, managed phones)
+
+    /// One line naming the language the app speaks, with Change, which opens this app's page in
+    /// iOS Settings, where its language is chosen. The company sets no language (decision 10).
+    private var languagePage: some View {
+        let line = OnboardingLanguage.current
+        return VStack(spacing: 0) {
+            pageTitle("Language", page: .language)
+
+            List {
+                Section {
+                    HStack {
+                        Label {
+                            if line.matchesPhone {
+                                Text("Avenkin speaks \(line.languageName), like your phone.")
+                            } else {
+                                Text("Avenkin speaks \(line.languageName).")
+                            }
+                        } icon: {
+                            Image(systemName: "globe")
+                                .foregroundStyle(accent)
+                        }
+                        Spacer(minLength: 8)
+                        Button("Change") { openAppSettings() }
+                            .accessibilityHint("Opens this app's language in Settings")
+                    }
+                    .frame(minHeight: rowMinHeight)
+                }
+            }
+            .listStyle(.insetGrouped)
+            .ogFormStyle()
+
+            pageFooter {
+                primaryButton("Continue") { advance(from: .language) }
+            }
+        }
+    }
+
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
     }
 
     // MARK: - Page 8: Ready

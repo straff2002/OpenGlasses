@@ -50,6 +50,21 @@ enum ManagedOnboardingPlan {
         return pages
     }
 
+    /// The company's choices this phone can offer, in the profile's order: the on-device model only
+    /// where it can be downloaded, Apple Intelligence only where it runs. Nil when the profile names
+    /// no choices, or none this phone can offer, so the full provider list is shown rather than a
+    /// page with nothing to pick.
+    static func offered(choices: [String]?, appleIntelligence: Bool, localModel: Bool) -> [LLMProvider]? {
+        let offered = (choices ?? []).compactMap(LLMProvider.init(rawValue:)).filter { provider in
+            switch provider {
+            case .local: return localModel
+            case .appleOnDevice: return appleIntelligence
+            default: return true
+            }
+        }
+        return offered.isEmpty ? nil : offered
+    }
+
     /// The providers a person may pick from the profile's `aiChoices`: those this build offers, in the
     /// profile's order, each once. Empty means none this build knows — the full list is shown instead.
     static func knownChoices(_ raw: [String]?) -> [String]? {
@@ -58,5 +73,31 @@ enum ManagedOnboardingPlan {
                                     LLMProvider.appleOnDevice.rawValue]
         var seen: Set<String> = []
         return raw.filter { offered.contains($0) && seen.insert($0).inserted }
+    }
+}
+
+/// Plan ND decision 10: the company sets no language. The app speaks the language iOS gives it, and
+/// the managed first run says which, in one line, with a way to change it in iOS Settings.
+enum OnboardingLanguage {
+
+    struct Line: Equatable, Sendable {
+        /// The language's own name, in the language the app speaks (`English`, `Deutsch`).
+        let languageName: String
+        /// The app speaks the phone's first language, so the line can say "like your phone".
+        let matchesPhone: Bool
+    }
+
+    /// - Parameters:
+    ///   - appLanguage: the localization the app is running in (`Bundle.main.preferredLocalizations`).
+    ///   - phoneLanguages: the phone's languages, first preferred (`Locale.preferredLanguages`).
+    static func line(appLanguage: String, phoneLanguages: [String]) -> Line {
+        let appCode = Locale(identifier: appLanguage).language.languageCode?.identifier ?? appLanguage
+        let phoneCode = phoneLanguages.first.flatMap { Locale(identifier: $0).language.languageCode?.identifier }
+        let name = Locale(identifier: appLanguage).localizedString(forLanguageCode: appCode) ?? appLanguage
+        return Line(languageName: name, matchesPhone: appCode == phoneCode)
+    }
+
+    static var current: Line {
+        line(appLanguage: Bundle.main.preferredLocalizations.first ?? "en", phoneLanguages: Locale.preferredLanguages)
     }
 }

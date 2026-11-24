@@ -227,7 +227,9 @@ struct OrgProfileReviewList: View {
                 } header: {
                     Text("Supplies")
                 } footer: {
-                    if let model = review.result.aiModel, model.access != .onDevice {
+                    if review.suppliesModelKey {
+                        Text("Your company supplies the AI model's key, sealed so only its phones can open it. You enter nothing.")
+                    } else if let model = review.result.aiModel, model.access != .onDevice {
                         Text("The AI model's key is not part of the profile. You enter it on this phone next, and it stays here.")
                     }
                 }

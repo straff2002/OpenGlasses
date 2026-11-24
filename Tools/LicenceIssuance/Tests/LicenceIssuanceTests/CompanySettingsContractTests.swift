@@ -64,4 +64,20 @@ final class CompanySettingsContractTests: XCTestCase {
         let without = try encoder.encode(ProfileContract.document(plain, keyId: "k", issued: Date(timeIntervalSince1970: 0), adminPasscode: nil))
         XCTAssertFalse(String(decoding: without, as: UTF8.self).contains("profileGeneration"))
     }
+    func testASealedModelKeyNeedsAPinnedProviderThatTakesAKey() throws {
+        let secret = Data(repeating: 7, count: ProfileContract.Credential.secretLength)
+        let box = try ProfileContract.Credential.seal("sk-ant-fixture-key-0001", name: "aiModel",
+                                                      profileId: "fixture", companySecret: secret)
+        var sealed = input
+        sealed.credentials = ["aiModel": box]
+        XCTAssertThrowsError(try ProfileContract.check(sealed, adminPasscode: false, now: Date()),
+                             "a key with no pinned provider")
+        sealed.aiModel = .init(provider: "chatgpt", model: "gpt-5")
+        XCTAssertThrowsError(try ProfileContract.check(sealed, adminPasscode: false, now: Date()),
+                             "ChatGPT signs in; it takes no key")
+        sealed.aiModel = .init(provider: "anthropic", model: "claude-sonnet-4-5")
+        XCTAssertNoThrow(try ProfileContract.check(sealed, adminPasscode: false, now: Date()))
+        XCTAssertEqual(try ProfileContract.Credential.open(box, name: "aiModel", profileId: "fixture", companySecret: secret),
+                       "sk-ant-fixture-key-0001")
+    }
 }

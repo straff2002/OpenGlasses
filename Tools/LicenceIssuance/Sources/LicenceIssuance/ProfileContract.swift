@@ -430,6 +430,18 @@ public enum ProfileContract {
         }
     }
 
+    /// The providers whose model works without a key: on the phone, or through the person's own sign-in.
+    public static let keylessProviders: Set<String> = ["local", "appleOnDevice", "chatgpt", "geminiVertex"]
+
+    /// Plan ND decision 9: a sealed `aiModel` credential is the key for the provider `aiModel` pins, so
+    /// it means nothing without a pinned provider that takes a key.
+    public static func checkSealedModelKey(pinned model: AIModel?) throws {
+        guard let model else { throw Invalid(message: "credentials.aiModel needs aiModel to name the provider it is the key for") }
+        if keylessProviders.contains(model.provider) {
+            throw Invalid(message: "credentials.aiModel is a key, and aiModel.provider \(model.provider) takes none")
+        }
+    }
+
     /// Plan ND: the assistants a person may pick when the profile pins none.
     public static func checkAIChoices(_ choices: [String], pinnedModel: Bool) throws {
         if pinnedModel { throw Invalid(message: "aiChoices only applies when aiModel names no model") }
@@ -491,7 +503,10 @@ public enum ProfileContract {
             throw Invalid(message: "profileGeneration must be 1 or more (got \(generation))")
         }
         if let choices = input.aiChoices { try checkAIChoices(choices, pinnedModel: input.aiModel != nil) }
-        if let boxes = input.credentials { try Credential.checkBoxes(boxes) }
+        if let boxes = input.credentials {
+            try Credential.checkBoxes(boxes)
+            if boxes["aiModel"] != nil { try checkSealedModelKey(pinned: input.aiModel) }
+        }
         if let vaults = input.companyVaults { try checkCompanyVaults(vaults) }
         for (key, setting) in input.settings ?? [:] { try checkSetting(key, setting) }
     }

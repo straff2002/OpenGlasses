@@ -23,17 +23,6 @@ final class OrgFirstRunTests: XCTestCase {
         XCTAssertNil(OrgFirstRun.holdingLicensee(licence: nil, isManaged: false))
     }
 
-    // MARK: - Pages
-
-    func testTheOrganisationsModelSkipsTheProviderAndKeyPagesBothWays() {
-        XCTAssertEqual(OrgFirstRun.pageAfterWelcome(organisationChoseModel: false), 1)
-        XCTAssertEqual(OrgFirstRun.pageAfterWelcome(organisationChoseModel: true), 3)
-        XCTAssertEqual(OrgFirstRun.pageBefore(3, organisationChoseModel: true), 0)
-        XCTAssertEqual(OrgFirstRun.pageBefore(3, organisationChoseModel: false), 2)
-        XCTAssertEqual(OrgFirstRun.pageBefore(5, organisationChoseModel: true), 4)
-        XCTAssertEqual(OrgFirstRun.pageBefore(0, organisationChoseModel: false), 0)
-    }
-
     // The key field's formatting is `ActivationKey.formatEntry`, tested in `ActivationKeyTests`.
 
     func testTheCompanyRouteContinuesPastTheWelcomePageOnceTheProfileIsInForce() {

@@ -123,7 +123,23 @@ enum UITestSupport {
         /// author's own AI already read, so a suggested rule shows beside its sentence. Drawn in
         /// place of the app's screens; nothing is saved (there is no vault behind it).
         case procedureRules = "-OGUITestProcedureRules"
+        /// Plan ND P2: with `freshInstall`, the first run walks the managed route for an invented
+        /// company that offers ChatGPT and the on-device model and pins no model. A profile is signed
+        /// by a key this build cannot hold, so no enrolment is faked: only the route's inputs are the
+        /// fixture's, and every page is the shipping one. Debug builds only.
+        case managedOnboarding = "-OGUITestManagedOnboarding"
     }
+
+    #if DEBUG
+    /// The company and its decisions behind `managedOnboarding`.
+    static var managedOnboardingFixture: (organization: String, inputs: ManagedOnboardingPlan.Inputs)? {
+        guard isSet(.managedOnboarding) else { return nil }
+        return ("Northbridge Mechanical",
+                ManagedOnboardingPlan.Inputs(organisationChoseModel: false,
+                                             aiChoices: ["chatgpt", "local"],
+                                             editionUsesGlasses: GlassesSupportPolicy.isSupported))
+    }
+    #endif
 
     /// Whether a vault-link review is being staged for a screenshot.
     static var wantsVaultLinkReview: Bool { isSet(.vaultLinkSigned) || isSet(.vaultLinkUnverified) }

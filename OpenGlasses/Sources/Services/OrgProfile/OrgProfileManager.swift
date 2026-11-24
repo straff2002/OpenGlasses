@@ -165,8 +165,14 @@ struct OrgProfileReview: Identifiable, Equatable {
         return lines
     }
 
+    /// Plan ND decision 9: the company seals the key for the provider it pinned, so the person
+    /// types none. Whether this phone can open it is known only once the enrolment is applied.
+    var suppliesModelKey: Bool {
+        result.aiModel?.access == .key && profile.credentials?.boxes[OrgCredentialSeal.aiModel] != nil
+    }
+
     /// The AI model the profile names, and where its prompts go when that is not the provider's own
-    /// address. The key is not the profile's: it is entered on the next page.
+    /// address. The key is entered on the next page, unless the company sealed it (`suppliesModelKey`).
     var aiModelLines: [String] {
         guard let model = result.aiModel else { return [] }
         var lines = [String(localized: "AI model: \(model.summary)")]
@@ -271,6 +277,9 @@ final class OrgProfileManager: ObservableObject {
         /// The profile's sealed company credentials into the Keychain, on every apply, renewal and
         /// launch (`OrgCredentialSync`). Does nothing by default; `production` wires it.
         var syncCredentials: @MainActor (ConfigProfile) -> Void = { _ in }
+        /// Plan ND decision 9: the key the profile seals for its pinned provider, opened with the
+        /// company secret. None by default; `production` wires `OrgCredentialSeal.modelKey`.
+        var sealedModelKey: @MainActor (ConfigProfile) -> String? = { _ in nil }
         /// Plan LR: the company vault pass, after every renewal attempt (`.routine`) and on Check
         /// for Updates. Does nothing by default; `production` wires `CompanyVaultService`.
         var syncCompanyVaults: @MainActor (_ reason: CompanyVaultSyncReason) async -> Void = { _ in }
@@ -295,6 +304,7 @@ final class OrgProfileManager: ObservableObject {
             seams.releaseSeat = { DeviceSeatService.shared.release() }
             seams.noteLicenceReplaced = { DeviceSeatService.shared.noteLicenceReplaced(previousCode: $0, enrolment: $1) }
             seams.syncCredentials = { OrgCredentialSync.shared.apply($0) }
+            seams.sealedModelKey = { OrgCredentialSeal.modelKey(in: $0) }
             seams.syncCompanyVaults = { await CompanyVaultService.shared.sync($0) }
             seams.updatePack = { await OrgPackInstaller.install(packId: $0) }
             seams.beginDeparture = { reason, record, profile in
@@ -581,7 +591,7 @@ final class OrgProfileManager: ObservableObject {
         newRecord.profileGenerationHighWater = ProfileGenerationGate.raised(
             leaving == nil ? record?.profileGenerationHighWater : nil, by: review.profile.profileGeneration)
         reconcileModel(review.result.aiModel, organizationName: review.profile.organizationName,
-                       record: &newRecord)
+                       sealedKey: seams.sealedModelKey(review.profile), record: &newRecord)
         seams.saveRecord(newRecord)
         record = newRecord
         profile = review.profile
@@ -789,24 +799,29 @@ final class OrgProfileManager: ObservableObject {
     ///   follow the profile and **the key stays** — a renewal that moves to a newer model needs no
     ///   one to re-enter anything.
     /// - A provider with nothing to enter (on-device): the config is made now.
+    /// - A key provider whose key the company sealed into the profile (Plan ND decision 9): the
+    ///   config is made now with that key, and a replaced key replaces the one in the config. A
+    ///   profile that stops sealing one leaves the key in place until removal, as it leaves the model.
     /// - Otherwise the phone waits for the key, and the config already in place (if any) stays in
     ///   use meanwhile, so a technician is never dropped into a provider with no key.
     /// - A profile that stops naming a model changes nothing: the config stays until removal.
-    private func reconcileModel(_ model: OrgAIModel?, organizationName: String,
+    private func reconcileModel(_ model: OrgAIModel?, organizationName: String, sealedKey: String?,
                                 record: inout OrgEnrolmentRecord) {
         guard let model else {
             record.modelSetupPending = nil
             return
         }
+        let companyKey = model.access == .key && sealedKey.map({ model.keyProblem($0) == nil }) == true ? sealedKey : nil
         var models = seams.loadModels()
         if let id = record.modelConfigId, let index = models.firstIndex(where: { $0.id == id }),
            models[index].provider == model.provider.rawValue {
-            let updated = model.makeConfig(id: id, apiKey: models[index].apiKey,
+            let updated = model.makeConfig(id: id, apiKey: companyKey ?? models[index].apiKey,
                                            organizationName: organizationName)
             if models[index] != updated {
                 models[index].name = updated.name
                 models[index].model = updated.model
                 models[index].baseURL = updated.baseURL
+                models[index].apiKey = updated.apiKey
                 seams.saveModels(models)
             }
             record.modelSetupPending = nil
@@ -814,9 +829,23 @@ final class OrgProfileManager: ObservableObject {
         }
         if model.access == .onDevice {
             installModel(model, apiKey: "", organizationName: organizationName, record: &record)
+        } else if let companyKey {
+            installModel(model, apiKey: companyKey, organizationName: organizationName, record: &record)
         } else {
             record.modelSetupPending = true
         }
+    }
+
+    /// Run the model step again against the profile in force: the company secret has just been
+    /// kept (an activation key's enrolment), so the key the profile seals can now be opened.
+    func reconcileOrganizationModel() {
+        guard var current = record, current.revoked != true, let profile,
+              evaluateLease()?.isInForce == true else { return }
+        reconcileModel(organizationModel, organizationName: profile.organizationName,
+                       sealedKey: seams.sealedModelKey(profile), record: &current)
+        guard current != record else { return }
+        seams.saveRecord(current)
+        record = current
     }
 
     /// Save the organisation's model with the key the person entered (or none, after a sign-in),
@@ -1146,7 +1175,8 @@ final class OrgProfileManager: ObservableObject {
             current.lapseErasedAt = nil
             seams.endLapseDeparture(current.enrolmentId)
         }
-        reconcileModel(result.aiModel, organizationName: renewed.organizationName, record: &current)
+        reconcileModel(result.aiModel, organizationName: renewed.organizationName,
+                       sealedKey: seams.sealedModelKey(renewed), record: &current)
         seams.saveRecord(current)
         record = current
         profile = renewed
