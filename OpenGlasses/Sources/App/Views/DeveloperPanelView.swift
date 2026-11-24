@@ -104,6 +104,7 @@ struct DeveloperPanelView: View {
 
             #if DAT_EXPERIMENTAL
             InputsProbeSection()
+            MotionProbeSection()
             #endif
 
             if GlassesSupportPolicy.isSupported {

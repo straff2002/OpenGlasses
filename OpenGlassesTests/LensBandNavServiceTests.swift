@@ -46,7 +46,7 @@ final class LensBandNavServiceTests: XCTestCase {
 
     private func service() -> LensBandNavService {
         LensBandNavService(source: source, isEnabled: { [unowned self] in self.enabled },
-                           onInput: { [unowned self] in self.inputs.append($0) },
+                           onInput: { [unowned self] in self.inputs.append($0.kind) },
                            onListening: { [unowned self] in self.listened += 1 },
                            onFailed: { [unowned self] in self.failures += 1 })
     }
@@ -61,6 +61,24 @@ final class LensBandNavServiceTests: XCTestCase {
         XCTAssertFalse(LensBandNavConfiguration.consumesBack)
         XCTAssertEqual(InputsPurpose.lensBandNav.configuration.sources, LensBandNavConfiguration.sdk.sources)
         XCTAssertEqual(InputsPurpose.probe.configuration.sources, InputsProbeConfiguration.sdk.sources)
+        // Plan NB §6: with a wrist gesture on, the drag stream too; Back still Meta's.
+        XCTAssertEqual(LensBandNavConfiguration.originsWithDrag, LensBandNavPolicy.originsWithDrag)
+        XCTAssertEqual(InputsPurpose.lensBandNavWithDrag.configuration.sources, LensBandNavConfiguration.withDrag.sources)
+        XCTAssertFalse(LensBandNavConfiguration.withDrag.consumeBack)
+    }
+
+    func testReopenAsksForTheChannelAgain() async {
+        let band = service()
+        band.update(connectedDeviceIds: ["pair-1"])
+        band.update(viewOnLens: true)
+        await settle()
+        XCTAssertEqual(source.opened.count, 1)
+        band.reopen()
+        await settle()
+        XCTAssertEqual(source.opened.count, 2, "a wrist switch changed: asked for with the new configuration")
+        XCTAssertEqual(source.opened[0].channel.stopCount, 1)
+        source.last?.handlers.onInput(GlassesInput(kind: .drag(.down), origin: .neuralBandDrag))
+        XCTAssertEqual(inputs, [.drag(.down)], "the whole input reaches the wiring, its source too")
     }
 
     func testItListensOnlyWhileThePageViewIsOnTheLensWithALink() async {

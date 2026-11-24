@@ -23,9 +23,14 @@ enum InputsProbeConfiguration {
 /// `DATExperimentalGuardTests` pins this line as written.
 enum LensBandNavConfiguration {
     static let sdk = InputsConfiguration(sources: [.neuralBand], consumeBack: false)
+    /// Plan NB §6: while a wrist gesture is switched on, the band's drag stream too (its burst at
+    /// the start of a pinch opens the clutch). Built from `LensBandNavPolicy.originsWithDrag`, and
+    /// pinned by `DATExperimentalGuardTests` as written.
+    static let withDrag = InputsConfiguration(sources: [.neuralBand, .neuralBandDrag], consumeBack: false)
 
     static var origins: Set<GlassesInputOrigin> { Set(sdk.sources.map(MetaInputsSource.origin)) }
-    static var consumesBack: Bool { sdk.consumeBack }
+    static var originsWithDrag: Set<GlassesInputOrigin> { Set(withDrag.sources.map(MetaInputsSource.origin)) }
+    static var consumesBack: Bool { sdk.consumeBack || withDrag.consumeBack }
 }
 
 /// Who adds Inputs, and so with which of the two configurations.
@@ -34,12 +39,27 @@ enum InputsPurpose: Equatable {
     case probe
     /// The page view's band swipes (Plan MU §7).
     case lensBandNav
+    /// The page view's band swipes with the drag stream, while a wrist gesture is on (Plan NB §6).
+    case lensBandNavWithDrag
 
     var configuration: InputsConfiguration {
         switch self {
         case .probe: return InputsProbeConfiguration.sdk
         case .lensBandNav: return LensBandNavConfiguration.sdk
+        case .lensBandNavWithDrag: return LensBandNavConfiguration.withDrag
         }
+    }
+}
+
+/// Plan NB §6: the page view's band channel, with the drag stream only while a wrist gesture is
+/// switched on. Which configuration is read at each open; a switch changing reopens the channel
+/// (`LensBandNavService.reopen`).
+struct LensBandInputsSource: InputsSource {
+    var withDrag: @MainActor () -> Bool
+
+    func open(deviceId: String, handlers: InputsChannelHandlers) async throws -> InputsChannel {
+        let purpose: InputsPurpose = withDrag() ? .lensBandNavWithDrag : .lensBandNav
+        return try await MetaInputsSource(purpose: purpose).open(deviceId: deviceId, handlers: handlers)
     }
 }
 

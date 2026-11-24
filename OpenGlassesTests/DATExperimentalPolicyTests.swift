@@ -60,6 +60,21 @@ final class DATExperimentalPolicyTests: XCTestCase {
         XCTAssertTrue(Policy.isSwitchOn(.voiceInvocation, defaults: defaults), "each feature has its own switch")
     }
 
+    /// Plan NB decisions 2 and 7: the twist and the arm pan start off, each its own switch, and
+    /// "Reverse the twist" starts off.
+    func testTheWristGestureSwitchesStartOffAndAreEachTheirOwn() {
+        let defaults = defaults()
+        XCTAssertFalse(Policy.isSwitchOn(.lensTwistZoom, defaults: defaults))
+        XCTAssertFalse(Policy.isSwitchOn(.lensArmPan, defaults: defaults))
+        XCTAssertFalse(Policy.isTwistReversed(defaults: defaults))
+        Policy.setSwitch(.lensTwistZoom, on: true, defaults: defaults)
+        XCTAssertTrue(Policy.isSwitchOn(.lensTwistZoom, defaults: defaults))
+        XCTAssertFalse(Policy.isSwitchOn(.lensArmPan, defaults: defaults), "each gesture has its own switch")
+        Policy.setTwistReversed(true, defaults: defaults)
+        XCTAssertTrue(Policy.isTwistReversed(defaults: defaults))
+        XCTAssertNotEqual(Policy.twistReversedKey, Policy.Feature.lensTwistZoom.defaultsKey)
+    }
+
     func testTheReportLineForAnUnflaggedBuild() {
         XCTAssertEqual(Policy.reportLine(flagged: false, stamped: false, channel: .appStore, glassesSupported: true,
                                          switches: [:]),
@@ -69,13 +84,14 @@ final class DATExperimentalPolicyTests: XCTestCase {
     func testTheReportLineForAFlaggedBuildNamesEachFeaturesVerdict() {
         XCTAssertEqual(Policy.reportLine(flagged: true, stamped: true, channel: .testFlight, glassesSupported: true,
                                          switches: [.voiceInvocation: true]),
-                       "Experimental glasses features: in this build (TestFlight only) · voiceInvocation runs, lensPageSwipes runs")
+                       "Experimental glasses features: in this build (TestFlight only) · voiceInvocation runs, lensPageSwipes runs, lensTwistZoom switchedOff, lensArmPan switchedOff")
         XCTAssertEqual(Policy.reportLine(flagged: true, stamped: true, channel: .testFlight, glassesSupported: true,
-                                         switches: [.voiceInvocation: false, .lensPageSwipes: false]),
-                       "Experimental glasses features: in this build (TestFlight only) · voiceInvocation switchedOff, lensPageSwipes switchedOff")
+                                         switches: [.voiceInvocation: false, .lensPageSwipes: false,
+                                                    .lensTwistZoom: true, .lensArmPan: true]),
+                       "Experimental glasses features: in this build (TestFlight only) · voiceInvocation switchedOff, lensPageSwipes switchedOff, lensTwistZoom runs, lensArmPan runs")
         XCTAssertEqual(Policy.reportLine(flagged: true, stamped: true, channel: .appStore, glassesSupported: true,
                                          switches: [:]),
-                       "Experimental glasses features: in this build (TestFlight only) · voiceInvocation heldOnThisChannel, lensPageSwipes heldOnThisChannel")
+                       "Experimental glasses features: in this build (TestFlight only) · voiceInvocation heldOnThisChannel, lensPageSwipes heldOnThisChannel, lensTwistZoom heldOnThisChannel, lensArmPan heldOnThisChannel")
     }
 
     func testTheReportLineSaysWhenTheStampDisagrees() {

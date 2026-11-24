@@ -5,7 +5,7 @@ import XCTest
 ///
 /// Meta's rule: apps that use experimental features cannot be published. The owner's lane is an
 /// opt-in generation flag: `AVENKIN_DAT_EXPERIMENTAL=1` adds `project.experimental.yml`, which
-/// links `MWDATInputs`, defines `DAT_EXPERIMENTAL` and stamps the build, and every line that
+/// links `MWDATInputs` and `MWDATMotion`, defines `DAT_EXPERIMENTAL` and stamps the build, and every line that
 /// touches an experimental API compiles only under that condition. Every unflagged build is a store
 /// candidate. This guard fails the ordinary suite when that stops being true by construction:
 /// 1. a committed spec other than the experimental one names an experimental module;
@@ -41,15 +41,20 @@ final class DATExperimentalGuardTests: XCTestCase {
         #"\bremoveInputs\b"#, #"\bInputsConfiguration\b"#, #"\bInputsState\b"#, #"\bInputsError\b"#,
         #"\bInputSource\b"#, #"\bNavDirection\b"#, #"\bCapturePressType\b"#, #"\bDragAction\b"#,
         #"\bconsumeBack\b"#,
+        // Motion (Plan NB §5): its types and calls, which only the lane's files may name. The
+        // app's own `MotionSample` (the parking drive detector's) is not the SDK's, so only its
+        // qualified name is listed.
+        #"\baddMotion\b"#, #"\bremoveMotion\b"#, #"\bMotionConfiguration\b"#, #"\bMotionSamplingRate\b"#,
+        #"\bMotionState\b"#, #"\bMotionError\b"#, #"\bMotionSource\b"#, #"\bMWDATMotion\.MotionSample\b"#,
     ]
 
     /// Every `DAT_EXPERIMENTAL` conditional outside the folder, with exactly what it may contain.
     /// Keep it minimal: one start-up call, one Settings section, the Developer panel's Inputs probe
-    /// (P2), and the policy's own answer.
+    /// (P2) and Motion probe (Plan NB §5), and the policy's own answer.
     private static let callSites: [(path: String, body: [String])] = [
         ("OpenGlasses/Sources/App/OpenGlassesApp.swift", ["DATExperimentalFeatures.start(appState: self)"]),
         ("OpenGlasses/Sources/App/Views/SettingsView.swift", ["DATExperimentalSettingsSection()"]),
-        ("OpenGlasses/Sources/App/Views/DeveloperPanelView.swift", ["InputsProbeSection()"]),
+        ("OpenGlasses/Sources/App/Views/DeveloperPanelView.swift", ["InputsProbeSection()", "MotionProbeSection()"]),
         ("OpenGlasses/Sources/Services/DATExperimentalPolicy.swift", ["return true", "#else", "return false"]),
     ]
 
@@ -122,7 +127,7 @@ final class DATExperimentalGuardTests: XCTestCase {
             let spec = try text(name)
             if name == Self.laneSpec {
                 XCTAssertTrue(spec.contains("product: MWDATInputs"), "\(name) is the lane: it links Inputs")
-                XCTAssertFalse(spec.contains("MWDATMotion"), "the plan links no Motion")
+                XCTAssertTrue(spec.contains("product: MWDATMotion"), "\(name) links Motion (Plan NB §5)")
                 XCTAssertFalse(spec.contains("MWDATSpeech"), "the plan links no Speech")
                 XCTAssertTrue(spec.contains(#"SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG DAT_EXPERIMENTAL""#),
                               "\(name) defines DAT_EXPERIMENTAL in Debug, keeping DEBUG")
@@ -246,7 +251,8 @@ final class DATExperimentalGuardTests: XCTestCase {
         XCTAssertEqual(configurations, [
             "\(Self.folder)MetaInputsSource.swift: static let sdk = InputsConfiguration(sources: [.captouch, .neuralBand, .neuralBandDrag], consumeBack: false)",
             "\(Self.folder)MetaInputsSource.swift: static let sdk = InputsConfiguration(sources: [.neuralBand], consumeBack: false)",
-        ], "two configurations, both with Back left to Meta: the probe's (the touchpad and the band) and the page view's (the band's swipes and presses)")
+            "\(Self.folder)MetaInputsSource.swift: static let withDrag = InputsConfiguration(sources: [.neuralBand, .neuralBandDrag], consumeBack: false)",
+        ], "three configurations, all with Back left to Meta: the probe's (the touchpad and the band), the page view's (the band's swipes and presses) and, while a wrist gesture is on, the page view's with the band's drag stream (Plan NB §6)")
         XCTAssertEqual(adds, [
             "\(Self.folder)MetaInputsSource.swift: added = try session.addInputs(configuration: purpose.configuration)",
         ], "Inputs is added once, with one of the two configurations, never the SDK's default")
@@ -257,6 +263,35 @@ final class DATExperimentalGuardTests: XCTestCase {
     func testThePageViewAsksForTheBandsSwipesOnlyAndLeavesBackToMeta() {
         XCTAssertEqual(LensBandNavPolicy.origins, [.neuralBand])
         XCTAssertFalse(LensBandNavPolicy.consumesBack)
+        // Plan NB §6: with a wrist gesture on, the drag stream too, and still nothing else.
+        XCTAssertEqual(LensBandNavPolicy.originsWithDrag, [.neuralBand, .neuralBandDrag])
+    }
+
+    // MARK: - 3c. Motion's configuration (Plan NB §5)
+
+    /// Motion is added once, at 30 Hz (decision 8), from one configuration written once, and only
+    /// in the lane's Meta file. Removing it releases the sensors, and the channel does.
+    func testMotionIsAddedOnceAtThirtyHertz() throws {
+        let inFolder = try swiftSources().filter { $0.path.hasPrefix(Self.folder) }
+        var configurations: [String] = []
+        var adds: [String] = []
+        var removes: [String] = []
+        for (path, text) in inFolder {
+            for raw in text.components(separatedBy: .newlines) {
+                let line = raw.trimmingCharacters(in: .whitespaces)
+                guard !Self.isComment(line) else { continue }
+                if line.contains("MotionConfiguration(") { configurations.append("\(path): \(line)") }
+                if matches(#"\baddMotion\("#, line) { adds.append("\(path): \(line)") }
+                if matches(#"\bremoveMotion\("#, line) { removes.append("\(path): \(line)") }
+            }
+        }
+        XCTAssertEqual(configurations, [
+            "\(Self.folder)MetaMotionSource.swift: static let sdk = MotionConfiguration(samplingRate: .hz30)",
+        ])
+        XCTAssertEqual(adds, [
+            "\(Self.folder)MetaMotionSource.swift: added = try session.addMotion(configuration: WristMotionConfiguration.sdk)",
+        ])
+        XCTAssertEqual(removes, ["\(Self.folder)MetaMotionSource.swift: try? session.removeMotion()"])
     }
 
     // MARK: - 4. The stamp
