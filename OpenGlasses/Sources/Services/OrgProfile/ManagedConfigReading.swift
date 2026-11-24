@@ -9,7 +9,8 @@ import Foundation
 /// short key, the same one a person would type, so the company's sealed credentials and manuals open
 /// on a phone nobody typed anything into. Everything else in the dictionary is ignored, by name.
 ///
-/// Pure: the caller hands over the dictionary; `ManagedConfigIngress` (Plan ND P3) observes it.
+/// Pure: the caller hands over the dictionary; `ManagedConfigIngress` observes it and
+/// `ManagedConfigEnrolment` acts on what it reads.
 enum ManagedConfigReading {
 
     /// The dictionary iOS writes for a managed app.
