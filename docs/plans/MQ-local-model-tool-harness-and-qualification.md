@@ -1,6 +1,6 @@
 # Plan MQ — Local Model Tool Harness and Device Qualification
 
-**Status:** 🚧 P0 built 2026-11-21 (headless core) · P1 built 2026-11-22 behind `Config.localNativeToolCallsEnabled`, off by default, Gemma 4 E2B only (see [P1 as built](#p1-as-built-2026-11-22)) · P3 part 1 built 2026-11-22: per-model sampling, the kill-limit memory budget, the run gate, the grader additions and the device qualification app (see [P3 part 1 as built](#p3-part-1-as-built-2026-11-22)); first phone run 2026-11-22 found every tool turn overflowing (`promptTooLong`, 4,317–4,326 of 3,456): the runtime now fits the definitions (compact, then drop, then none) before trimming history, the native selection's estimate is calibrated on the phone, and a native turn on Gemma 4 E2B gets 6,144 tokens on phones with 8 GB and the memory (see [Found on the phone](#found-on-the-phone-2026-11-22)); phone runs 2026-11-22 to 23 (see [Phone runs](#phone-runs-2026-11-22-to-2026-11-23)): the tool cases went from 6 of 94 to 303 of 326 through the fixes below and `LocalTurnRouter`, which runs error-code, model-number and procedure-step calls before the model; two-step 7–9 of 12, restraint and clean output 100%; P3 part 2 (2026-11-24): the full corpus on main 582/618 with every hard floor clear, and job commands, evidence choices, reading follow-ups and a reading logged in one breath routed too: tool cases 323/326 · **P2 built 2026-11-24** behind the same flag (and `Config.ggufModelsEnabled`): GGUF models call tools through llama.cpp's own `common/chat` at the kept v0.3.0 pin (Gemma 4 and Qwen 3.x handlers, lazy call grammars), feeding the same `LocalToolLoop`; the KV cache keeps its shared prefix and GGUF history is trimmed in batches; Gemma 4 E2B, Gemma 4 E4B and Qwen 3.5 4B added as GGUF catalog entries (text only, no badge) and allowlisted; device app `--gguf`; nothing run on a phone (see [P2 as built](#p2-as-built-2026-11-24)) · the rest of P3 not built · P4 device pass owed · all 8 decisions taken 2026-11-21; owner 2026-11-22: phone results first, the Mac screener is a compile check · mlx-swift-lm moved to `4c21c84` (mlx-swift 0.33.0) in P1
+**Status:** 🚧 P0 built 2026-11-21 (headless core) · P1 built 2026-11-22 behind `Config.localNativeToolCallsEnabled`, off by default, Gemma 4 E2B only (see [P1 as built](#p1-as-built-2026-11-22)) · P3 part 1 built 2026-11-22: per-model sampling, the kill-limit memory budget, the run gate, the grader additions and the device qualification app (see [P3 part 1 as built](#p3-part-1-as-built-2026-11-22)); first phone run 2026-11-22 found every tool turn overflowing (`promptTooLong`, 4,317–4,326 of 3,456): the runtime now fits the definitions (compact, then drop, then none) before trimming history, the native selection's estimate is calibrated on the phone, and a native turn on Gemma 4 E2B gets 6,144 tokens on phones with 8 GB and the memory (see [Found on the phone](#found-on-the-phone-2026-11-22)); phone runs 2026-11-22 to 23 (see [Phone runs](#phone-runs-2026-11-22-to-2026-11-23)): the tool cases went from 6 of 94 to 303 of 326 through the fixes below and `LocalTurnRouter`, which runs error-code, model-number and procedure-step calls before the model; two-step 7–9 of 12, restraint and clean output 100%; P3 part 2 (2026-11-24): the full corpus on main 582/618 with every hard floor clear, and job commands, evidence choices, reading follow-ups and a reading logged in one breath routed too: tool cases 323/326 · **P2 built 2026-11-24** behind the same flag (and `Config.ggufModelsEnabled`): GGUF models call tools through llama.cpp's own `common/chat` at the kept v0.3.0 pin (Gemma 4 and Qwen 3.x handlers, lazy call grammars), feeding the same `LocalToolLoop`; the KV cache keeps its shared prefix and GGUF history is trimmed in batches; Gemma 4 E2B, Gemma 4 E4B and Qwen 3.5 4B added as GGUF catalog entries (text only, no badge) and allowlisted; device app `--gguf`; nothing run on a phone (see [P2 as built](#p2-as-built-2026-11-24)) · 2026-11-25: llama.cpp v1.0.0, Qwen 3.5 4B's card sampling, a prefix state snapshot for hybrid caches and a screen for model calls the turn did not ask for; phone tool cases 326/326 on Qwen 3.5 4B GGUF, Gemma 4 E2B GGUF and Gemma 4 E2B MLX (see [Calls the turn did not ask for](#calls-the-turn-did-not-ask-for-and-the-phone-runs-2026-11-25)) · the rest of P3 not built · P4 device pass owed · all 8 decisions taken 2026-11-21; owner 2026-11-22: phone results first, the Mac screener is a compile check · mlx-swift-lm moved to `4c21c84` (mlx-swift 0.33.0) in P1
 
 Offline Field Assist depends on the downloaded models (MLX and GGUF) when Apple Intelligence is
 missing or can't hold the turn. The research of 2026-11-20
@@ -757,6 +757,49 @@ inside the system prompt itself: the job tier and the minute-precise date line s
 start on Qwen (the date about 900 characters before its end) and before the tools on Gemma. Not
 moved: moving the date line would reorder what the model is told on both runtimes, so it is left to
 the owner (see the lead's report).
+
+## Calls the turn did not ask for, and the phone runs (2026-11-25)
+
+With v1.0.0, the card's sampling and the snapshot, Qwen 3.5 4B GGUF reached 321/326 tool cases. Its
+misses were calls the turn never asked for: a reading logged for a question that only stated
+values, a job changed on a turn about something else, a lookup or a second call beside one the
+router had already made, a source shown nobody asked to see. `LocalToolLoop.screened(_:turn:routed:)`
+now leaves such a model-made call unrun, counted as `callsScreened` (not `callsNotRun`, and not a
+repeat), and the turn goes on as if the model had not made it. Routed calls are never screened. It
+leaves unrun:
+
+- a `reading` whose value is present but holds no digit or number word (a blank or missing value
+  still goes to the tool, which asks for it, as before);
+- any call to a tool the router already ran this turn, or a lookup (`equipment_lookup`,
+  `table_lookup`, `manual_lookup`, `manual_figure`, `show_source`) beside a routed call;
+- a `reading` on a question that states values and has no logging word;
+- a `field_session` change (anything but `status`, `query`, `next_unit`) on a turn with no job word;
+- a `show_source` on a turn that neither asks to see something nor names a source.
+
+The rules read only the turn's words and the call; they live in `LocalToolLoop` itself so the
+qualification app compiles them unchanged. The corpus test that scripts a restraint call now
+scripts one the screen leaves alone (an `evidence` keep), so the grader is still exercised.
+
+**Phone runs, iPhone Air, the tool cases (326), all at `f67ddb36f`, llama.cpp `b1b770d9`:**
+
+| Model | Runtime | Tool cases | Clean output | Restraint | Median case | Run | Peak | Screened |
+|---|---|---|---|---|---|---|---|---|
+| Qwen 3.5 4B Q4_K_M | GGUF | 326/326 | 317/317 | 36/36 | 7.2 s | 47.5 min | 0.52 GB | 3 |
+| Gemma 4 E2B Q4_0 | GGUF | 326/326 | 317/317 | 36/36 | 2.3 s | 11 min | 0.30 GB | 1 |
+| Gemma 4 E2B 4-bit | MLX | 326/326 | 317/317 | 36/36 | 2.9 s | 14 min | 3.65 GB | 0 |
+
+Qwen's snapshot was restored for 157 of 267 generations and read from the start for 110; first token
+1.3 s median restored against 13.5 s from the start; the largest snapshot 163.5 MB; decode about
+9.4 tok/s. Gemma GGUF trimmed its prefix on 264 of 265 (first token 0.2 s). The first Qwen run, on
+v0.3.0 with the GGUF defaults, took 22 s a case and missed the restraint floor. `clearsFloorsUnflagged`
+stays false on these records only because a tool-case run leaves the corpus's other floors
+unjudged.
+
+Still open for the owner: the minute-precise date line sits inside Qwen's stable start, so a
+snapshot taken one minute is not reused the next once the app carries the date (the qualification
+runs carry none); the snapshot's host memory (163.5 MB here) is not counted by `LocalMemoryBudget`;
+v1's prompt parts for tokenizing user text apart from the template are not used yet; Gemma 4 E4B is
+not run.
 
 ## What the local path does today (read from the code, 2026-11-20)
 
