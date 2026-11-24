@@ -4,8 +4,8 @@ import UIKit
 import UserNotifications
 
 /// The app side of the smart ring (Plan MZ P2–P4): its trigger goes to the temple-tap performer,
-/// its low battery is said once, Live Coach reads its fresh heart rate, and it runs only while the
-/// ring support is on.
+/// its low battery is said once, and Live Coach reads its fresh heart rate. It starts at launch only
+/// with a paired ring; pairing one in Devices & Privacy › Smart Ring starts it.
 extension AppState {
 
     func setUpRing() {
@@ -22,11 +22,9 @@ extension AppState {
         ring.announce = { [weak self] line in
             Task { @MainActor in await self?.speechService.speak(line, source: .acknowledgement) }
         }
-        LiveCoachService.shared.heartRateNow = { [weak ring] in
-            guard Config.ringSupportEnabled else { return nil }
-            return ring?.liveReadings.freshBeatsPerMinute
-        }
-        if Config.ringSupportEnabled { ring.start() }
+        LiveCoachService.shared.heartRateNow = { [weak ring] in ring?.liveReadings.freshBeatsPerMinute }
+        // Without a paired ring nothing starts: pairing starts it (`RingService.pair`).
+        if ring.isPaired { ring.start() }
     }
 
     /// Whether a clench's turn can open the microphone now: in the foreground, or in the background
@@ -45,12 +43,6 @@ extension AppState {
         content.body = RingBackgroundListenNotice.body
         UNUserNotificationCenter.current().add(
             UNNotificationRequest(identifier: "ring-background-listen", content: content, trigger: nil))
-    }
-
-    /// The Developer panel's switch: on starts the ring (and with a paired one, its link), off lets
-    /// it go and shows nothing ring-related anywhere.
-    func ringSupportChanged(_ enabled: Bool) {
-        if enabled { ringService.start() } else { ringService.stop() }
     }
 }
 #endif

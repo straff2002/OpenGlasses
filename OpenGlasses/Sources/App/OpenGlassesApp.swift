@@ -1666,8 +1666,8 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Plan MU §0: the lens fit check (Display & HUD and the Developer panel).
     lazy var lensFitCheck = LensFitCheckSession(display: glassesDisplay)
     #if !AVENKIN_PHONE_ONLY
-    /// Plan MZ: the smart ring. Made on first use; it touches Bluetooth only once started, which
-    /// happens only while `Config.ringSupportEnabled` is on (`AppState+Ring.swift`).
+    /// Plan MZ: the smart ring. Made on first use; started at launch only with a paired ring
+    /// (`AppState+Ring.swift`), so Bluetooth is untouched until one is paired.
     lazy var ringService: RingService = RingService.live()
     #endif
     /// The manual page on the lens (Plan KV): the view, zoomed by band or voice, and the

@@ -1086,9 +1086,9 @@ struct GlassesPrivacySettingsScreen: View {
             }
 
             #if !AVENKIN_PHONE_ONLY
-            // Plan MZ: the smart ring, its own row beside Apple Watch, only while the ring support
-            // is on (Developer panel) — nothing ring-related anywhere else.
-            if rest.isShown && Config.ringSupportEnabled {
+            // Plan MZ: the smart ring, its own row beside Apple Watch — nothing ring-related in
+            // general settings. Out of the Developer panel since it worked on the owner's ring.
+            if rest.isShown {
                 Section {
                     NavigationLink {
                         RingSettingsView(ring: appState.ringService)

@@ -17,8 +17,8 @@ struct ToolsSettingsView: View {
             // Plan IU: `lookup_tools` is infrastructure for on-demand definitions, not a tool to
             // switch off — turning it off would leave the model unable to reach the rest.
             .filter { $0.name != ToolLookupTool.toolName }
-            // Plan MZ: nothing ring-related shows while the ring support is off.
-            .filter { $0.name != RingTool.toolName || Config.ringSupportEnabled }
+            // Plan MZ: the ring tool is listed, like it is offered, only once a ring is paired.
+            .filter { $0.name != RingTool.toolName || Config.ringPairing != nil }
             .filter { adminGate.presentation(.tool($0.name)).isShown }
             .map { (name: $0.name, displayName: Self.displayName(for: $0.name), description: $0.description, params: $0.parametersSchema) }
             // Name breaks a tie: two tools with one display name would otherwise swap places by

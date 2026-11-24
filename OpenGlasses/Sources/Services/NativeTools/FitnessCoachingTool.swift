@@ -249,7 +249,7 @@ struct FitnessCoachingTool: NativeTool {
         #if AVENKIN_PHONE_ONLY
         return nil
         #else
-        guard Config.ringSupportEnabled, let ring = AppStateProvider.shared?.ringService, ring.isPaired else { return nil }
+        guard let ring = AppStateProvider.shared?.ringService, ring.isPaired else { return nil }
         return ring
         #endif
     }

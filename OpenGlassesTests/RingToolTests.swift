@@ -73,11 +73,11 @@ final class RingToolTests: XCTestCase {
         XCTAssertEqual(none, RingTool.notPaired, "no ring service at all reads the same")
     }
 
-    func testOffWhileTheRingSupportIsOff() async throws {
+    func testNotOfferedWithoutAPairedRing() async throws {
         let off = tool(enabled: false)
         XCTAssertFalse(off.isOfferedNow)
         let result = try await run("battery", off)
-        XCTAssertEqual(result, RingTool.notOn)
+        XCTAssertEqual(result, RingTool.notPaired)
         XCTAssertTrue(tool().isOfferedNow)
     }
 
@@ -211,18 +211,19 @@ final class RingToolTests: XCTestCase {
         XCTAssertTrue(ringTool.description.contains("health_summary"))
     }
 
-    func testTheRegistryHoldsTheToolButOffersItOnlyWithTheRingSupportOn() {
-        let saved = UserDefaults.standard.object(forKey: "ringSupportEnabled")
-        defer { UserDefaults.standard.set(saved, forKey: "ringSupportEnabled") }
+    func testTheRegistryHoldsTheToolButOffersItOnlyOnceARingIsPaired() {
+        let key = RingPairingStore.key
+        let saved = UserDefaults.standard.object(forKey: key)
+        defer { UserDefaults.standard.set(saved, forKey: key) }
 
-        UserDefaults.standard.set(false, forKey: "ringSupportEnabled")
+        UserDefaults.standard.removeObject(forKey: key)
         let registry = NativeToolRegistry(locationService: LocationService())
         XCTAssertTrue(registry.hasTool(named: "ring"))
         XCTAssertFalse(registry.toolNames.contains("ring"))
         XCTAssertNil(registry.tool(named: "ring"))
         XCTAssertTrue(registry.toolDescriptions(for: ["ring"]).isEmpty, "not in the system prompt's tool list")
 
-        UserDefaults.standard.set(true, forKey: "ringSupportEnabled")
+        Config.ringPairing = RingPairingRecord(pairingID: .make(), peripheralIdentifier: UUID(), pairedAt: Date())
         XCTAssertTrue(registry.toolNames.contains("ring"))
         XCTAssertNotNil(registry.tool(named: "ring"))
         XCTAssertEqual(registry.toolDescriptions(for: ["ring"]).first?.description, tool().description)

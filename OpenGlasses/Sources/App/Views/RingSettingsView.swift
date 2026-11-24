@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Devices & Privacy › Smart Ring (Plan MZ P2): pair a ring, its status, what reaches Apple Health,
 /// automatic heart rate, the clench trigger, Find Ring, Sync Now, deleting its readings and
-/// forgetting it. Reached only while `Config.ringSupportEnabled` is on.
+/// forgetting it. Its own row in Devices & Privacy, beside Apple Watch.
 struct RingSettingsView: View {
     @ObservedObject var ring: RingService
 

@@ -24,7 +24,8 @@ extension RingService: RingToolBackend {
 /// A measurement is health data: it reaches a model only when `HealthSummaryDeliveryPolicy` allows
 /// it, and otherwise the tool speaks the sentence itself on an on-device voice and hands the model
 /// the policy's receipt, with no number in it. Battery and the last sync are not health data and are
-/// returned. Offered only while the ring support is on (`Config.ringSupportEnabled`).
+/// returned. Offered only once a ring is paired (`Config.ringPairing`), so the prompt carries no
+/// ring tool for anyone without one.
 @MainActor
 final class RingTool: NativeTool, ConditionallyOfferedTool {
 
@@ -65,7 +66,7 @@ final class RingTool: NativeTool, ConditionallyOfferedTool {
     private let measurementWait: TimeInterval
 
     init(backend: (@MainActor () -> RingToolBackend?)? = nil,
-         enabled: @escaping @MainActor () -> Bool = { Config.ringSupportEnabled },
+         enabled: @escaping @MainActor () -> Bool = { Config.ringPairing != nil },
          deliveryInputs: @escaping @MainActor () -> HealthSummaryDeliveryPolicy.Inputs = HealthSummaryTool.liveDeliveryInputs,
          speaker: Speaker? = nil,
          clock: @escaping () -> Date = Date.init,
@@ -96,7 +97,6 @@ final class RingTool: NativeTool, ConditionallyOfferedTool {
 
     // MARK: - Lines
 
-    nonisolated static let notOn = "The smart ring isn't turned on in this version of Avenkin."
     nonisolated static let notPaired = "No smart ring is paired. The wearer can pair one in Settings under Devices & Privacy, Smart Ring."
     nonisolated static let notConnected = "The smart ring isn't connected right now. It may be out of range or need charging; it reconnects by itself when it's back."
     nonisolated static let busy = "The ring is already taking another measurement. Try again in a minute."
@@ -107,7 +107,7 @@ final class RingTool: NativeTool, ConditionallyOfferedTool {
     // MARK: - Execute
 
     func execute(args: [String: Any]) async throws -> String {
-        guard enabled() else { return Self.notOn }
+        guard enabled() else { return Self.notPaired }
         guard let action = (args["action"] as? String).flatMap(Action.init(rawValue:)) else {
             return "Unknown action. Use one of: \(Action.allCases.map(\.rawValue).joined(separator: ", "))."
         }

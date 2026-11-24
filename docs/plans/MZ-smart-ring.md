@@ -1,7 +1,9 @@
 # Plan MZ — Smart Ring (heart rate, oxygen, steps, sleep and battery from a cheap ring, straight into Apple Health, with no vendor app or cloud)
 
-**Status:** 🚧 P0–P4 built 2026-11-22, behind `Config.ringSupportEnabled` (off by default; turned on
-at Settings › Advanced & Support › Advanced › Developer › Smart Ring). P0/P1: `Services/Ring/` codec,
+**Status:** 🚧 P0–P4 built 2026-11-22. Out of the Developer panel 2026-11-24, once the ring worked on
+the owner's hardware: `Config.ringSupportEnabled` is gone, Devices & Privacy › Smart Ring always shows
+(glasses build), the ring starts at launch only when one is paired, and the `ring` tool is offered
+only once a ring is paired (Developer keeps only the ring packet log). P0/P1: `Services/Ring/` codec,
 clock, sleep timeline, sync machine and Health writer (93 tests, plus one `SleepNightAggregatorTests`
 case). P2–P4: `RingBLETransport` (glasses build only), `RingService`, the pairing record, Devices &
 Privacy › Smart Ring, the `ring` tool, the workout and Live Coach hooks and the clench trigger (81 new
@@ -306,8 +308,8 @@ CoreBluetooth half, its own `CBCentralManager`, never shared with the display's:
 - **Forget.** Disconnects, clears the pairing id, cursors and latched offset, and tells the wearer to
   also forget the ring in iOS Settings › Bluetooth, which an app cannot do.
 
-**Settings.** Devices & Privacy › **Smart Ring**, its own row beside Apple Watch, shown only when
-`Config.ringSupportEnabled` is on (off, no UI, until P5 passes). The screen: Pair a Ring, then the
+**Settings.** Devices & Privacy › **Smart Ring**, its own row beside Apple Watch (until 2026-11-24 it
+was shown only while a Developer switch, `Config.ringSupportEnabled`, was on). The screen: Pair a Ring, then the
 ring's status (connected, battery, last sync), Apple Health access, what is written, automatic heart
 rate (Off / every 30 min / every 10 min), the ring trigger (P4), Find Ring, Sync Now, Delete Ring
 Readings from Apple Health, Forget Ring. One line under it: readings are estimates from a consumer

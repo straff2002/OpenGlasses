@@ -67,13 +67,6 @@ final class RingPairingStore: RingPairingStoring {
 
 /// The ring's settings. Small scalars only; the pairing record has its own store.
 extension Config {
-    /// Plan MZ: the smart ring, off until the device pass. Developer panel only; off shows nothing
-    /// ring-related anywhere and never starts Bluetooth for it.
-    static var ringSupportEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: "ringSupportEnabled") as? Bool ?? false }
-        set { UserDefaults.standard.set(newValue, forKey: "ringSupportEnabled") }
-    }
-
     /// The pairing record, read and written through `RingPairingStore`.
     @MainActor
     static var ringPairing: RingPairingRecord? {

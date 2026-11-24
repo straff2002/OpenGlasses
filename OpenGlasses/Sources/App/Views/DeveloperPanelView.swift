@@ -28,8 +28,6 @@ struct DeveloperPanelView: View {
     @AppStorage(Config.geminiLiveStartSensitivityKey) private var geminiStartSensitivity = GeminiLiveStartSensitivity.high.rawValue
     /// Plan MQ P1 — `Config.localNativeToolCallsEnabled`, the same key and default (off).
     @AppStorage("localNativeToolCallsEnabled") private var localNativeToolCallsEnabled = false
-    /// Plan MZ — `Config.ringSupportEnabled`, the same key and default (off until the device pass).
-    @AppStorage("ringSupportEnabled") private var ringSupportEnabled = false
 
     init(appState: AppState) {
         self.appState = appState
@@ -57,22 +55,17 @@ struct DeveloperPanelView: View {
             #endif
 
             #if !AVENKIN_PHONE_ONLY
+            // Plan MZ: the ring itself lives in Devices & Privacy › Smart Ring; only its packet
+            // log, a diagnostic, stays here.
             OGSection(
                 header: "Smart Ring",
-                footer: "Lets Avenkin pair a smart ring and save its heart rate, blood oxygen, sleep and steps to Apple Health. Its settings appear under Devices & Privacy. Off stops the ring's Bluetooth link; a paired ring stays paired."
+                footer: "Pair a ring and change its settings in Devices & Privacy › Smart Ring."
             ) {
-                OGRow("Smart ring", isOn: $ringSupportEnabled, icon: "circle.circle")
-                    .onChange(of: ringSupportEnabled) { _, enabled in
-                        appState.ringSupportChanged(enabled)
-                    }
-                if ringSupportEnabled {
-                    OGDivider()
-                    NavigationLink {
-                        RingPacketLogView(log: appState.ringService.packetLog)
-                    } label: {
-                        OGRow("Ring packets", icon: "list.bullet.rectangle",
-                              subtitle: "Unknown packets and the last twenty, on this screen only")
-                    }
+                NavigationLink {
+                    RingPacketLogView(log: appState.ringService.packetLog)
+                } label: {
+                    OGRow("Ring packets", icon: "list.bullet.rectangle",
+                          subtitle: "Unknown packets and the last twenty, on this screen only")
                 }
             }
             #endif
