@@ -8,8 +8,9 @@ import Foundation
 /// became a call with the metal and no size, the tool refused for a missing conductor, and the model
 /// asked the technician for a resistance per foot they had already given as a gauge. `LocalToolLoop`
 /// runs every model-made call through `complete(name:arguments:context:)` after
-/// `LocalArgumentGrounding`'s filter and before it runs; a call `LocalTurnRouter` made is not
-/// completed. Each rule names the calls it applies to; `rules` is the one place to add another.
+/// `LocalArgumentGrounding`'s filter and before it runs, and every call `LocalTurnRouter` made
+/// (whose arguments are all what was said) before it runs: a voltage drop the router made carries
+/// the current and length it read, and the wire, metal and supply come from here. Each rule names the calls it applies to; `rules` is the one place to add another.
 ///
 /// ### The operation rule (`voltage_drop`)
 /// On the phone Gemma 4 E2B also sent a voltage drop with no operation at all (`{current_a, length_ft,
@@ -42,8 +43,10 @@ import Foundation
 /// A different `supply_v` from the model is replaced: the technician's reading wins, as the metal does.
 ///
 /// ### The source rule (`show_source`)
-/// A `show_source` call with no `which` gets the one ordinal the turn put on the source ("the last
-/// source you used" → `last`), never a guess; a `which` the model gave is left alone.
+/// A `show_source` call gets the one source the turn named: an ordinal ("the last source you used"
+/// → `last`), the cited table ("the page that table came from" → `table`), a table number or every
+/// source. What was said replaces a different `which` from the model; a turn that names none leaves
+/// the model's alone, and nothing is guessed.
 enum LocalArgumentCompletion {
 
     /// What a rule reads beside the call.
@@ -353,26 +356,45 @@ enum LocalArgumentCompletion {
 
     // MARK: - The source rule (`show_source`)
 
-    /// `which` on a `show_source` call that names none, from the one ordinal the turn puts on
-    /// what it wants shown ("the last source you used", "the second one"). Gemma 4 E2B called it
-    /// with no arguments for "Show me the last source you used", and the tool's default is the
-    /// first. An ordinal on something else ("the page for the second burner") is not read, and
-    /// two ordinals give none.
+    /// `which` on a `show_source` call, from the one source the turn names (`sourcesSaid`): an
+    /// ordinal on what it wants shown ("the last source you used", "the second one"), the table the
+    /// answer cited ("the page that table came from"), a table by number ("Table 99"), or every
+    /// source ("all the pages"). What was said wins, as the metal does: Gemma 4 E2B called it with
+    /// no arguments for "Show me the last source you used", and with `which: "first"` for "Show me
+    /// the page that table came from". An ordinal on something else ("the page for the second
+    /// burner") is not read, two different sources give none, and a turn that names none leaves the
+    /// model's `which` as it is.
     static func showSourceWhich(_ name: String, _ arguments: [String: Any], _ context: Context) -> Completed? {
         guard name == "show_source", let turn = context.userMessages.first else { return nil }
-        if let given = arguments["which"] {
-            guard let text = given as? String, text.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-        }
-        let said = Set(captures(sourceOrdinalPattern, turn).map { $0.lowercased() == "latest" ? "last" : $0.lowercased() })
+        let said = sourcesSaid(in: turn)
         guard said.count == 1, let which = said.first else { return nil }
+        let given = (arguments["which"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+        guard given.caseInsensitiveCompare(which) != .orderedSame else { return nil }
         var completed = arguments
         completed["which"] = which
         return Completed(arguments: completed, filled: [("which", which)], removed: [], governs: { $0 == "which" })
     }
 
+    /// Every `which` the turn names, as the tool takes it: "first", "second", "third", "last",
+    /// "table", "Table <n>" or "all".
+    static func sourcesSaid(in turn: String) -> Set<String> {
+        var said = Set(captures(sourceOrdinalPattern, turn).map { $0.lowercased() == "latest" ? "last" : $0.lowercased() })
+        let numbered = captures(numberedTablePattern, turn)
+        said.formUnion(numbered.map { "Table " + $0.uppercased() })
+        if numbered.isEmpty, !captures(citedTablePattern, turn).isEmpty { said.insert("table") }
+        if !captures(everySourcePattern, turn).isEmpty { said.insert("all") }
+        return said
+    }
+
     /// "first source", "last one", "second page", "latest reference".
     private static let sourceOrdinalPattern = regex(#"\b(first|second|third|last|latest)\s+"#
         + #"(?:one|ones|source|sources|page|pages|reference|references|citation|citations|passage|passages)\b"#)
+    /// "that table", "the table", "this table" — the one the answer cited.
+    private static let citedTablePattern = regex(#"\b(?:that|the|this)\s+(table)\b"#)
+    /// "Table 99", "table 4B".
+    private static let numberedTablePattern = regex(#"\btable\s+(\d+[a-z]?)\b"#)
+    /// "all the sources", "all of the pages", "every page", "every source".
+    private static let everySourcePattern = regex(#"\b(?:all(?:\s+of)?\s+the|every)\s+(sources?|pages?|references?|citations?)\b"#)
 
     // MARK: - Reading what was said
 

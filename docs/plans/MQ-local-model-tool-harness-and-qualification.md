@@ -532,6 +532,27 @@ words with one of them (and those are at least half of its own) is the step's an
 corpus: procedure answers 12/12 routed (was 11; its floor is now 1.0), still no case that expects no
 call.
 
+**Log it, then work out the voltage drop (2026-11-24).** The two-step turn ("Line voltage at the
+control is 115. Log it, then work out the voltage drop at 15 amps over 50 feet of 14 gauge copper")
+passed on most phone runs and failed on a different case each time: prose with no call, a call in
+a form nothing reads (`<tool_call:domain_calc{…}}`), a resistance Gemma made up. `LocalTurnRouter`
+now routes both calls in order when the part before "then" is a reading logged in one breath and
+the part after it asks for a voltage drop with one current and one length, every other number being
+the wire's size: the reading, then `domain_calc` with the operation, current and length as said.
+`LocalToolLoop` runs every routed call and completes each from the technician's words as it does a
+model's, so the wire, metal and supply are `LocalArgumentCompletion`'s, never the router's; the
+model says the result. Over the corpus: two-step 12/12 routed, no case wrongly routed. The tool
+cases on the phone: **325 of 326** (was 323) — two-step 12/12, procedure answers 12/12, logged
+readings 38/38, restraint and clean output 100%. The one left: the `show_source` table argument.
+
+**The source the technician named (2026-11-24).** That last case was "Show me the page that table
+came from", sent as `show_source` with `which: "first"`, which opens the first cited page rather
+than the table. `LocalArgumentCompletion`'s source rule only filled a missing `which`; it now reads
+the one source the turn names (an ordinal, the cited table, a table number or every source) and
+replaces a different `which` from the model, as the conductor and supply rules do. A turn that names
+none leaves the model's alone, and two different sources give none. The tool cases on the phone
+with both changes: **326 of 326**, restraint and clean output 100%.
+
 **Not checked on the phone:** what the router and the argument steps say in the real app (the
 qualification run scores scripted tool results, so a reply after a refused call can still quote
 the script); the preview stream can show a Gemma or Python-style call line briefly before it is
