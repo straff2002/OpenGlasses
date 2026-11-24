@@ -55,9 +55,56 @@ struct SettingsView: View {
         SettingsHeroDevice.resolve(phase: appState.glassesPhase, glassesAdded: appState.glassesAdded)
     }
 
+    // Plan NE P1: what is typed in the search field, the pins, and the result or pin opened.
+    @State private var searchQuery = ""
+    @State private var pins = SettingsPinStore().load()
+    @State private var openedEntry: SettingsIndexEntry?
+
+    private var searchConditions: SettingsSearchConditions { .current(simpleMode: simpleModeEnabled) }
+
     var body: some View {
-        // The hub is an OGDesign page (Plan CL): hero device card, then one grouped card of
-        // category rows, each with a live value summary.
+        // Plan NE P1: a search replaces the hub with its results while there is something to find.
+        Group {
+            if SettingsSearch.isSearching(searchQuery) {
+                SettingsSearchResultsPage(query: searchQuery, conditions: searchConditions, pins: $pins) {
+                    openedEntry = $0
+                }
+            } else {
+                hub
+            }
+        }
+        .navigationTitle("Settings")
+        .tint(accent)
+        // Only while the Lock Settings cover is not up: no search field and no pins behind it.
+        .modifier(SettingsSearchField(query: $searchQuery, isActive: !settingsLocked))
+        // Owner gate on Settings entry (BM P10, opt-in): an opaque cover — never a blur that
+        // leaks decrypted key fields — until device-owner auth grants entry.
+        .overlay {
+            if settingsLocked { settingsLockCover }
+        }
+        .onAppear {
+            if settingsLocked { authenticateSettingsEntry() }
+        }
+        // A category another surface asked for (Plan HB — the Modes tab's Field Assist row). Opened
+        // through the same lock wrapper its hub row uses, and held while the Lock Settings cover is
+        // up: the cover sits over this view, not over what is pushed on top of it.
+        .navigationDestination(item: $openedCategory) { id in
+            SettingsCategoryScreen(appState: appState, id: id)
+        }
+        // Plan NE P1: a search result or a pin, through a screen that re-checks it on every draw.
+        .navigationDestination(item: $openedEntry) { entry in
+            SettingsIndexDestinationScreen(appState: appState, entry: entry)
+        }
+        .onChange(of: appState.requestedSettingsCategory, initial: true) { _, _ in
+            openRequestedCategory()
+        }
+        .onChange(of: settingsLocked) { _, _ in openRequestedCategory() }
+        .onChange(of: pins) { _, newValue in SettingsPinStore().save(newValue) }
+    }
+
+    /// The hub is an OGDesign page (Plan CL): hero device card, then one grouped card of category
+    /// rows, each with a live value summary.
+    private var hub: some View {
         OGScrollPage {
             // The device in use (Plan HA C3): the glasses while they are attached — connected,
             // paused or connecting — and this iPhone or iPad otherwise. Glasses settings stay one row
@@ -95,6 +142,12 @@ struct SettingsView: View {
             // Plan CT PR 2: a managed phone says so, always, with the way out beside it.
             ManagedByOrganisationSection(manager: OrgProfileManager.shared)
             OrgAdministratorSection(gate: adminGate, manager: orgProfile)
+
+            // Plan NE P1: what this person pinned and may see, above the category rows. Not drawn
+            // while nothing is, nor behind the Lock Settings cover.
+            if !settingsLocked {
+                SettingsPinnedSection(pins: $pins, conditions: searchConditions) { openedEntry = $0 }
+            }
 
             OGSection {
                 ForEach(Array(visibleRows.enumerated()), id: \.element.id) { index, row in
@@ -173,26 +226,6 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
             }
         }
-        .navigationTitle("Settings")
-        .tint(accent)
-        // Owner gate on Settings entry (BM P10, opt-in): an opaque cover — never a blur that
-        // leaks decrypted key fields — until device-owner auth grants entry.
-        .overlay {
-            if settingsLocked { settingsLockCover }
-        }
-        .onAppear {
-            if settingsLocked { authenticateSettingsEntry() }
-        }
-        // A category another surface asked for (Plan HB — the Modes tab's Field Assist row). Opened
-        // through the same lock wrapper its hub row uses, and held while the Lock Settings cover is
-        // up: the cover sits over this view, not over what is pushed on top of it.
-        .navigationDestination(item: $openedCategory) { id in
-            SettingsCategoryScreen(appState: appState, id: id)
-        }
-        .onChange(of: appState.requestedSettingsCategory, initial: true) { _, _ in
-            openRequestedCategory()
-        }
-        .onChange(of: settingsLocked) { _, _ in openRequestedCategory() }
     }
 
     @State private var openedCategory: SettingsCategoryID?
