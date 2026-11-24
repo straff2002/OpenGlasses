@@ -85,6 +85,10 @@ final class DeviceSeatService: ObservableObject {
             (OrgProfileManager.shared.record?.companyVaults?.vaults ?? [:])
                 .map { DeviceSeatLease.InstalledVault(vaultId: $0.key, version: $0.value.version) }
         }
+        /// Plan ND P4: the highest settings generation this phone has applied, for the fleet view.
+        var appliedProfileGeneration: @MainActor () -> Int? = {
+            OrgProfileManager.shared.record?.profileGenerationHighWater
+        }
     }
 
     static let shared = DeviceSeatService()
@@ -184,7 +188,9 @@ final class DeviceSeatService: ObservableObject {
             .map { $0.deviceKeyHash == DeviceSeatLease.deviceKeyHash(publicKeyX963: key.publicKeyX963) } ?? false
         var reply = ownLease
             ? await exchange(.renew, DeviceSeatLease.renewRequest(build: seams.build(), lease: current.lease ?? "",
-                                                                 vaults: seams.installedCompanyVaults()), key: key, origin: origin)
+                                                                 vaults: seams.installedCompanyVaults(),
+                                                                 profileGeneration: seams.appliedProfileGeneration()),
+                       key: key, origin: origin)
             : await exchange(.claim, claimRequest(enrolment, key: key), key: key, origin: origin)
         // The seat was freed: ask for one again, which there may or may not be room for — unless
         // the phone itself let the seat go (a release) while the renewal was out, which a claim

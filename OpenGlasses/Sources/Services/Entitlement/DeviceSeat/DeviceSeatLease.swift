@@ -147,10 +147,15 @@ enum DeviceSeatLease {
     /// version, so the portal can show which phones have the new version. Nil — and so absent
     /// from the bytes — on a phone with none, so such a renewal is exactly what it was. Nothing
     /// else: no manual's name, nothing the technician added.
+    ///
+    /// Plan ND P4 (decision 14): it also carries `profileGeneration`, the highest version of the
+    /// company's settings this phone has applied, so the portal can show how many phones are on the
+    /// latest. Nil, and so absent, on a phone that has applied none with a version.
     struct RenewRequest: Codable, Equatable, Sendable {
         let build: String
         let lease: String
         var vaults: [InstalledVault]? = nil
+        var profileGeneration: Int? = nil
     }
 
     /// One company vault as a renewal reports it (`SeatInstalledVault` in the licence core).
@@ -167,13 +172,14 @@ enum DeviceSeatLease {
     /// The renewal for `lease`: with the installed vaults when there are any and they fit, and
     /// without them otherwise, so reporting a version can never make a renewal one the service
     /// refuses.
-    nonisolated static func renewRequest(build: String, lease: String, vaults: [InstalledVault]) -> RenewRequest {
+    nonisolated static func renewRequest(build: String, lease: String, vaults: [InstalledVault],
+                                         profileGeneration: Int? = nil) -> RenewRequest {
+        let generation = profileGeneration.flatMap { $0 >= 0 ? $0 : nil }
         let listed = Array(vaults.sorted { $0.vaultId < $1.vaultId }.prefix(maximumVaultsPerRenewal))
-        guard !listed.isEmpty else { return RenewRequest(build: build, lease: lease) }
-        let request = RenewRequest(build: build, lease: lease, vaults: listed)
-        guard let bytes = try? encode(request), bytes.count <= maximumRequestBytes else {
-            return RenewRequest(build: build, lease: lease)
-        }
+        let bare = RenewRequest(build: build, lease: lease, profileGeneration: generation)
+        guard !listed.isEmpty else { return bare }
+        let request = RenewRequest(build: build, lease: lease, vaults: listed, profileGeneration: generation)
+        guard let bytes = try? encode(request), bytes.count <= maximumRequestBytes else { return bare }
         return request
     }
 
