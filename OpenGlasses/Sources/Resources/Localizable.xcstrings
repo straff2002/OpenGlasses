@@ -21308,6 +21308,94 @@
         }
       }
     },
+    "%@. You chose %@." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. لقد اخترت %2$@."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@. You chose %2$@."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. Elegiste %2$@."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. Vous avez choisi %2$@."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. Ön ezt választotta: %2$@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. Hai scelto %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@。あなたの選択: %2$@。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. 내 선택: %2$@."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. U koos %2$@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. Você escolheu %2$@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. Вы выбрали: %2$@."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@۔ آپ نے %2$@ منتخب کیا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@。你选择了%2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@。你選擇了%2$@。"
+          }
+        }
+      }
+    },
     "%@'s admin card" : {
       "localizations" : {
         "ar" : {
@@ -104569,6 +104657,170 @@
         }
       }
     },
+    "Avenkin speaks %@, like your phone." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يتحدث Avenkin باللغة %@، مثل هاتفك."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin habla %@, como tu celular."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin parle %@, comme votre téléphone."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Az Avenkin nyelve: %@, ahogy a telefonjáé."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin parla %@, come il tuo telefono."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkinは、お使いのiPhoneと同じく%@で話します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin은 휴대폰과 마찬가지로 %@로 말합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin spreekt %@, net als uw telefoon."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Avenkin fala %@, como o seu telefone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin говорит на языке «%@», как и ваш телефон."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin آپ کے فون کی طرح %@ بولتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin 使用 %@，与你的手机一致。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin 使用 %@，與你的手機一致。"
+          }
+        }
+      }
+    },
+    "Avenkin speaks %@." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يتحدث Avenkin باللغة %@."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin habla %@."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin parle %@."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Az Avenkin nyelve: %@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin parla %@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkinは%@で話します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin은 %@로 말합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin spreekt %@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Avenkin fala %@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin говорит на языке «%@»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin %@ بولتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin 使用 %@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin 使用 %@。"
+          }
+        }
+      }
+    },
     "Avenkin turn ledger" : {
       "localizations" : {
         "ar" : {
@@ -116625,6 +116877,88 @@
         }
       }
     },
+    "Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI (under Everyday) is off by default: Apple Health numbers are sent to your AI provider only when you turn it on. Cloud dictation is off by default: only when you choose Deepgram or OpenAI as the recognizer does the audio of each question go to that vendor. A seat-checked organisation licence checks this phone's seat with Avenkin's licence service about once a day, sending only the enrolment id, a key made for this phone, the app build, the profile id, the versions of your organisation's vaults on this phone and the version of your organisation's settings it has applied; never a name, device model or location. A phone your organisation manages through device management (MDM) tells that MDM which version of your organisation's settings it has, whether it is enrolled, and the app build; this goes only to your organisation's own MDM, never to Avenkin. Sending a job to an expert sends its details, and the photos you pick with faces blurred, only to the expert you choose, by your own Messages, Mail or share sheet. An invitation asking an expert for their card carries only your organisation's name, yours and where to reply. A job sent to you as an expert stays on this phone only, for the days its organisation set, and never reaches the assistant or its memory; your time reply goes only when you share it. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS), and the glasses SDK's own analytics are opted out and blocked on this phone." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يعمل «تمويه وجوه المارة» بالكامل على الجهاز: يتم اكتشاف الوجوه وتمويهها على هاتفك، والإطار المموَّه هو ما يتلقاه مزوّد الذكاء الاصطناعي أو التسجيل أو البث أو مكالمة الخبير. خيار «مشاركة بيانات الصحة مع الذكاء الاصطناعي» (ضمن «الحياة اليومية») متوقف افتراضيًا: لا تُرسل أرقام Apple Health إلى مزوّد الذكاء الاصطناعي إلا عند تشغيله. الإملاء السحابي متوقف افتراضيًا: لا يصل صوت كل سؤال إلى ذلك المزوّد إلا عند اختيارك Deepgram أو OpenAI كأداة للتعرف على الكلام. يتحقق ترخيص المنظمة المرتبط بالمقاعد من مقعد هذا الهاتف لدى خدمة تراخيص Avenkin مرة واحدة يوميًا تقريبًا، ولا يرسل سوى معرّف التسجيل ومفتاح أُنشئ لهذا الهاتف وإصدار التطبيق ومعرّف الملف الشخصي وإصدارات خزنات مؤسستك الموجودة على هذا الهاتف وإصدار إعدادات مؤسستك الذي طبّقه؛ ولا يرسل أبدًا اسمًا أو طراز جهاز أو موقعًا. ويُبلغ الهاتف الذي تديره مؤسستك عبر إدارة الأجهزة (MDM) نظامَ MDM ذاك بإصدار إعدادات مؤسستك الموجود لديه، وما إذا كان مسجَّلًا، وإصدار التطبيق؛ ولا يذهب ذلك إلا إلى نظام MDM الخاص بمؤسستك، ولا يصل أبدًا إلى Avenkin. يؤدي إرسال مهمة إلى خبير إلى إرسال تفاصيلها، والصور التي تختارها بعد تمويه الوجوه، إلى الخبير الذي تختاره فقط، عبر الرسائل أو البريد أو ورقة المشاركة الخاصة بك. ولا تحمل الدعوة التي تطلب من خبير بطاقته سوى اسم منظمتك واسمك ومكان الرد. أما المهمة المرسلة إليك كخبير فتبقى على هذا الهاتف فقط، للأيام التي حددتها منظمتها، ولا تصل أبدًا إلى المساعد أو ذاكرته؛ ولا يُرسل رد وقتك إلا عندما تشاركه. لا يتضمن Avenkin أي تحليلات أو تقارير أعطال خاصة به (قد تشاركها Apple معنا من TestFlight، أو إذا سمحت بذلك في iOS)، كما أن تحليلات حزمة SDK الخاصة بالنظارات معطّلة ومحظورة على هذا الهاتف."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El difuminado de rostros de transeúntes se ejecuta por completo en el dispositivo: los rostros se detectan y se difuminan en tu celular, y el cuadro difuminado es lo que recibe un proveedor de IA, una grabación, una transmisión o una llamada con un experto. Compartir datos de salud con la IA (en Día a día) está desactivado de forma predeterminada: las cifras de Apple Health se envían a tu proveedor de IA solo cuando lo activas. El dictado en la nube está desactivado de forma predeterminada: solo cuando eliges Deepgram u OpenAI como reconocedor, el audio de cada pregunta va a ese proveedor. Una licencia de organización con verificación de puestos verifica el puesto de este celular con el servicio de licencias de Avenkin aproximadamente una vez al día, y solo envía el ID de inscripción, una clave creada para este celular, la compilación de la app, el ID del perfil, las versiones de las bóvedas de tu organización en este celular y la versión de la configuración de tu organización que aplicó; nunca un nombre, el modelo del dispositivo ni la ubicación. Un celular que tu organización administra mediante la administración de dispositivos (MDM) le informa a ese MDM qué versión de la configuración de tu organización tiene, si está inscrito y la compilación de la app; esto solo va al MDM de tu organización, nunca a Avenkin. Enviar un trabajo a un experto envía sus detalles, y las fotos que elijas con los rostros difuminados, solo al experto que elijas, por tus propios Mensajes, Mail u hoja para compartir. Una invitación que le pide a un experto su tarjeta solo lleva el nombre de tu organización, el tuyo y a dónde responder. Un trabajo que te envían como experto se queda solo en este celular, durante los días que fijó su organización, y nunca llega al asistente ni a su memoria; tu respuesta de tiempo solo se envía cuando la compartes. Avenkin no tiene analíticas ni reportes de fallos propios (Apple puede compartirnos reportes de fallos desde TestFlight, o si lo permites en iOS), y las analíticas propias del SDK de los lentes están excluidas y bloqueadas en este celular."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le floutage des passants s’exécute entièrement sur l’appareil : les visages sont détectés et floutés sur votre téléphone, et c’est l’image floutée que reçoivent un fournisseur d’IA, un enregistrement, une diffusion ou un appel d’expert. Partager les données de santé avec l’IA (sous Au quotidien) est désactivé par défaut : les données d’Apple Health ne sont envoyées à votre fournisseur d’IA que si vous l’activez. La dictée cloud est désactivée par défaut : l’audio de chaque question n’est transmis à un fournisseur que si vous choisissez Deepgram ou OpenAI comme moteur de reconnaissance. Une licence d’organisation avec vérification des places vérifie la place de ce téléphone auprès du service de licences d’Avenkin environ une fois par jour, en n’envoyant que l’ID d’inscription, une clé créée pour ce téléphone, la version de compilation de l’application, l’ID du profil, les versions des coffres de votre organisation sur ce téléphone et la version des réglages de votre organisation qu’il a appliquée; jamais de nom, de modèle d’appareil ni de position. Un téléphone que votre organisation gère au moyen de la gestion des appareils (MDM) indique à ce MDM quelle version des réglages de votre organisation il a, s’il est inscrit et la version de compilation de l’application; ces données ne vont qu’au MDM de votre organisation, jamais à Avenkin. Envoyer un travail à un expert transmet ses détails, et les photos que vous choisissez avec les visages floutés, uniquement à l’expert que vous choisissez, par vos propres Messages, Mail ou feuille de partage. Une invitation demandant sa carte à un expert ne contient que le nom de votre organisation, le vôtre et l’endroit où répondre. Un travail qui vous est envoyé en tant qu’expert reste sur ce téléphone seulement, pendant le nombre de jours fixé par son organisation, et n’atteint jamais l’assistant ni sa mémoire; votre réponse de temps n’est envoyée que lorsque vous la partagez. Avenkin n’a ni outil d’analyse ni rapport de plantage qui lui soit propre (Apple peut nous transmettre des rapports de plantage depuis TestFlight, ou si vous l’autorisez dans iOS), et les outils d’analyse propres au SDK des lunettes sont désactivés et bloqués sur ce téléphone."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A szemlélődők arcának elmosása teljes egészében az eszközön fut: az arcokat a telefonja keresi meg és mossa el, és az elmosott képkockát kapja meg az AI-szolgáltató, a felvétel, a közvetítés vagy a szakértői hívás. Az „Ossza meg az egészségügyi adatokat az AI-val” (a Mindennapok alatt) alapértelmezés szerint ki van kapcsolva: az Apple Health számait csak akkor küldi el az AI-szolgáltatónak, ha bekapcsolja. A felhőalapú diktálás alapértelmezés szerint ki van kapcsolva: csak ha a Deepgramot vagy az OpenAI-t választja felismerőként, akkor kerül az egyes kérdések hangja az adott szolgáltatóhoz. A felhasználói helyeket ellenőrző szervezeti licenc naponta nagyjából egyszer egyezteti ennek a telefonnak a felhasználói helyét az Avenkin licencszolgáltatásával, és csak a beiratkozási azonosítót, egy ehhez a telefonhoz készített kulcsot, az alkalmazás buildszámát, a profilazonosítót, a szervezete ezen a telefonon lévő tárolóinak verzióit és a szervezete általa alkalmazott beállításainak verzióját küldi el; nevet, eszközmodellt vagy tartózkodási helyet soha. Az a telefon, amelyet a szervezete eszközkezeléssel (MDM) kezel, közli ezzel az MDM-mel, hogy a szervezete beállításainak melyik verziója van rajta, be van-e iratkozva, valamint az alkalmazás buildszámát; ez csak a szervezete saját MDM-jéhez jut el, az Avenkinhez soha. Ha egy munkát elküld egy szakértőnek, annak részletei és az Ön által kiválasztott, elmosott arcú fotók csak a választott szakértőhöz jutnak el, a saját Üzenetek, Mail vagy megosztási lap útján. Az a meghívó, amely egy szakértőtől a kártyáját kéri, csak a szervezete nevét, az Ön nevét és a válaszcímet tartalmazza. Az Önnek szakértőként küldött munka csak ezen a telefonon marad, a szervezete által megadott napokig, és soha nem jut el az asszisztenshez vagy annak memóriájához; az időelszámolása csak akkor megy el, ha megosztja. Az Avenkinnek nincs saját analitikája vagy hibajelentése (az Apple megoszthat velünk hibajelentéseket a TestFlightból, vagy ha engedélyezi az iOS-ben), a szemüveg SDK-jának saját analitikája pedig ki van kapcsolva és le van tiltva ezen a telefonon."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo sfocamento dei passanti avviene interamente sul dispositivo: i volti vengono rilevati e sfocati sul tuo telefono, e a ricevere il fotogramma sfocato sono un fornitore di IA, una registrazione, una trasmissione o una chiamata con un esperto. Condividi i dati sanitari con l'intelligenza artificiale (in Vita quotidiana) è disattivato per impostazione predefinita: i dati di Apple Health vengono inviati al tuo fornitore di IA solo se lo attivi. La dettatura cloud è disattivata per impostazione predefinita: l'audio di ogni domanda va a quel fornitore solo se scegli Deepgram o OpenAI come riconoscitore. Una licenza dell'organizzazione con controllo delle postazioni verifica la postazione di questo telefono con il servizio licenze di Avenkin circa una volta al giorno, inviando solo l'ID di iscrizione, una chiave creata per questo telefono, la build dell'app, l'ID del profilo, le versioni dei depositi della tua organizzazione su questo telefono e la versione delle impostazioni della tua organizzazione che ha applicato; mai un nome, il modello del dispositivo o la posizione. Un telefono che la tua organizzazione gestisce tramite la gestione dei dispositivi (MDM) comunica a tale MDM quale versione delle impostazioni della tua organizzazione ha, se è registrato e la build dell'app; queste informazioni vanno solo all'MDM della tua organizzazione, mai ad Avenkin. Inviare un lavoro a un esperto invia i suoi dettagli, e le foto che scegli con i volti sfocati, solo all'esperto che scegli, tramite i tuoi Messaggi, Mail o foglio di condivisione. Un invito che chiede a un esperto la sua scheda contiene solo il nome della tua organizzazione, il tuo e dove rispondere. Un lavoro inviato a te come esperto resta solo su questo telefono, per i giorni stabiliti dalla sua organizzazione, e non raggiunge mai l'assistente né la sua memoria; la tua risposta con il tempo parte solo quando la condividi. Avenkin non ha propri strumenti di analisi o di segnalazione degli arresti anomali (Apple può condividere con noi i rapporti sugli arresti anomali da TestFlight, o se lo consenti in iOS), e gli strumenti di analisi propri dell'SDK degli occhiali sono disattivati e bloccati su questo telefono."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傍観者の顔のぼかしは完全にデバイス上で動作します。顔の検出とぼかしはお使いのiPhone上で行われ、AIプロバイダ、録画、配信、専門家との通話に届くのはぼかし済みのフレームです。「健康データをAIと共有」（日常内）は初期設定でオフです。Apple Healthの数値は、オンにしたときだけAIプロバイダに送信されます。クラウド音声入力も初期設定でオフです。認識エンジンとしてDeepgramまたはOpenAIを選んだときだけ、各質問の音声がその事業者に送信されます。座席確認型の組織ライセンスは、1日に1回程度、このiPhoneの座席をAvenkinのライセンスサービスで確認します。送信されるのは登録ID、このiPhone用に作成されたキー、アプリのビルド、プロファイルID、このiPhone上にある組織のボールトのバージョン、このiPhoneに適用済みの組織の設定のバージョンのみで、名前、デバイスのモデル、位置情報は一切送信されません。組織がデバイス管理（MDM）で管理しているiPhoneは、保持している組織の設定のバージョン、登録されているかどうか、アプリのビルドをそのMDMに伝えます。この情報は組織自身のMDMにだけ送られ、Avenkinに送られることはありません。ジョブを専門家に送信すると、その詳細と、選んだ写真（顔はぼかし済み）が、あなた自身のメッセージ、メール、または共有シートを通じて、選んだ専門家にだけ送られます。専門家にカードを依頼する招待に含まれるのは、あなたの組織名、あなたの名前、返信先のみです。専門家としてあなたに送られたジョブは、その組織が設定した日数だけこのiPhoneにのみ保存され、アシスタントやそのメモリに渡ることはありません。作業時間の返信は、あなたが共有したときにだけ送られます。Avenkin自体には解析機能やクラッシュレポート機能はありません（TestFlightから、またはiOSで許可した場合は、Appleからクラッシュレポートが共有されることがあります）。また、メガネSDK自身の解析機能はオプトアウトされ、このiPhoneではブロックされています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "방관자 얼굴 흐림 처리는 전적으로 기기 안에서 실행됩니다. 얼굴을 찾아 흐리게 만드는 작업은 휴대폰에서 이루어지며, AI 제공업체, 녹화, 방송, 전문가 통화에는 흐림 처리된 프레임만 전달됩니다. 'AI와 건강 데이터 공유'(일상 항목)는 기본적으로 꺼져 있습니다. Apple Health 수치는 켠 경우에만 AI 제공업체로 전송됩니다. 클라우드 받아쓰기도 기본적으로 꺼져 있습니다. 인식기로 Deepgram 또는 OpenAI를 선택한 경우에만 각 질문의 오디오가 해당 업체로 전송됩니다. 좌석 확인 방식의 조직 라이센스는 하루에 한 번 정도 Avenkin 라이센스 서비스로 이 휴대폰의 좌석을 확인하며, 등록 ID, 이 휴대폰용으로 만든 키, 앱 빌드, 프로필 ID, 이 휴대폰에 있는 조직 볼트의 버전, 이 휴대폰에 적용된 조직 설정의 버전만 전송합니다. 이름, 기기 모델, 위치는 절대 전송하지 않습니다. 조직에서 기기 관리(MDM)로 관리하는 휴대폰은 보유한 조직 설정의 버전, 등록 여부, 앱 빌드를 해당 MDM에 알립니다. 이 정보는 조직 자체의 MDM으로만 전송되며 Avenkin으로는 절대 전송되지 않습니다. 작업을 전문가에게 보내면 작업 세부 정보와 직접 고른 사진(얼굴은 흐림 처리됨)이 내 메시지, 메일 또는 공유 시트를 통해 내가 선택한 전문가에게만 전송됩니다. 전문가에게 카드를 요청하는 초대에는 조직 이름, 내 이름, 회신할 곳만 포함됩니다. 전문가로서 받은 작업은 해당 조직이 정한 일수 동안 이 휴대폰에만 보관되며 어시스턴트나 그 메모리에 전달되지 않습니다. 작업 시간 답장은 내가 공유할 때만 전송됩니다. Avenkin에는 자체 분석 기능이나 충돌 보고 기능이 없습니다(TestFlight에서 또는 iOS에서 허용한 경우 Apple이 충돌 보고서를 공유할 수 있습니다). 또한 안경 SDK 자체의 분석 기능은 수신 거부되어 있으며 이 휴대폰에서 차단됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vervagen van gezichten van omstanders werkt volledig op het apparaat: gezichten worden op uw telefoon gevonden en vervaagd, en het vervaagde beeld is wat een AI-provider, opname, uitzending of expertgesprek ontvangt. Gezondheidsgegevens delen met AI (onder Dagelijks) staat standaard uit: Apple Health-cijfers worden alleen naar uw AI-provider gestuurd als u het inschakelt. Clouddictatie staat standaard uit: alleen als u Deepgram of OpenAI als herkenner kiest, gaat de audio van elke vraag naar die leverancier. Een organisatielicentie met plaatscontrole controleert ongeveer eenmaal per dag de plaats van deze telefoon bij de licentieservice van Avenkin en stuurt daarbij alleen de inschrijvings-ID, een sleutel die voor deze telefoon is gemaakt, de app-build, de profiel-ID, de versies van de kluizen van uw organisatie op deze telefoon en de versie van de instellingen van uw organisatie die erop is toegepast; nooit een naam, apparaatmodel of locatie. Een telefoon die uw organisatie via apparaatbeheer (MDM) beheert, laat die MDM weten welke versie van de instellingen van uw organisatie hij heeft, of hij is ingeschreven en wat de app-build is; dit gaat alleen naar de eigen MDM van uw organisatie, nooit naar Avenkin. Als u een taak naar een expert stuurt, gaan de details ervan, en de foto's die u kiest met vervaagde gezichten, alleen naar de expert die u kiest, via uw eigen Berichten, Mail of deelvenster. Een uitnodiging die een expert om zijn kaart vraagt, bevat alleen de naam van uw organisatie, uw naam en waar naartoe moet worden geantwoord. Een taak die naar u als expert is gestuurd, blijft alleen op deze telefoon, voor het aantal dagen dat de organisatie heeft ingesteld, en bereikt nooit de assistent of zijn geheugen; uw tijdverantwoording gaat alleen als u die deelt. Avenkin heeft geen eigen analyses of crashrapportage (Apple kan crashrapporten met ons delen vanuit TestFlight, of als u dat toestaat in iOS), en de eigen analyses van de SDK van de bril zijn afgemeld en geblokkeerd op deze telefoon."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O desfoque de rostos de transeuntes é executado inteiramente no dispositivo: os rostos são encontrados e desfocados no seu telefone, e o quadro desfocado é o que um provedor de IA, uma gravação, uma transmissão ou uma chamada com especialista recebe. Compartilhe dados de saúde com IA (em Dia a dia) está desativado por padrão: os números do Apple Health são enviados ao seu provedor de IA somente quando você o ativa. O ditado na nuvem está desativado por padrão: somente quando você escolhe Deepgram ou OpenAI como reconhecedor o áudio de cada pergunta vai para esse fornecedor. Uma licença de organização com verificação de assentos verifica o assento deste telefone com o serviço de licenças do Avenkin cerca de uma vez por dia, enviando apenas o ID de inscrição, uma chave criada para este telefone, a compilação do aplicativo, o ID do perfil, as versões dos cofres da sua organização neste telefone e a versão das configurações da sua organização que ele aplicou; nunca um nome, o modelo do dispositivo ou a localização. Um telefone que a sua organização gerencia pelo gerenciamento de dispositivos (MDM) informa a esse MDM qual versão das configurações da sua organização ele tem, se está inscrito e a compilação do aplicativo; isso vai apenas para o MDM da própria organização, nunca para o Avenkin. Enviar um trabalho a um especialista envia os detalhes dele, e as fotos que você escolher com os rostos desfocados, apenas para o especialista que você escolher, pelo seu próprio Mensagens, Mail ou menu de compartilhamento. Um convite que pede o cartão de um especialista leva apenas o nome da sua organização, o seu e para onde responder. Um trabalho enviado a você como especialista fica apenas neste telefone, pelos dias que a organização dele definiu, e nunca chega ao assistente nem à memória dele; sua resposta de tempo só é enviada quando você a compartilha. O Avenkin não tem análises nem relatórios de falhas próprios (a Apple pode compartilhar relatórios de falhas conosco pelo TestFlight, ou se você permitir no iOS), e as análises do próprio SDK dos óculos estão desativadas e bloqueadas neste telefone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Размытие лиц посторонних работает полностью на устройстве: лица находятся и размываются на вашем телефоне, а ИИ-провайдер, запись, трансляция или звонок эксперту получают уже размытый кадр. Функция «Делиться данными о здоровье с ИИ» (в разделе «Повседневное») по умолчанию выключена: показатели Apple Health отправляются вашему ИИ-провайдеру, только если вы её включите. Облачная диктовка по умолчанию выключена: аудио каждого вопроса уходит к поставщику, только если вы выбрали Deepgram или OpenAI в качестве распознавателя. Организационная лицензия с проверкой мест примерно раз в день сверяет место этого телефона со службой лицензий Avenkin, передавая только ID регистрации, ключ, созданный для этого телефона, номер сборки приложения, ID профиля, версии хранилищ вашей организации на этом телефоне и версию применённых им настроек вашей организации — и никогда имя, модель устройства или местоположение. Телефон, которым ваша организация управляет через систему управления устройствами (MDM), сообщает этой MDM, какая версия настроек вашей организации на нём действует, зарегистрирован ли он, а также номер сборки приложения; эти сведения получает только MDM вашей организации и никогда — Avenkin. При отправке задания эксперту его сведения и выбранные вами фото с размытыми лицами уходят только выбранному эксперту — через ваши «Сообщения», «Почту» или меню «Поделиться». Приглашение, в котором эксперта просят прислать карточку, содержит только название вашей организации, ваше имя и адрес для ответа. Задание, отправленное вам как эксперту, хранится только на этом телефоне столько дней, сколько задала его организация, и никогда не попадает к ассистенту или в его память; ваш ответ о времени уходит, только когда вы им поделитесь. У Avenkin нет собственной аналитики и отчётов о сбоях (Apple может передавать нам отчёты о сбоях из TestFlight или если вы разрешите это в iOS), а собственная аналитика SDK очков отключена и заблокирована на этом телефоне."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“راہگیروں کے چہرے دھندلے کریں” مکمل طور پر آن ڈیوائس چلتا ہے: چہرے آپ کے فون پر ہی تلاش اور دھندلے کیے جاتے ہیں، اور AI فراہم کنندہ، ریکارڈنگ، براڈکاسٹ یا ماہر کال کو دھندلا فریم ہی ملتا ہے۔ “صحت کا ڈیٹا AI کے ساتھ شیئر کریں” (روزمرہ کے تحت) بطورِ ڈیفالٹ بند ہے: Apple Health کے اعداد آپ کے AI فراہم کنندہ کو صرف تب بھیجے جاتے ہیں جب آپ اسے آن کریں۔ کلاؤڈ ڈکٹیشن بطورِ ڈیفالٹ بند ہے: ہر سوال کی آڈیو اس وینڈر کو صرف تب جاتی ہے جب آپ Deepgram یا OpenAI کو ریکگنائزر کے طور پر منتخب کریں۔ نشستوں کی جانچ والا تنظیمی لائسنس دن میں تقریباً ایک بار Avenkin کی لائسنس سروس سے اس فون کی نشست کی جانچ کرتا ہے، اور صرف اندراج ID، اس فون کے لیے بنائی گئی کلید، ایپ بلڈ، پروفائل ID، اس فون پر آپ کی تنظیم کے والٹس کے ورژن اور آپ کی تنظیم کی ان ترتیبات کا ورژن بھیجتا ہے جو اس نے لاگو کی ہیں؛ کبھی کوئی نام، ڈیوائس ماڈل یا مقام نہیں۔ جس فون کا انتظام آپ کی تنظیم ڈیوائس مینجمنٹ (MDM) کے ذریعے کرتی ہے، وہ اس MDM کو بتاتا ہے کہ اس پر آپ کی تنظیم کی ترتیبات کا کون سا ورژن ہے، آیا یہ اندراج شدہ ہے، اور ایپ بلڈ؛ یہ صرف آپ کی تنظیم کے اپنے MDM کو جاتا ہے، کبھی Avenkin کو نہیں۔ کسی ماہر کو جاب بھیجنے سے اس کی تفصیلات، اور آپ کی منتخب کردہ تصاویر چہرے دھندلے کر کے، صرف آپ کے منتخب کردہ ماہر کو، آپ کے اپنے Messages، Mail یا شیئر شیٹ کے ذریعے جاتی ہیں۔ کسی ماہر سے اس کا کارڈ مانگنے والی دعوت میں صرف آپ کی تنظیم کا نام، آپ کا نام اور جواب دینے کی جگہ ہوتی ہے۔ بطور ماہر آپ کو بھیجی گئی جاب صرف اس فون پر، اس کی تنظیم کے مقرر کردہ دنوں تک رہتی ہے، اور کبھی اسسٹنٹ یا اس کی میموری تک نہیں پہنچتی؛ آپ کا وقت کا جواب صرف تب جاتا ہے جب آپ اسے شیئر کریں۔ Avenkin کی اپنی کوئی اینالیٹکس یا کریش رپورٹنگ نہیں ہے (Apple ہمارے ساتھ TestFlight سے، یا اگر آپ iOS میں اجازت دیں، کریش رپورٹس شیئر کر سکتا ہے)، اور عینک کے SDK کی اپنی اینالیٹکس سے آپٹ آؤٹ کیا گیا ہے اور اس فون پر مسدود ہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旁观者人脸模糊完全在设备上运行：人脸在你的手机上被识别并模糊，AI 提供商、录制内容、直播或专家通话收到的是模糊后的画面。“与 AI 共享健康数据”（在“日常”下）默认关闭：只有在你开启后，Apple Health 数据才会发送给你的 AI 提供商。云端听写默认关闭：只有当你选择 Deepgram 或 OpenAI 作为识别器时，每个问题的音频才会发送给该供应商。需要核验席位的组织许可大约每天一次向 Avenkin 的许可服务核验这部手机的席位，只发送注册 ID、为这部手机生成的密钥、应用的构建版本号、配置文件 ID、这部手机上你组织的保险库版本，以及它已应用的你组织的设置版本；绝不发送姓名、设备型号或位置。由你的组织通过设备管理（MDM）管理的手机会向该 MDM 报告它所使用的你组织的设置版本、是否已注册以及应用的构建版本号；这些信息只会发送给你组织自己的 MDM，绝不会发送给 Avenkin。将作业发送给专家时，其详情以及你挑选的照片（面部已模糊）只会通过你自己的“信息”“邮件”或共享表发送给你选择的专家。向专家索取名片的邀请只包含你组织的名称、你的名字以及回复地址。作为专家收到的作业只保存在这部手机上，保留其组织设定的天数，绝不会进入助手或其记忆；你的时间回复只有在你共享时才会发出。Avenkin 自身没有分析或崩溃报告功能（Apple 可能会通过 TestFlight 向我们分享崩溃报告，或在你于 iOS 中允许时分享），眼镜 SDK 自带的分析功能已被关闭，并在这部手机上被拦截。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旁觀者臉部模糊完全在裝置上執行：臉部會在你的手機上被偵測並模糊，AI 供應商、錄影、直播或專家通話收到的是模糊後的畫面。「與 AI 共享健康資料」（位於「日常」下）預設為關閉：只有在你開啟後，Apple Health 資料才會傳送給你的 AI 供應商。雲端聽寫預設為關閉：只有當你選擇 Deepgram 或 OpenAI 作為辨識器時，每個問題的音訊才會傳送給該供應商。需要核驗席位的組織許可證大約每天一次向 Avenkin 的許可證服務核驗這支手機的席位，只傳送註冊 ID、為這支手機產生的金鑰、應用程式的建置版本號、設定檔 ID、這支手機上你組織的保險庫版本，以及它已套用的你組織的設定版本；絕不傳送姓名、裝置型號或位置。由你的組織透過裝置管理（MDM）管理的手機會向該 MDM 回報它所使用的你組織的設定版本、是否已註冊，以及應用程式的建置版本號；這些資訊只會傳送給你組織自己的 MDM，絕不會傳送給 Avenkin。將工作傳送給專家時，其詳細資料以及你挑選的照片（臉部已模糊）只會透過你自己的「訊息」、「郵件」或分享面板傳送給你選擇的專家。向專家索取名片的邀請只包含你組織的名稱、你的名字以及回覆地址。作為專家收到的工作只儲存在這支手機上，保留其組織設定的天數，絕不會進入助理或其記憶；你的時間回覆只有在你分享時才會送出。Avenkin 本身沒有分析或當機回報功能（Apple 可能會透過 TestFlight 與我們分享當機報告，或在你於 iOS 中允許時分享），眼鏡 SDK 自帶的分析功能已選擇退出，並在這支手機上被封鎖。"
+          }
+        }
+      }
+    },
     "Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI (under Everyday) is off by default: Apple Health numbers are sent to your AI provider only when you turn it on. Cloud dictation is off by default: only when you choose Deepgram or OpenAI as the recognizer does the audio of each question go to that vendor. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS), and the glasses SDK's own analytics are opted out and blocked on this phone." : {
       "localizations" : {
         "ar" : {
@@ -117031,6 +117365,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "旁觀者臉部模糊完全在設備上運行：臉部會在您的手機上被識別並模糊，模糊後的畫面就是 AI 服務提供者、錄製、廣播或專家通話所接收到的內容。與 AI 分享健康資料預設為關閉：Apple 健康資料僅在您開啟時發送給您的 AI 服務提供者。Avenkin 本身沒有分析或崩潰報告（Apple 可能會從 TestFlight 與我們分享崩潰報告，或者如果您在 iOS 允許），眼鏡 SDK 自身的分析功能已在此手機上選擇退出並被阻止。"
+          }
+        }
+      }
+    },
+    "Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred picture is what an AI provider receives. Share Health Data with AI (under Everyday) is off by default: Apple Health numbers are sent to your AI provider only when you turn it on. Cloud dictation is off by default: only when you choose Deepgram or OpenAI as the recognizer does the audio of each question go to that vendor. A seat-checked organisation licence checks this phone's seat with Avenkin's licence service about once a day, sending only the enrolment id, a key made for this phone, the app build, the profile id, the versions of your organisation's vaults on this phone and the version of your organisation's settings it has applied; never a name, device model or location. A phone your organisation manages through device management (MDM) tells that MDM which version of your organisation's settings it has, whether it is enrolled, and the app build; this goes only to your organisation's own MDM, never to Avenkin. Sending a job to an expert sends its details, and the photos you pick with faces blurred, only to the expert you choose, by your own Messages, Mail or share sheet. An invitation asking an expert for their card carries only your organisation's name, yours and where to reply. A job sent to you as an expert stays on this phone only, for the days its organisation set, and never reaches the assistant or its memory; your time reply goes only when you share it. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS)." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يعمل «تمويه وجوه المارة» بالكامل على الجهاز: يتم اكتشاف الوجوه وتمويهها على هاتفك، والصورة المموَّهة هي ما يتلقاه مزوّد الذكاء الاصطناعي. خيار «مشاركة بيانات الصحة مع الذكاء الاصطناعي» (ضمن «الحياة اليومية») متوقف افتراضيًا: لا تُرسل أرقام Apple Health إلى مزوّد الذكاء الاصطناعي إلا عند تشغيله. الإملاء السحابي متوقف افتراضيًا: لا يصل صوت كل سؤال إلى ذلك المزوّد إلا عند اختيارك Deepgram أو OpenAI كأداة للتعرف على الكلام. يتحقق ترخيص المنظمة المرتبط بالمقاعد من مقعد هذا الهاتف لدى خدمة تراخيص Avenkin مرة واحدة يوميًا تقريبًا، ولا يرسل سوى معرّف التسجيل ومفتاح أُنشئ لهذا الهاتف وإصدار التطبيق ومعرّف الملف الشخصي وإصدارات خزنات مؤسستك الموجودة على هذا الهاتف وإصدار إعدادات مؤسستك الذي طبّقه؛ ولا يرسل أبدًا اسمًا أو طراز جهاز أو موقعًا. ويُبلغ الهاتف الذي تديره مؤسستك عبر إدارة الأجهزة (MDM) نظامَ MDM ذاك بإصدار إعدادات مؤسستك الموجود لديه، وما إذا كان مسجَّلًا، وإصدار التطبيق؛ ولا يذهب ذلك إلا إلى نظام MDM الخاص بمؤسستك، ولا يصل أبدًا إلى Avenkin. يؤدي إرسال مهمة إلى خبير إلى إرسال تفاصيلها، والصور التي تختارها بعد تمويه الوجوه، إلى الخبير الذي تختاره فقط، عبر الرسائل أو البريد أو ورقة المشاركة الخاصة بك. ولا تحمل الدعوة التي تطلب من خبير بطاقته سوى اسم منظمتك واسمك ومكان الرد. أما المهمة المرسلة إليك كخبير فتبقى على هذا الهاتف فقط، للأيام التي حددتها منظمتها، ولا تصل أبدًا إلى المساعد أو ذاكرته؛ ولا يُرسل رد وقتك إلا عندما تشاركه. لا يتضمن Avenkin أي تحليلات أو تقارير أعطال خاصة به (قد تشاركها Apple معنا من TestFlight، أو إذا سمحت بذلك في iOS)."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El difuminado de rostros de transeúntes se ejecuta por completo en el dispositivo: los rostros se detectan y se difuminan en tu celular, y la imagen difuminada es lo que recibe un proveedor de IA. Compartir datos de salud con la IA (en Día a día) está desactivado de forma predeterminada: las cifras de Apple Health se envían a tu proveedor de IA solo cuando lo activas. El dictado en la nube está desactivado de forma predeterminada: solo cuando eliges Deepgram u OpenAI como reconocedor, el audio de cada pregunta va a ese proveedor. Una licencia de organización con verificación de puestos verifica el puesto de este celular con el servicio de licencias de Avenkin aproximadamente una vez al día, y solo envía el ID de inscripción, una clave creada para este celular, la compilación de la app, el ID del perfil, las versiones de las bóvedas de tu organización en este celular y la versión de la configuración de tu organización que aplicó; nunca un nombre, el modelo del dispositivo ni la ubicación. Un celular que tu organización administra mediante la administración de dispositivos (MDM) le informa a ese MDM qué versión de la configuración de tu organización tiene, si está inscrito y la compilación de la app; esto solo va al MDM de tu organización, nunca a Avenkin. Enviar un trabajo a un experto envía sus detalles, y las fotos que elijas con los rostros difuminados, solo al experto que elijas, por tus propios Mensajes, Mail u hoja para compartir. Una invitación que le pide a un experto su tarjeta solo lleva el nombre de tu organización, el tuyo y a dónde responder. Un trabajo que te envían como experto se queda solo en este celular, durante los días que fijó su organización, y nunca llega al asistente ni a su memoria; tu respuesta de tiempo solo se envía cuando la compartes. Avenkin no tiene analíticas ni reportes de fallos propios (Apple puede compartirnos reportes de fallos desde TestFlight, o si lo permites en iOS)."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le floutage des passants s’exécute entièrement sur l’appareil : les visages sont détectés et floutés sur votre téléphone, et c’est l’image floutée que reçoit un fournisseur d’IA. Partager les données de santé avec l’IA (sous Au quotidien) est désactivé par défaut : les données d’Apple Health ne sont envoyées à votre fournisseur d’IA que si vous l’activez. La dictée cloud est désactivée par défaut : l’audio de chaque question n’est transmis à un fournisseur que si vous choisissez Deepgram ou OpenAI comme moteur de reconnaissance. Une licence d’organisation avec vérification des places vérifie la place de ce téléphone auprès du service de licences d’Avenkin environ une fois par jour, en n’envoyant que l’ID d’inscription, une clé créée pour ce téléphone, la version de compilation de l’application, l’ID du profil, les versions des coffres de votre organisation sur ce téléphone et la version des réglages de votre organisation qu’il a appliquée; jamais de nom, de modèle d’appareil ni de position. Un téléphone que votre organisation gère au moyen de la gestion des appareils (MDM) indique à ce MDM quelle version des réglages de votre organisation il a, s’il est inscrit et la version de compilation de l’application; ces données ne vont qu’au MDM de votre organisation, jamais à Avenkin. Envoyer un travail à un expert transmet ses détails, et les photos que vous choisissez avec les visages floutés, uniquement à l’expert que vous choisissez, par vos propres Messages, Mail ou feuille de partage. Une invitation demandant sa carte à un expert ne contient que le nom de votre organisation, le vôtre et l’endroit où répondre. Un travail qui vous est envoyé en tant qu’expert reste sur ce téléphone seulement, pendant le nombre de jours fixé par son organisation, et n’atteint jamais l’assistant ni sa mémoire; votre réponse de temps n’est envoyée que lorsque vous la partagez. Avenkin n’a ni outil d’analyse ni rapport de plantage qui lui soit propre (Apple peut nous transmettre des rapports de plantage depuis TestFlight, ou si vous l’autorisez dans iOS)."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A szemlélődők arcának elmosása teljes egészében az eszközön fut: az arcokat a telefonja keresi meg és mossa el, és az elmosott képet kapja meg az AI-szolgáltató. Az „Ossza meg az egészségügyi adatokat az AI-val” (a Mindennapok alatt) alapértelmezés szerint ki van kapcsolva: az Apple Health számait csak akkor küldi el az AI-szolgáltatónak, ha bekapcsolja. A felhőalapú diktálás alapértelmezés szerint ki van kapcsolva: csak ha a Deepgramot vagy az OpenAI-t választja felismerőként, akkor kerül az egyes kérdések hangja az adott szolgáltatóhoz. A felhasználói helyeket ellenőrző szervezeti licenc naponta nagyjából egyszer egyezteti ennek a telefonnak a felhasználói helyét az Avenkin licencszolgáltatásával, és csak a beiratkozási azonosítót, egy ehhez a telefonhoz készített kulcsot, az alkalmazás buildszámát, a profilazonosítót, a szervezete ezen a telefonon lévő tárolóinak verzióit és a szervezete általa alkalmazott beállításainak verzióját küldi el; nevet, eszközmodellt vagy tartózkodási helyet soha. Az a telefon, amelyet a szervezete eszközkezeléssel (MDM) kezel, közli ezzel az MDM-mel, hogy a szervezete beállításainak melyik verziója van rajta, be van-e iratkozva, valamint az alkalmazás buildszámát; ez csak a szervezete saját MDM-jéhez jut el, az Avenkinhez soha. Ha egy munkát elküld egy szakértőnek, annak részletei és az Ön által kiválasztott, elmosott arcú fotók csak a választott szakértőhöz jutnak el, a saját Üzenetek, Mail vagy megosztási lap útján. Az a meghívó, amely egy szakértőtől a kártyáját kéri, csak a szervezete nevét, az Ön nevét és a válaszcímet tartalmazza. Az Önnek szakértőként küldött munka csak ezen a telefonon marad, a szervezete által megadott napokig, és soha nem jut el az asszisztenshez vagy annak memóriájához; az időelszámolása csak akkor megy el, ha megosztja. Az Avenkinnek nincs saját analitikája vagy hibajelentése (az Apple megoszthat velünk hibajelentéseket a TestFlightból, vagy ha engedélyezi az iOS-ben)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo sfocamento dei passanti avviene interamente sul dispositivo: i volti vengono rilevati e sfocati sul tuo telefono, e a ricevere l'immagine sfocata è un fornitore di IA. Condividi i dati sanitari con l'intelligenza artificiale (in Vita quotidiana) è disattivato per impostazione predefinita: i dati di Apple Health vengono inviati al tuo fornitore di IA solo se lo attivi. La dettatura cloud è disattivata per impostazione predefinita: l'audio di ogni domanda va a quel fornitore solo se scegli Deepgram o OpenAI come riconoscitore. Una licenza dell'organizzazione con controllo delle postazioni verifica la postazione di questo telefono con il servizio licenze di Avenkin circa una volta al giorno, inviando solo l'ID di iscrizione, una chiave creata per questo telefono, la build dell'app, l'ID del profilo, le versioni dei depositi della tua organizzazione su questo telefono e la versione delle impostazioni della tua organizzazione che ha applicato; mai un nome, il modello del dispositivo o la posizione. Un telefono che la tua organizzazione gestisce tramite la gestione dei dispositivi (MDM) comunica a tale MDM quale versione delle impostazioni della tua organizzazione ha, se è registrato e la build dell'app; queste informazioni vanno solo all'MDM della tua organizzazione, mai ad Avenkin. Inviare un lavoro a un esperto invia i suoi dettagli, e le foto che scegli con i volti sfocati, solo all'esperto che scegli, tramite i tuoi Messaggi, Mail o foglio di condivisione. Un invito che chiede a un esperto la sua scheda contiene solo il nome della tua organizzazione, il tuo e dove rispondere. Un lavoro inviato a te come esperto resta solo su questo telefono, per i giorni stabiliti dalla sua organizzazione, e non raggiunge mai l'assistente né la sua memoria; la tua risposta con il tempo parte solo quando la condividi. Avenkin non ha propri strumenti di analisi o di segnalazione degli arresti anomali (Apple può condividere con noi i rapporti sugli arresti anomali da TestFlight, o se lo consenti in iOS)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傍観者の顔のぼかしは完全にデバイス上で動作します。顔の検出とぼかしはお使いのiPhone上で行われ、AIプロバイダに届くのはぼかし済みの画像です。「健康データをAIと共有」（日常内）は初期設定でオフです。Apple Healthの数値は、オンにしたときだけAIプロバイダに送信されます。クラウド音声入力も初期設定でオフです。認識エンジンとしてDeepgramまたはOpenAIを選んだときだけ、各質問の音声がその事業者に送信されます。座席確認型の組織ライセンスは、1日に1回程度、このiPhoneの座席をAvenkinのライセンスサービスで確認します。送信されるのは登録ID、このiPhone用に作成されたキー、アプリのビルド、プロファイルID、このiPhone上にある組織のボールトのバージョン、このiPhoneに適用済みの組織の設定のバージョンのみで、名前、デバイスのモデル、位置情報は一切送信されません。組織がデバイス管理（MDM）で管理しているiPhoneは、保持している組織の設定のバージョン、登録されているかどうか、アプリのビルドをそのMDMに伝えます。この情報は組織自身のMDMにだけ送られ、Avenkinに送られることはありません。ジョブを専門家に送信すると、その詳細と、選んだ写真（顔はぼかし済み）が、あなた自身のメッセージ、メール、または共有シートを通じて、選んだ専門家にだけ送られます。専門家にカードを依頼する招待に含まれるのは、あなたの組織名、あなたの名前、返信先のみです。専門家としてあなたに送られたジョブは、その組織が設定した日数だけこのiPhoneにのみ保存され、アシスタントやそのメモリに渡ることはありません。作業時間の返信は、あなたが共有したときにだけ送られます。Avenkin自体には解析機能やクラッシュレポート機能はありません（TestFlightから、またはiOSで許可した場合は、Appleからクラッシュレポートが共有されることがあります）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "방관자 얼굴 흐림 처리는 전적으로 기기 안에서 실행됩니다. 얼굴을 찾아 흐리게 만드는 작업은 휴대폰에서 이루어지며, AI 제공업체에는 흐림 처리된 사진만 전달됩니다. 'AI와 건강 데이터 공유'(일상 항목)는 기본적으로 꺼져 있습니다. Apple Health 수치는 켠 경우에만 AI 제공업체로 전송됩니다. 클라우드 받아쓰기도 기본적으로 꺼져 있습니다. 인식기로 Deepgram 또는 OpenAI를 선택한 경우에만 각 질문의 오디오가 해당 업체로 전송됩니다. 좌석 확인 방식의 조직 라이센스는 하루에 한 번 정도 Avenkin 라이센스 서비스로 이 휴대폰의 좌석을 확인하며, 등록 ID, 이 휴대폰용으로 만든 키, 앱 빌드, 프로필 ID, 이 휴대폰에 있는 조직 볼트의 버전, 이 휴대폰에 적용된 조직 설정의 버전만 전송합니다. 이름, 기기 모델, 위치는 절대 전송하지 않습니다. 조직에서 기기 관리(MDM)로 관리하는 휴대폰은 보유한 조직 설정의 버전, 등록 여부, 앱 빌드를 해당 MDM에 알립니다. 이 정보는 조직 자체의 MDM으로만 전송되며 Avenkin으로는 절대 전송되지 않습니다. 작업을 전문가에게 보내면 작업 세부 정보와 직접 고른 사진(얼굴은 흐림 처리됨)이 내 메시지, 메일 또는 공유 시트를 통해 내가 선택한 전문가에게만 전송됩니다. 전문가에게 카드를 요청하는 초대에는 조직 이름, 내 이름, 회신할 곳만 포함됩니다. 전문가로서 받은 작업은 해당 조직이 정한 일수 동안 이 휴대폰에만 보관되며 어시스턴트나 그 메모리에 전달되지 않습니다. 작업 시간 답장은 내가 공유할 때만 전송됩니다. Avenkin에는 자체 분석 기능이나 충돌 보고 기능이 없습니다(TestFlight에서 또는 iOS에서 허용한 경우 Apple이 충돌 보고서를 공유할 수 있습니다)."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vervagen van gezichten van omstanders werkt volledig op het apparaat: gezichten worden op uw telefoon gevonden en vervaagd, en de vervaagde afbeelding is wat een AI-provider ontvangt. Gezondheidsgegevens delen met AI (onder Dagelijks) staat standaard uit: Apple Health-cijfers worden alleen naar uw AI-provider gestuurd als u het inschakelt. Clouddictatie staat standaard uit: alleen als u Deepgram of OpenAI als herkenner kiest, gaat de audio van elke vraag naar die leverancier. Een organisatielicentie met plaatscontrole controleert ongeveer eenmaal per dag de plaats van deze telefoon bij de licentieservice van Avenkin en stuurt daarbij alleen de inschrijvings-ID, een sleutel die voor deze telefoon is gemaakt, de app-build, de profiel-ID, de versies van de kluizen van uw organisatie op deze telefoon en de versie van de instellingen van uw organisatie die erop is toegepast; nooit een naam, apparaatmodel of locatie. Een telefoon die uw organisatie via apparaatbeheer (MDM) beheert, laat die MDM weten welke versie van de instellingen van uw organisatie hij heeft, of hij is ingeschreven en wat de app-build is; dit gaat alleen naar de eigen MDM van uw organisatie, nooit naar Avenkin. Als u een taak naar een expert stuurt, gaan de details ervan, en de foto's die u kiest met vervaagde gezichten, alleen naar de expert die u kiest, via uw eigen Berichten, Mail of deelvenster. Een uitnodiging die een expert om zijn kaart vraagt, bevat alleen de naam van uw organisatie, uw naam en waar naartoe moet worden geantwoord. Een taak die naar u als expert is gestuurd, blijft alleen op deze telefoon, voor het aantal dagen dat de organisatie heeft ingesteld, en bereikt nooit de assistent of zijn geheugen; uw tijdverantwoording gaat alleen als u die deelt. Avenkin heeft geen eigen analyses of crashrapportage (Apple kan crashrapporten met ons delen vanuit TestFlight, of als u dat toestaat in iOS)."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O desfoque de rostos de transeuntes é executado inteiramente no dispositivo: os rostos são encontrados e desfocados no seu telefone, e a imagem desfocada é o que um provedor de IA recebe. Compartilhe dados de saúde com IA (em Dia a dia) está desativado por padrão: os números do Apple Health são enviados ao seu provedor de IA somente quando você o ativa. O ditado na nuvem está desativado por padrão: somente quando você escolhe Deepgram ou OpenAI como reconhecedor o áudio de cada pergunta vai para esse fornecedor. Uma licença de organização com verificação de assentos verifica o assento deste telefone com o serviço de licenças do Avenkin cerca de uma vez por dia, enviando apenas o ID de inscrição, uma chave criada para este telefone, a compilação do aplicativo, o ID do perfil, as versões dos cofres da sua organização neste telefone e a versão das configurações da sua organização que ele aplicou; nunca um nome, o modelo do dispositivo ou a localização. Um telefone que a sua organização gerencia pelo gerenciamento de dispositivos (MDM) informa a esse MDM qual versão das configurações da sua organização ele tem, se está inscrito e a compilação do aplicativo; isso vai apenas para o MDM da própria organização, nunca para o Avenkin. Enviar um trabalho a um especialista envia os detalhes dele, e as fotos que você escolher com os rostos desfocados, apenas para o especialista que você escolher, pelo seu próprio Mensagens, Mail ou menu de compartilhamento. Um convite que pede o cartão de um especialista leva apenas o nome da sua organização, o seu e para onde responder. Um trabalho enviado a você como especialista fica apenas neste telefone, pelos dias que a organização dele definiu, e nunca chega ao assistente nem à memória dele; sua resposta de tempo só é enviada quando você a compartilha. O Avenkin não tem análises nem relatórios de falhas próprios (a Apple pode compartilhar relatórios de falhas conosco pelo TestFlight, ou se você permitir no iOS)."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Размытие лиц посторонних работает полностью на устройстве: лица находятся и размываются на вашем телефоне, а ИИ-провайдер получает уже размытое изображение. Функция «Делиться данными о здоровье с ИИ» (в разделе «Повседневное») по умолчанию выключена: показатели Apple Health отправляются вашему ИИ-провайдеру, только если вы её включите. Облачная диктовка по умолчанию выключена: аудио каждого вопроса уходит к поставщику, только если вы выбрали Deepgram или OpenAI в качестве распознавателя. Организационная лицензия с проверкой мест примерно раз в день сверяет место этого телефона со службой лицензий Avenkin, передавая только ID регистрации, ключ, созданный для этого телефона, номер сборки приложения, ID профиля, версии хранилищ вашей организации на этом телефоне и версию применённых им настроек вашей организации — и никогда имя, модель устройства или местоположение. Телефон, которым ваша организация управляет через систему управления устройствами (MDM), сообщает этой MDM, какая версия настроек вашей организации на нём действует, зарегистрирован ли он, а также номер сборки приложения; эти сведения получает только MDM вашей организации и никогда — Avenkin. При отправке задания эксперту его сведения и выбранные вами фото с размытыми лицами уходят только выбранному эксперту — через ваши «Сообщения», «Почту» или меню «Поделиться». Приглашение, в котором эксперта просят прислать карточку, содержит только название вашей организации, ваше имя и адрес для ответа. Задание, отправленное вам как эксперту, хранится только на этом телефоне столько дней, сколько задала его организация, и никогда не попадает к ассистенту или в его память; ваш ответ о времени уходит, только когда вы им поделитесь. У Avenkin нет собственной аналитики и отчётов о сбоях (Apple может передавать нам отчёты о сбоях из TestFlight или если вы разрешите это в iOS)."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“راہگیروں کے چہرے دھندلے کریں” مکمل طور پر آن ڈیوائس چلتا ہے: چہرے آپ کے فون پر ہی تلاش اور دھندلے کیے جاتے ہیں، اور AI فراہم کنندہ کو دھندلی تصویر ہی ملتی ہے۔ “صحت کا ڈیٹا AI کے ساتھ شیئر کریں” (روزمرہ کے تحت) بطورِ ڈیفالٹ بند ہے: Apple Health کے اعداد آپ کے AI فراہم کنندہ کو صرف تب بھیجے جاتے ہیں جب آپ اسے آن کریں۔ کلاؤڈ ڈکٹیشن بطورِ ڈیفالٹ بند ہے: ہر سوال کی آڈیو اس وینڈر کو صرف تب جاتی ہے جب آپ Deepgram یا OpenAI کو ریکگنائزر کے طور پر منتخب کریں۔ نشستوں کی جانچ والا تنظیمی لائسنس دن میں تقریباً ایک بار Avenkin کی لائسنس سروس سے اس فون کی نشست کی جانچ کرتا ہے، اور صرف اندراج ID، اس فون کے لیے بنائی گئی کلید، ایپ بلڈ، پروفائل ID، اس فون پر آپ کی تنظیم کے والٹس کے ورژن اور آپ کی تنظیم کی ان ترتیبات کا ورژن بھیجتا ہے جو اس نے لاگو کی ہیں؛ کبھی کوئی نام، ڈیوائس ماڈل یا مقام نہیں۔ جس فون کا انتظام آپ کی تنظیم ڈیوائس مینجمنٹ (MDM) کے ذریعے کرتی ہے، وہ اس MDM کو بتاتا ہے کہ اس پر آپ کی تنظیم کی ترتیبات کا کون سا ورژن ہے، آیا یہ اندراج شدہ ہے، اور ایپ بلڈ؛ یہ صرف آپ کی تنظیم کے اپنے MDM کو جاتا ہے، کبھی Avenkin کو نہیں۔ کسی ماہر کو جاب بھیجنے سے اس کی تفصیلات، اور آپ کی منتخب کردہ تصاویر چہرے دھندلے کر کے، صرف آپ کے منتخب کردہ ماہر کو، آپ کے اپنے Messages، Mail یا شیئر شیٹ کے ذریعے جاتی ہیں۔ کسی ماہر سے اس کا کارڈ مانگنے والی دعوت میں صرف آپ کی تنظیم کا نام، آپ کا نام اور جواب دینے کی جگہ ہوتی ہے۔ بطور ماہر آپ کو بھیجی گئی جاب صرف اس فون پر، اس کی تنظیم کے مقرر کردہ دنوں تک رہتی ہے، اور کبھی اسسٹنٹ یا اس کی میموری تک نہیں پہنچتی؛ آپ کا وقت کا جواب صرف تب جاتا ہے جب آپ اسے شیئر کریں۔ Avenkin کی اپنی کوئی اینالیٹکس یا کریش رپورٹنگ نہیں ہے (Apple ہمارے ساتھ TestFlight سے، یا اگر آپ iOS میں اجازت دیں، کریش رپورٹس شیئر کر سکتا ہے)۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旁观者人脸模糊完全在设备上运行：人脸在你的手机上被识别并模糊，AI 提供商收到的是模糊后的图片。“与 AI 共享健康数据”（在“日常”下）默认关闭：只有在你开启后，Apple Health 数据才会发送给你的 AI 提供商。云端听写默认关闭：只有当你选择 Deepgram 或 OpenAI 作为识别器时，每个问题的音频才会发送给该供应商。需要核验席位的组织许可大约每天一次向 Avenkin 的许可服务核验这部手机的席位，只发送注册 ID、为这部手机生成的密钥、应用的构建版本号、配置文件 ID、这部手机上你组织的保险库版本，以及它已应用的你组织的设置版本；绝不发送姓名、设备型号或位置。由你的组织通过设备管理（MDM）管理的手机会向该 MDM 报告它所使用的你组织的设置版本、是否已注册以及应用的构建版本号；这些信息只会发送给你组织自己的 MDM，绝不会发送给 Avenkin。将作业发送给专家时，其详情以及你挑选的照片（面部已模糊）只会通过你自己的“信息”“邮件”或共享表发送给你选择的专家。向专家索取名片的邀请只包含你组织的名称、你的名字以及回复地址。作为专家收到的作业只保存在这部手机上，保留其组织设定的天数，绝不会进入助手或其记忆；你的时间回复只有在你共享时才会发出。Avenkin 自身没有分析或崩溃报告功能（Apple 可能会通过 TestFlight 向我们分享崩溃报告，或在你于 iOS 中允许时分享）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旁觀者臉部模糊完全在裝置上執行：臉部會在你的手機上被偵測並模糊，AI 供應商收到的是模糊後的圖片。「與 AI 共享健康資料」（位於「日常」下）預設為關閉：只有在你開啟後，Apple Health 資料才會傳送給你的 AI 供應商。雲端聽寫預設為關閉：只有當你選擇 Deepgram 或 OpenAI 作為辨識器時，每個問題的音訊才會傳送給該供應商。需要核驗席位的組織許可證大約每天一次向 Avenkin 的許可證服務核驗這支手機的席位，只傳送註冊 ID、為這支手機產生的金鑰、應用程式的建置版本號、設定檔 ID、這支手機上你組織的保險庫版本，以及它已套用的你組織的設定版本；絕不傳送姓名、裝置型號或位置。由你的組織透過裝置管理（MDM）管理的手機會向該 MDM 回報它所使用的你組織的設定版本、是否已註冊，以及應用程式的建置版本號；這些資訊只會傳送給你組織自己的 MDM，絕不會傳送給 Avenkin。將工作傳送給專家時，其詳細資料以及你挑選的照片（臉部已模糊）只會透過你自己的「訊息」、「郵件」或分享面板傳送給你選擇的專家。向專家索取名片的邀請只包含你組織的名稱、你的名字以及回覆地址。作為專家收到的工作只儲存在這支手機上，保留其組織設定的天數，絕不會進入助理或其記憶；你的時間回覆只有在你分享時才會送出。Avenkin 本身沒有分析或當機回報功能（Apple 可能會透過 TestFlight 與我們分享當機報告，或在你於 iOS 中允許時分享）。"
           }
         }
       }
@@ -137945,6 +138361,88 @@
         }
       }
     },
+    "Choose your assistant" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اختر مساعدك"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige tu asistente"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisissez votre assistant"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Válassza ki az asszisztensét"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scegli il tuo assistente"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アシスタントを選ぶ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "어시스턴트 선택"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kies uw assistent"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha o seu assistente"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выберите ассистента"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اپنا اسسٹنٹ منتخب کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择你的助手"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇你的助理"
+          }
+        }
+      }
+    },
     "Choose your platform above." : {
       "localizations" : {
         "ar" : {
@@ -145382,6 +145880,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "精簡"
+          }
+        }
+      }
+    },
+    "Company settings updated. They apply after this job." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تم تحديث إعدادات الشركة. تُطبَّق بعد هذه المهمة."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se actualizó la configuración de la empresa. Se aplica después de este trabajo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réglages de l’entreprise mis à jour. Ils s’appliquent après ce travail."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A céges beállítások frissültek. A mostani munka után lépnek életbe."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impostazioni aziendali aggiornate. Verranno applicate dopo questo lavoro."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会社の設定が更新されました。このジョブの後に適用されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "회사 설정이 업데이트되었습니다. 이 작업이 끝나면 적용됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bedrijfsinstellingen bijgewerkt. Ze gaan in na deze taak."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configurações da empresa atualizadas. Elas serão aplicadas após este trabalho."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Настройки компании обновлены. Они вступят в силу после этого задания."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کمپنی کی ترتیبات اپ ڈیٹ ہو گئی ہیں۔ یہ اس جاب کے بعد لاگو ہوں گی۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "公司设置已更新。将在此作业完成后生效。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "公司設定已更新。將在此工作完成後生效。"
+          }
+        }
+      }
+    },
+    "Company settings version %lld" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "إصدار إعدادات الشركة %lld"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versión %lld de la configuración de la empresa"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version %lld des réglages de l’entreprise"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A céges beállítások %lld. verziója"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impostazioni aziendali, versione %lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会社の設定のバージョン%lld"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "회사 설정 버전 %lld"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bedrijfsinstellingen versie %lld"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configurações da empresa, versão %lld"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Версия настроек компании: %lld"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کمپنی کی ترتیبات کا ورژن %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "公司设置版本 %lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "公司設定版本 %lld"
           }
         }
       }
@@ -190870,6 +191532,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "下載"
+          }
+        }
+      }
+    },
+    "Downloads a model now. No account, works offline." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يحمّل نموذجًا الآن. بلا حساب، ويعمل دون اتصال."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descarga un modelo ahora. Sin cuenta, funciona sin conexión."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Télécharge un modèle maintenant. Sans compte, fonctionne hors ligne."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Most letölt egy modellt. Fiók nélkül, offline is működik."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scarica subito un modello. Nessun account, funziona offline."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今すぐモデルをダウンロードします。アカウント不要で、オフラインで動作します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지금 모델을 다운로드합니다. 계정 불필요, 오프라인 작동."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloadt nu een model. Geen account, werkt offline."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Baixa um modelo agora. Sem conta, funciona offline."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сразу загружает модель. Без учётной записи, работает офлайн."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ابھی ایک ماڈل ڈاؤن لوڈ کرتا ہے۔ کوئی اکاؤنٹ نہیں، آف لائن کام کرتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "立即下载模型。无需账户，可离线使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "立即下載模型。免帳號，可離線使用。"
           }
         }
       }
@@ -376880,6 +377624,88 @@
         }
       }
     },
+    "off" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "إيقاف"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "desactivado"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "désactivé"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "kikapcsolva"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "disattivato"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "끔"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "uit"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "desligado"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "выключено"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آف"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉"
+          }
+        }
+      }
+    },
     "Off" : {
       "comment" : "A label indicating that a feature is currently disabled.",
       "isCommentAutoGenerated" : true,
@@ -378635,6 +379461,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "提供行事曆中的議程"
+          }
+        }
+      }
+    },
+    "Offered by your company" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تقدّمه شركتك"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo ofrece tu empresa"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offert par votre entreprise"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A cége kínálja"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offerto dalla tua azienda"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会社が提供"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "회사에서 제공"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aangeboden door uw bedrijf"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oferecido pela sua empresa"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Предлагается вашей компанией"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کی کمپنی کی طرف سے پیش کردہ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由你的公司提供"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由你的公司提供"
           }
         }
       }
@@ -381555,6 +382463,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "上一次請求省略了較早的訊息，且目前還沒有筆記涵蓋它們。已傳送說明此情況的那一行。"
+          }
+        }
+      }
+    },
+    "on" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تشغيل"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "activado"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "activé"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "bekapcsolva"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "attivo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "켬"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "aan"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ligado"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "включено"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آن"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟"
           }
         }
       }
@@ -399616,6 +400606,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打開工作記錄、其對話以及發送報告。"
+          }
+        }
+      }
+    },
+    "Opens this app's language in Settings" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يفتح لغة هذا التطبيق في الإعدادات"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre el idioma de esta app en Configuración"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvre la langue de cette application dans Réglages"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Megnyitja az alkalmazás nyelvét a Beállításokban"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apre la lingua di questa app in Impostazioni"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定でこのアプリの言語を開きます"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정에서 이 앱의 언어를 엽니다"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opent de taal van deze app in Instellingen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre o idioma deste aplicativo em Configurações"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открывает язык этого приложения в «Настройках»"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ترتیبات میں اس ایپ کی زبان کھولتا ہے"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在“设置”中打开此应用的语言设置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在「設定」中開啟此應用程式的語言設定"
           }
         }
       }
@@ -483575,6 +484647,88 @@
         }
       }
     },
+    "Runs on this iPhone. Nothing to download." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يعمل على هذا iPhone. لا شيء للتنزيل."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funciona en este iPhone. No hay nada que descargar."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonctionne sur cet iPhone. Rien à télécharger."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ezen az iPhone-on fut. Nincs mit letölteni."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funziona su questo iPhone. Niente da scaricare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このiPhoneで動作します。ダウンロードは不要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 iPhone에서 실행됩니다. 다운로드할 필요가 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Draait op deze iPhone. Niets te downloaden."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funciona neste iPhone. Nada para baixar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Работает на этом iPhone. Ничего не нужно загружать."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس iPhone پر چلتا ہے۔ کچھ ڈاؤن لوڈ کرنے کی ضرورت نہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在这部 iPhone 上运行。无需下载任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在這支 iPhone 上執行。無需下載任何內容。"
+          }
+        }
+      }
+    },
     "Runs on your iPhone." : {
       "localizations" : {
         "ar" : {
@@ -519779,6 +520933,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用你的 Google 帳號登入 — 透過 Vertex AI 在你自己的 GCP 專案上使用 Gemini，不需要 API 金鑰。需要 GCP iOS OAuth 用戶端 ID 和專案 ID（console.cloud.google.com）。Gemini Live 模式仍使用 AI Studio 金鑰提供者。"
+          }
+        }
+      }
+    },
+    "Sign in with your own ChatGPT account" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سجّل الدخول بحساب ChatGPT الخاص بك"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inicia sesión con tu propia cuenta de ChatGPT"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connectez-vous avec votre propre compte ChatGPT"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jelentkezzen be a saját ChatGPT-fiókjával"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accedi con il tuo account ChatGPT personale"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ご自身のChatGPTアカウントでサインイン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "내 ChatGPT 계정으로 로그인"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meld u aan met uw eigen ChatGPT-account"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entre com a sua própria conta do ChatGPT"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Войдите в свою учётную запись ChatGPT"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اپنے ذاتی ChatGPT اکاؤنٹ سے سائن اِن کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用你自己的 ChatGPT 账户登录"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用你自己的 ChatGPT 帳號登入"
           }
         }
       }
@@ -606485,6 +607721,88 @@
         }
       }
     },
+    "The reason parts used are written off under" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "السبب الذي تُشطب بموجبه القطع المستخدمة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El motivo con el que se dan de baja las refacciones usadas"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le motif sous lequel les pièces utilisées sont sorties de l’inventaire"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Az indok, amellyel a felhasznált alkatrészeket leírják"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il motivo con cui le parti utilizzate vengono scaricate dalle scorte"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用した部品を在庫から差し引く際の理由"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용한 부품을 재고에서 차감할 때 쓰는 사유"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De reden waaronder gebruikte onderdelen worden afgeboekt"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O motivo sob o qual as peças usadas são baixadas do estoque"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Причина списания использованных деталей"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "وہ وجہ جس کے تحت استعمال شدہ پرزے اسٹاک سے خارج کیے جاتے ہیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "核销已使用部件时所用的原因"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沖銷已使用零件時所用的原因"
+          }
+        }
+      }
+    },
     "The recogniser isn't available right now." : {
       "localizations" : {
         "ar" : {
@@ -626859,6 +628177,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這是影像模型：它用於生成圖片，無法回答問題。請為助理選擇聊天模型。"
+          }
+        }
+      }
+    },
+    "This is an older copy of your organisation's profile than the one on this phone, so nothing in it was applied." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هذه نسخة من ملف تعريف مؤسستك أقدم من النسخة الموجودة على هذا الهاتف، لذلك لم يُطبَّق أي شيء منها."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta es una copia del perfil de tu organización más antigua que la que hay en este celular, así que no se aplicó nada de ella."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il s’agit d’une copie du profil de votre organisation plus ancienne que celle de ce téléphone; rien de son contenu n’a donc été appliqué."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ez a szervezete profiljának régebbi példánya, mint az ezen a telefonon lévő, ezért semmi sem lett alkalmazva belőle."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa copia del profilo della tua organizzazione è più vecchia di quella presente su questo telefono, quindi non è stato applicato nulla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これはこのiPhoneにあるものより古い、組織のプロファイルのコピーです。そのため、内容は何も適用されていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 휴대전화에 있는 것보다 오래된 조직의 프로필 사본이므로 그 안의 내용은 하나도 적용되지 않았습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dit is een oudere kopie van het profiel van uw organisatie dan die op deze telefoon, dus er is niets van toegepast."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta cópia do perfil da sua organização é mais antiga do que a que está neste telefone, por isso nada dela foi aplicado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это более старая копия профиля вашей организации, чем та, что уже есть на этом телефоне, поэтому из неё ничего не применено."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ آپ کی تنظیم کی پروفائل کی اُس سے پرانی کاپی ہے جو اس فون پر ہے، اس لیے اس میں سے کچھ بھی لاگو نہیں کیا گیا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这份你组织的配置文件比这部手机上的那份旧，因此其中的内容均未应用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這份你組織的設定檔比這支手機上的那份舊，因此其中的內容均未套用。"
           }
         }
       }
@@ -670204,6 +671604,88 @@
         }
       }
     },
+    "Use company default" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "استخدام الإعداد الافتراضي للشركة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar el valor predeterminado de la empresa"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utiliser la valeur par défaut de l’entreprise"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Céges alapértelmezés használata"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa l'impostazione predefinita dell'azienda"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会社のデフォルトを使用"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "회사 기본값 사용"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standaardwaarde van bedrijf gebruiken"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar padrão da empresa"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Использовать значение компании по умолчанию"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کمپنی کا ڈیفالٹ استعمال کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用公司默认值"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用公司預設值"
+          }
+        }
+      }
+    },
     "Use current model" : {
       "comment" : "A label for a picker that lets the user choose a model.",
       "isCommentAutoGenerated" : true,
@@ -699682,6 +701164,88 @@
         }
       }
     },
+    "Whether parts used are sent back to the stock system" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هل تُرسل القطع المستخدمة مرة أخرى إلى نظام المخزون"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si las refacciones usadas se envían de vuelta al sistema de inventario"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si les pièces utilisées sont renvoyées au système d’inventaire"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visszajelzi-e a telefon a felhasznált alkatrészeket a készletrendszernek"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se le parti utilizzate vengono rinviate al sistema delle scorte"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用した部品を在庫システムに送り返すかどうか"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용한 부품을 재고 시스템으로 다시 보낼지 여부"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Of gebruikte onderdelen worden teruggemeld aan het voorraadsysteem"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se as peças usadas são enviadas de volta ao sistema de estoque"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Передаются ли использованные детали обратно в складскую систему"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آیا استعمال شدہ پرزے واپس اسٹاک سسٹم کو بھیجے جاتے ہیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "是否将使用的部件回传到库存系统"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "是否將使用的零件回傳至庫存系統"
+          }
+        }
+      }
+    },
     "Whether reports to the office carry the transcript" : {
       "localizations" : {
         "ar" : {
@@ -699842,6 +701406,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "客戶報告是否顯示專家的時間和姓名"
+          }
+        }
+      }
+    },
+    "Whether the stock list is a clinic's" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هل قائمة المخزون خاصة بعيادة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si la lista de inventario es de una clínica"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si la liste d’inventaire est celle d’une clinique"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A készletlista egy klinikáé-e"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se l'elenco delle scorte è quello di una clinica"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在庫リストがクリニックのものかどうか"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "재고 목록이 병원의 것인지 여부"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Of de voorraadlijst van een kliniek is"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se a lista de estoque é de uma clínica"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Является ли список запасов списком клиники"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آیا اسٹاک کی فہرست کسی کلینک کی ہے"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "库存清单是否属于诊所"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "庫存清單是否屬於診所"
+          }
+        }
+      }
+    },
+    "Whether this phone connects to the business's stock system" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هل يتصل هذا الهاتف بنظام المخزون الخاص بالشركة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si este celular se conecta al sistema de inventario del negocio"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si ce téléphone se connecte au système d’inventaire de l’entreprise"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Csatlakozik-e ez a telefon a vállalkozás készletrendszeréhez"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se questo telefono si collega al sistema delle scorte dell'attività"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このiPhoneを事業者の在庫システムに接続するかどうか"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 휴대전화를 업체의 재고 시스템에 연결할지 여부"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Of deze telefoon verbinding maakt met het voorraadsysteem van het bedrijf"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se este telefone se conecta ao sistema de estoque da empresa"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подключается ли этот телефон к складской системе компании"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آیا یہ فون کاروبار کے اسٹاک سسٹم سے منسلک ہوتا ہے"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这部手机是否连接到企业的库存系统"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這支手機是否連線到企業的庫存系統"
           }
         }
       }
@@ -700748,6 +702476,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "您希望提醒檢查哪一側？"
+          }
+        }
+      }
+    },
+    "Which stock system the business uses" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أي نظام مخزون تستخدمه الشركة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qué sistema de inventario usa el negocio"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quel système d’inventaire l’entreprise utilise"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Melyik készletrendszert használja a vállalkozás"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quale sistema delle scorte usa l'attività"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "事業者が使用する在庫システム"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "업체에서 사용하는 재고 시스템"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Welk voorraadsysteem het bedrijf gebruikt"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qual sistema de estoque a empresa usa"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Какую складскую систему использует компания"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کاروبار کون سا اسٹاک سسٹم استعمال کرتا ہے"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "企业使用哪个库存系统"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "企業使用哪個庫存系統"
           }
         }
       }
@@ -708176,6 +709986,88 @@
         }
       }
     },
+    "You changed these on this phone, so they stay as you set them." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "غيّرت هذه الإعدادات على هذا الهاتف، لذا تبقى كما ضبطتها."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambiaste estos ajustes en este celular, así que se quedan como los configuraste."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous avez modifié ces réglages sur ce téléphone; ils restent donc tels que vous les avez définis."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ezeket Ön módosította ezen a telefonon, ezért úgy maradnak, ahogy beállította."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le hai modificate su questo telefono, quindi restano come le hai impostate."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これらはこのiPhoneで変更したため、設定したとおりのままになります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 휴대전화에서 변경했으므로 설정한 그대로 유지됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "U hebt deze op deze telefoon gewijzigd, dus ze blijven zoals u ze hebt ingesteld."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você alterou estas configurações neste telefone, então elas ficam como você as definiu."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вы изменили их на этом телефоне, поэтому они остаются такими, как вы их задали."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ نے انہیں اس فون پر تبدیل کیا، اس لیے یہ ویسی ہی رہتی ہیں جیسی آپ نے سیٹ کیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你在这部手机上更改过这些设置，因此它们会保持你的设定。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你在這支手機上變更過這些設定，因此它們會保持你的設定。"
+          }
+        }
+      }
+    },
     "You choose where in the share sheet, so it's treated as going to a customer." : {
       "localizations" : {
         "ar" : {
@@ -712982,6 +714874,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的公司已設定 Workiz 金鑰，但這支手機無法開啟它。請在「設定 › Field Assist」中再次輸入公司的啟用金鑰以接收該金鑰。"
+          }
+        }
+      }
+    },
+    "Your company offers these." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تقدّم شركتك هذه الخيارات."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu empresa ofrece estas opciones."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre entreprise offre ces options."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ezeket a cége kínálja."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te li offre la tua azienda."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会社が提供しているアシスタントです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "회사에서 제공하는 항목입니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uw bedrijf biedt deze aan."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estes são oferecidos pela sua empresa."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Их предлагает ваша компания."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ آپ کی کمپنی پیش کرتی ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些由你的公司提供。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這些由你的公司提供。"
+          }
+        }
+      }
+    },
+    "Your company supplies the AI model's key, sealed so only its phones can open it. You enter nothing." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "توفّر شركتك مفتاح نموذج الذكاء الاصطناعي، مختومًا بحيث لا تفتحه إلا هواتفها. لا تُدخل أي شيء."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu empresa proporciona la clave del modelo de IA, sellada para que solo sus celulares puedan abrirla. No tienes que ingresar nada."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre entreprise fournit la clé du modèle d’IA, scellée pour que seuls ses téléphones puissent l’ouvrir. Vous n’avez rien à saisir."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A cége biztosítja az AI-modell kulcsát, lezárva, hogy csak a cég telefonjai nyithassák meg. Önnek semmit sem kell megadnia."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La tua azienda fornisce la chiave del modello di IA, sigillata in modo che solo i suoi telefoni possano aprirla. Non devi inserire nulla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AIモデルのキーは会社が提供し、会社のiPhoneだけが開けるように封印されています。入力するものはありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "회사가 AI 모델의 키를 제공하며, 회사의 휴대전화만 열 수 있도록 봉인되어 있습니다. 입력할 것은 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uw bedrijf levert de sleutel van het AI-model, verzegeld zodat alleen de telefoons van het bedrijf hem kunnen openen. U hoeft niets in te voeren."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sua empresa fornece a chave do modelo de IA, lacrada para que só os telefones dela possam abri-la. Você não precisa inserir nada."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ключ модели ИИ предоставляет ваша компания — он запечатан так, что открыть его могут только её телефоны. Вам ничего не нужно вводить."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کی کمپنی AI ماڈل کی کلید فراہم کرتی ہے، جو اس طرح مہر بند ہے کہ صرف اس کے فون ہی اسے کھول سکتے ہیں۔ آپ کو کچھ درج نہیں کرنا پڑتا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的公司提供 AI 模型的密钥，并已加密封存，只有公司的手机才能打开。你无需输入任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的公司提供 AI 模型的金鑰，並已加密封存，只有公司的手機才能開啟。你無需輸入任何內容。"
           }
         }
       }
@@ -720786,6 +722842,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你組織的保險庫需要較新版本的應用程式（建置版本 %lld 或更新）。"
+          }
+        }
+      }
+    },
+    "Your own choices" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اختياراتك الخاصة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tus propias elecciones"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vos propres choix"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saját választásai"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le tue scelte"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ご自身の選択"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "내 선택"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uw eigen keuzes"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suas próprias escolhas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш собственный выбор"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کے اپنے انتخاب"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你自己的选择"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你自己的選擇"
           }
         }
       }

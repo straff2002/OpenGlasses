@@ -1,8 +1,9 @@
 # Plan ND — Company Settings from the Portal (the administrator sets them once, every phone that joins follows)
 
-**Status:** 🚧 P0, P1, P2 and P3 built 2026-11-24, and P4's phone half 2026-11-25 (see [As built](#as-built)), on
-the recommended answer to each of the 15 [decisions](#decisions-for-greig), which stay the owner's to change.
-Owed: P4's service half (the portal, private repository), P5 (catalog sync), P6 (device pass).
+**Status:** 🚧 P0, P1, P2 and P3 built 2026-11-24, and P4's phone half and P5 2026-11-25 (see
+[As built](#as-built)), on the recommended answer to each of the 15 [decisions](#decisions-for-greig), which stay
+the owner's to change. Owed: P4's service half (the portal, private repository) and P6 (device pass, with its
+[checklist](#p6--the-device-pass-checklist-owed)).
 **Track:** Field Assist — fleet. The organisation profile, the licence portal, onboarding, Managed App
 Configuration.
 **Builds on:** Plan [CT](CT-org-configuration-profiles.md) (the signed profile, `SettingKey` and its directions,
@@ -549,3 +550,57 @@ version dropped, the version kept when the vaults are dropped for size).
 
 **Strings owed to the catalog (P5):** the Privacy footer's seat sentence, now naming the settings version (both
 footers).
+
+### P5 (2026-11-25)
+
+A catalog sync, add-only: the 26 keys P1–P4 owed, in the 13 complete languages, so no language drops under the
+guard's floor. They are:
+- the stale refusal and the held notice;
+- *Your own choices*, its footer, **Use company default** and the version line;
+- the kept-choice line and its *on* / *off* words;
+- the stock-system setting names the kept-choice list shows;
+- the managed first run's assistant page, its three choice details and the language line with *Change*'s hint;
+- the review's sealed-key footer;
+- both Privacy footers as they now read, with the settings version on the seat check and the sentence for a
+  phone under MDM.
+
+The phone-only footer is compiled only in that build, so the harvest could not see it; it was added by hand in
+the same shape. The extension catalogs needed nothing.
+
+### P6 — the device pass (checklist, owed)
+
+It needs two iPhones on one test company, the portal (P4's service half live), and for the last part an MDM
+trial (any vendor that does Managed App Configuration). The Developer panel and the support report show the
+`companyProfile` events. Times are wall-clock.
+
+1. **Follow a default.** Enrol both phones on one test company at version N. On phone B, change one starting
+   value (e.g. units). In the portal, change that default and one company-owned value, then **Publish**
+   (version N+1). Foreground both phones within 15 minutes.
+   - Phone A follows both values.
+   - Phone B keeps its own value, lists it under *Your own choices* with **Use company default**, and follows
+     the company-owned one.
+   - Both show *Company settings version N+1*.
+   - A second foreground inside 15 minutes makes no request.
+   - The next one is a `304` (`notModified`), and nothing renews.
+2. **Mid-job.** Open a job on phone A, then publish N+2.
+   - The phone shows *They apply after this job*.
+   - Nothing changes until the job closes; then N+2 applies.
+   - The lease renewed at once.
+3. **Revert.** Revert to N in the portal.
+   - Both phones receive N+3 carrying N's settings. No phone is ever handed an older version.
+   - Replaying N's bytes by hand (the URL served earlier) is refused (`staleRefused`).
+4. **Fleet view.** After both phones' next seat renewal, the company page reads *2 of 2 phones on version
+   N+3*.
+5. **New hire.** Erase phone B, install fresh, and scan the company's code. Time from first launch to Ready.
+   - The pages are welcome, the company's assistant choices, permissions, the language line, and glasses if
+     this copy has them.
+   - There is no services page and no assistant-name page.
+6. **MDM.** Enrol phone B in the MDM trial and push the app with `orgProfile` (the address form) and
+   `activationKey`.
+   - The phone enrols with no review sheet, and *Remove* is not offered.
+   - The MDM console's feedback shows profileId, profileGeneration, enrolmentState and build.
+   - Remove the key in the console. The first empty read changes nothing (`managedAbsent`). After 10 minutes,
+     or a relaunch, the phone leaves (`managedLeft`), and its session logs and unsent reports reach the company
+     first.
+7. **Field reports to note.** Note anything the simulator could not show: the feedback dictionary's refresh
+   in the console, and how long the MDM takes to deliver a changed dictionary.
