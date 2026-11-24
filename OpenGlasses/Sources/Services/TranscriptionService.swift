@@ -84,6 +84,20 @@ class TranscriptionService: ObservableObject {
         }
     }
 
+    /// Plan CU P2 PR2: whether the acoustic detector is wanted. Read once per utterance, in
+    /// `startRecording()`, so flipping the developer switch installs or removes the detector at
+    /// the next utterance boundary and never mid-sentence. The default is off; AppState installs
+    /// the live preference.
+    var acousticEndOfTurnEnabledProvider: () -> Bool = { false }
+
+    /// Makes the detector the switch installs. Nil (the default) means none can be made, and the
+    /// switch does nothing.
+    var acousticDetectorFactory: (@MainActor () -> SpeechActivityDetecting)?
+
+    /// Whether `speechActivityDetector` was installed by the switch — the only kind the switch
+    /// may remove. A detector set directly (tests) is left alone.
+    private var detectorInstalledBySwitch = false
+
     /// When the detector says the wearer stopped — the moment silence began, not when it was
     /// confirmed. Nil while they are still talking, and nil again for each new utterance.
     private var acousticSpeechEndedAt: Date?
@@ -154,6 +168,15 @@ class TranscriptionService: ObservableObject {
     /// The vocabulary read at the start of this turn, for the cloud engines.
     private var turnVocabulary: [String] = []
     /// The energy gate that stands in for partials on the OpenAI upload path.
+    ///
+    /// Plan CU P2 PR2: this is **not** an acoustic end-of-turn detector and never reaches
+    /// `handleSpeechActivity`. It plays the recognizer's part for an engine that has no partials —
+    /// while it hears energy it re-arms the silence window (`lastSpeechObservedAt`, the timer's
+    /// input) and marks `didReceiveSpeech` — so the timer runs exactly as it would on Apple's
+    /// partials. The Silero detector, when the switch installs it, is the other input to
+    /// `EndOfTurnPolicy` (`acousticSpeechEndedAt`), fed from the same buffers. On the upload path
+    /// both run and the policy arbitrates; neither delivers the other's events, so nothing is
+    /// counted twice.
     private var utteranceScorer = EnergySpeechScorer(gateConfiguration: .default)
     private var utteranceGate = SpeechActivityGate(configuration: .default)
 
@@ -240,6 +263,7 @@ class TranscriptionService: ObservableObject {
         acousticSpeechEndedAt = nil
         acousticSpeechObserved = false
         endOfTurnReason = nil
+        adoptAcousticDetectorForThisUtterance()
         speechActivityDetector?.begin()
         currentTranscription = ""
         // Plan CU P1: a new utterance means the previous one has been dealt with, whatever became
@@ -496,9 +520,11 @@ class TranscriptionService: ObservableObject {
             // Capture request directly — the closure is @Sendable so can't access @MainActor self
             let request = recognitionRequest
             let keep = comparisonTap()
+            let vad = detectorFeed()
             provider.setAudioBufferForwarder { buffer in
                 request.append(buffer)
                 keep?(buffer)
+                vad?(buffer)
             }
         } else {
             // Fallback: create our own engine (works in foreground only)
@@ -544,9 +570,11 @@ class TranscriptionService: ObservableObject {
             // it (Swift 5 mode lets this @MainActor closure compile while running off-main).
             let request = recognitionRequest
             let keep = comparisonTap()
+            let vad = detectorFeed()
             inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
                 request.append(buffer)
                 keep?(buffer)
+                vad?(buffer)
             }
 
             audioEngine.prepare()
@@ -611,9 +639,13 @@ class TranscriptionService: ObservableObject {
     /// running, else on a dedicated engine of our own (foreground only). One tap either way.
     private func installCapture(channel: PrivacyLog.SpeechChannel,
                                 forward: @escaping @Sendable (AVAudioPCMBuffer) -> Void) async throws {
+        let vad = detectorFeed()
         if let provider = sharedAudioEngineProvider, provider.getAudioEngine() != nil {
             PrivacyLog.speech(channel, .engineShared)
-            provider.setAudioBufferForwarder { buffer in forward(buffer) }
+            provider.setAudioBufferForwarder { buffer in
+                forward(buffer)
+                vad?(buffer)
+            }
         } else {
             PrivacyLog.speech(channel, .engineDedicated)
             // BJ PR2 follow-up: activate off-main before the engine starts — and before the input
@@ -623,7 +655,10 @@ class TranscriptionService: ObservableObject {
             let inputNode = audioEngine.inputNode
             let format = inputNode.outputFormat(forBus: 0)
             try Self.requireUsableTapFormat(format, channel: channel)
-            inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in forward(buffer) }
+            inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+                forward(buffer)
+                vad?(buffer)
+            }
             audioEngine.prepare()
             try audioEngine.start()
             self.fallbackAudioEngine = audioEngine
@@ -911,6 +946,33 @@ class TranscriptionService: ObservableObject {
                 Task { @MainActor in self?.evaluateEndOfTurn() }
             }
         }
+    }
+
+    /// Plan CU P2 PR2: install or remove the switch's detector, at the one moment it is safe — an
+    /// utterance boundary, before `begin()`. Internal rather than private so the switch's rule can
+    /// be tested without starting a recording.
+    func adoptAcousticDetectorForThisUtterance() {
+        let wanted = acousticEndOfTurnEnabledProvider()
+        if wanted, speechActivityDetector == nil, let make = acousticDetectorFactory {
+            speechActivityDetector = make()
+            detectorInstalledBySwitch = true
+            PrivacyLog.speech(.dictation, .acousticDetectorInstalled)
+        } else if !wanted, detectorInstalledBySwitch {
+            speechActivityDetector?.end()
+            speechActivityDetector = nil
+            detectorInstalledBySwitch = false
+            PrivacyLog.speech(.dictation, .acousticDetectorRemoved)
+        }
+    }
+
+    /// Plan CU P2 PR2: hand each captured buffer to the detector too — from the tap this turn
+    /// already has, never a second one. Nil when no detector is installed, so the tap closures are
+    /// what they were. The route is read once per turn; a route change mid-turn shows up as a
+    /// format change, which the detector handles itself.
+    private func detectorFeed() -> (@Sendable (AVAudioPCMBuffer) -> Void)? {
+        guard let detector = speechActivityDetector else { return nil }
+        let route = Self.liveCaptureRoute(configured: micRouteProvider())
+        return { buffer in detector.feed(buffer, route: route) }
     }
 
     /// A transition from the detector. Only two things can arrive here, a few times per turn.

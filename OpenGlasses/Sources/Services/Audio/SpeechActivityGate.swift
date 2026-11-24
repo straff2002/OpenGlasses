@@ -42,6 +42,56 @@ struct SpeechActivityGate {
         /// too: the recognition tail (1.5 s) is what keeps the recognizer for a final partial.
         static let wakeIdle = Configuration(onsetThreshold: 0.6, releaseThreshold: 0.35,
                                             minSpeechDuration: 0.10, minSilenceDuration: 0.3)
+
+        /// Plan CU P2 PR2 — the gate over the Silero model's speech probability, scored in
+        /// 256 ms chunks (`SpeechHopChunker.hopDuration`). **Provisional**: CU P5 tunes it on
+        /// device against a false-cut rate.
+        ///
+        /// - Onset 0.65, above the model's conventional 0.5, for the HFP noise floor (see the type
+        ///   comment). Release 0.50 is Silero's conventional onset − 0.15.
+        /// - `minSpeechDuration` 0.12 s is shorter than one chunk, and that is enough to make one
+        ///   loud chunk never speech: the onset chunk opens the run at elapsed 0, which is below
+        ///   any positive minimum, so a second consecutive chunk at or above onset (elapsed
+        ///   0.256 s) is what confirms it. Anything from just above 0 up to 0.256 s means the same
+        ///   "two chunks", so the number does not need retuning if the hop changes slightly.
+        /// - `minSilenceDuration` 0.5 s, which in 256 ms chunks is three quiet chunks — see
+        ///   `feltEndOfTurnDelay` for what the wearer actually waits.
+        static let silero = Configuration(onsetThreshold: 0.65, releaseThreshold: 0.50,
+                                          minSpeechDuration: 0.12, minSilenceDuration: 0.5)
+    }
+
+    /// Plan CU P2 PR2 — what the wearer feels between their last word and the acoustic commit,
+    /// once silence can only be observed in whole chunks.
+    ///
+    /// The wearer stops at T, inside a chunk that still holds speech and so scores as speech; the
+    /// first quiet chunk starts at the next boundary, up to one chunk after T. The gate times
+    /// silence from that chunk's start and confirms on the k-th quiet chunk, where
+    /// k = ⌈minSilence / chunk⌉ + 1 — and that chunk is only scored once it has been fully
+    /// captured, k chunks after the silence began. `EndOfTurnPolicy` commits at the silence start
+    /// plus `grace`, or on the event's arrival if that is later. So the delay lies in
+    /// (max(k·chunk, grace), max(k·chunk, grace) + chunk], before model time (milliseconds).
+    ///
+    /// The step table at 256 ms chunks and the 0.4 s grace:
+    ///
+    /// | minSilence | quiet chunks k | felt delay      |
+    /// |------------|----------------|-----------------|
+    /// | 0          | 1              | 0.400–0.656 s   |
+    /// | 0.25 s     | 2              | 0.512–0.768 s   |
+    /// | **0.5 s**  | **3**          | **0.768–1.024 s** |
+    /// | 0.75 s     | 4              | 1.024–1.280 s   |
+    /// | 1.0 s      | 5              | 1.280–1.536 s   |
+    ///
+    /// against today's 2.0 s timer window measured from the last partial. The steps are why CU P5
+    /// should tune `minSilenceDuration` in whole chunks: 0.3 s and 0.5 s feel identical.
+    static func feltEndOfTurnDelay(minSilence: TimeInterval,
+                                   chunk: TimeInterval,
+                                   grace: TimeInterval = EndOfTurnPolicy.acousticGrace) -> ClosedRange<TimeInterval> {
+        precondition(chunk > 0, "a chunk has a length")
+        // The epsilon keeps an exact multiple (0.512 / 0.256) from rounding up a whole chunk.
+        let extraChunks = max(0, (minSilence / chunk - 1e-9).rounded(.up))
+        let confirmed = (extraChunks + 1) * chunk
+        let floor = max(confirmed, grace)
+        return floor...(floor + chunk)
     }
 
     enum Event: Equatable {
@@ -99,5 +149,15 @@ struct SpeechActivityGate {
         isSpeaking = false
         candidateSpeechStart = nil
         candidateSilenceStart = nil
+    }
+
+    /// Plan CU P2 PR2 — a format change in the middle of an utterance. The candidate runs were
+    /// timed on audio from the old route and go with it; whether the wearer is talking is a
+    /// conclusion about the wearer, not about the samples, and survives. Without that, a wearer who
+    /// stops right as the route flips is never heard to stop (the new gate was never speaking),
+    /// and `EndOfTurnPolicy` holds the turn to its backstop instead of the grace.
+    mutating func restart(speaking: Bool) {
+        reset()
+        isSpeaking = speaking
     }
 }

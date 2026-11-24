@@ -4132,6 +4132,12 @@ struct Config {
     /// no missed wakes; a Developer panel toggle.
     @UserDefaultsBacked("wakeSpeechGateEnabled", default: false) static var wakeSpeechGateEnabled: Bool
 
+    /// Plan CU P2 PR2 — acoustic end-of-turn: the bundled on-device Silero detector decides when
+    /// the wearer has stopped talking, instead of the silence timer alone. Off until CU P5 tunes
+    /// it on device; a Developer panel toggle. Read once per utterance, so a flip applies from the
+    /// next one and never mid-sentence. Off is exactly the timer-only behaviour.
+    @UserDefaultsBacked("acousticEndOfTurnEnabled", default: false) static var acousticEndOfTurnEnabled: Bool
+
     /// Measured conversation-mic switch times per device (opaque key), for Automatic reply audio.
     static var micSwitchTimes: SwitchTimeLedger {
         guard let data = UserDefaults.standard.data(forKey: "micSwitchTimes"),

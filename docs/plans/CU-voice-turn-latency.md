@@ -1,6 +1,6 @@
 # Plan CU — Voice Turn Latency & Instrumentation
 
-**Status: 🚧 P1 + P2 PR1 shipped 2026-08-22** ([#311](https://github.com/straff2002/OpenGlasses/pull/311), [#320](https://github.com/straff2002/OpenGlasses/pull/320)) — `TurnTimeline` + `TurnLedger` + `TurnRecorder` + the Developer-panel view, with the marking calls threaded through the Direct-mode turn path in `OpenGlassesApp`; `EndOfTurnPolicy`/`SpeechActivityGate`/`MicInputGain` behind the detector seam, none installed yet (27 tests). The two deliberate P1 exclusions stand (the realtime managers have no turn boundaries wired, so no realtime turn is recorded; no Direct spine can yet produce a negative `ttsLeadIn`). **P2 PR2 (Silero backend) is next.**
+**Status: 🚧 P1 + P2 PR1 shipped 2026-08-22** ([#311](https://github.com/straff2002/OpenGlasses/pull/311), [#320](https://github.com/straff2002/OpenGlasses/pull/320)) — `TurnTimeline` + `TurnLedger` + `TurnRecorder` + the Developer-panel view, with the marking calls threaded through the Direct-mode turn path in `OpenGlassesApp`; `EndOfTurnPolicy`/`SpeechActivityGate`/`MicInputGain` behind the detector seam, none installed yet (27 tests). The two deliberate P1 exclusions stand (the realtime managers have no turn boundaries wired, so no realtime turn is recorded; no Direct spine can yet produce a negative `ttsLeadIn`). **P2 PR2 built 2026-11-24** behind `Config.acousticEndOfTurnEnabled`, **default off** (Developer panel › End of Speech): `SpeechHopChunker` (16 kHz resampling, converter rebuilt on a format change, per-route gain, exact 256 ms chunks with 64 samples of context, audio-clock times), `SileroSpeechActivityDetector` (render-thread intake under a lock, drop-oldest hand-off to one ordered consumer, transitions only to the main actor, soft-fail at load and at prediction), `SileroVADModel` (our own Core ML runner over the bundled model), `SpeechActivityGate.Configuration.silero` and the felt-delay step table. The model is vendored (~1 MB, MIT), with no Swift package and no network path. **Owed:** catalog sync for the new Developer strings; the VAD barge-in rider; the realtime managers; CU P5 device tuning (thresholds, false-cut rate).
 
 Every Direct-mode turn pays a fixed floor of dead air before the model is even asked.
 `TranscriptionService` commits a turn on a silence timer whose window is
@@ -167,6 +167,45 @@ It was held back deliberately — it is a new pinned dependency whose thresholds
 anywhere but on device, and shipping it in the same diff as the arbitration would mean neither
 could be reviewed on its own terms.
 
+**PR2 built 2026-11-24, default off.** What landed, and the calls made while building it:
+
+- **The pieces.** `SpeechHopChunker` is the pure half: any capture format in, 16 kHz mono out
+  through an `AVAudioConverter` rebuilt whenever a buffer's format differs from the last one's,
+  `MicInputGain` per route, exact 4096-sample hops with the previous chunk's last 64 samples in
+  front (the model's input), each stamped by its sample position on the epoch's anchor rather than
+  when the model ran. `SileroSpeechActivityDetector` holds the render-thread side under an
+  `OSAllocatedUnfairLock` and hands chunks to one consumer through an `AsyncStream` that buffers
+  the newest four (one second): the consumer scores strictly in order, threads the LSTM state,
+  feeds `SpeechActivityGate.Configuration.silero`, and sends only transitions to the main actor.
+  `SileroVADModel` is our own runner: it loads the bundled `.mlmodelc` from the app bundle with
+  `.cpuAndNeuralEngine`, off the main thread, and reads the feature names from the model.
+- **Thresholds, provisional for P5.** Onset 0.65, release 0.50, `minSpeechDuration` 0.12 s (one
+  loud 256 ms chunk is never speech: the second consecutive chunk confirms it), `minSilenceDuration`
+  0.5 s = three quiet chunks. `SpeechActivityGate.feltEndOfTurnDelay` documents the step table the
+  chunking imposes: 0.77–1.02 s felt at 0.5 s, against today's 2.0 s window from the last partial,
+  and 0.3 s feels the same as 0.5 s, so P5 should tune in whole chunks.
+- **A route change mid-utterance** rebuilds the converter and starts a new chunk epoch; the
+  consumer zeroes the LSTM state (learned at another sample rate, garbage now) and restarts the
+  gate's runs but keeps whether the wearer is talking (`SpeechActivityGate.restart(speaking:)`).
+  Resetting that too would leave a wearer who stops right at the flip never heard to stop, and
+  rule 4 would hold the turn to the backstop.
+- **Availability is fixed per utterance.** The model loads when the switch first installs the
+  detector; until it has, the timer decides. A model finishing its load mid-utterance waits for
+  the next one, and a prediction that throws turns the detector off for the rest of the run.
+- **The switch** (`acousticEndOfTurnEnabled`) is read once per utterance in `startRecording()`,
+  so a flip installs or removes the detector at the next boundary. Off installs nothing; the
+  tap closures carry no extra call.
+- **The energy gate on the upload path is not a detector.** `TranscriptionService`'s
+  `EnergySpeechScorer` stands in for partials on the OpenAI upload engine (it re-arms the timer
+  and never reaches `handleSpeechActivity`); the Silero detector feeds the policy's acoustic input.
+  On that path both run from the same buffers and the policy arbitrates.
+
+Owed from PR2: the catalog sync for the Developer panel strings; the barge-in rider below; the
+realtime managers; P5's device tuning and false-cut rate. One thing for P5 to watch: when the
+recognizer hears speech the detector never scores above onset (a very quiet talker), rule 4 holds
+the turn to the backstop rather than the timer window — a `detectorBackstop` share in the panel is
+the sign.
+
 Two riders landed with PR1 rather than PR2, on the plan's own reasoning. `MicInputGain` ships
 **with** the thresholds it normalises for, since tuning against an un-normalised level and then
 normalising invalidates the tuning. And `EndOfTurnPolicy.Reason` is recorded onto the P1 timeline
@@ -252,10 +291,13 @@ side and defers it here on purpose, so it is not tuned twice against two differe
 
 ### Dependency decision
 
-Silero via a maintained Swift package (Apache-2.0, actively developed) versus vendoring the CoreML
-model ourselves. Leaning package, on the CD P3 convention: **pin exactly**, refresh
-`ci_scripts/Package.resolved` per `project_xcode_cloud_resolved`, and attribute in About. Vendoring
-is the fallback if the package pulls in more than the VAD path.
+**Settled 2026-11-24 (owner): vendor the model, write our own runner, no Swift package.** The
+candidate package pulled in far more than the VAD path — speech synthesis and diarization modules,
+a prebuilt binary framework, and a model fetcher that downloads at run time — which is the
+fallback condition this section named. So PR2 bundles only a Core ML conversion of Silero VAD
+(`silero-vad-unified-256ms-v6.2.1.mlmodelc`, ~1 MB, MIT, Silero Team) and loads it with a small
+runner of our own (`SileroVADModel`). Nothing reaches the network: there is no fetch path and no fallback loader, and a
+guard test fails the suite on one. Attributed in Settings › About › Attributions.
 
 ## P3 — Local-model time-to-first-token (gated on P1's numbers)
 

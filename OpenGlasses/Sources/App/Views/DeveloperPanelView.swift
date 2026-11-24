@@ -11,6 +11,9 @@ struct DeveloperPanelView: View {
     @AppStorage("fieldToolProfileEnabled") private var fieldToolProfileEnabled = true
     /// Plan GU §5 — `Config.wakeSpeechGateEnabled`, the same key and default (off until tuned).
     @AppStorage("wakeSpeechGateEnabled") private var wakeSpeechGateEnabled = false
+    /// Plan CU P2 PR2 — `Config.acousticEndOfTurnEnabled`, the same key and default (off until
+    /// tuned on device).
+    @AppStorage("acousticEndOfTurnEnabled") private var acousticEndOfTurnEnabled = false
     /// Plan HZ P1 — `Config.directSentenceStreamingEnabled`, the same key and default (on).
     @AppStorage("directSentenceStreamingEnabled") private var directSentenceStreamingEnabled = true
     /// Plan NA — `Config.blindReplyCheckEnabled`, the same key and default (on). The kill switch.
@@ -93,6 +96,13 @@ struct DeveloperPanelView: View {
                     .onChange(of: wakeSpeechGateEnabled) { _, _ in
                         appState.restartWakeWordIfDirect()
                     }
+            }
+
+            OGSection(
+                header: "End of Speech",
+                footer: "Listens on the phone for the moment you stop talking, so a question is sent sooner instead of after a fixed pause. May cut you off until it is tuned. Applies from the next question."
+            ) {
+                OGRow("Hear when I stop", isOn: $acousticEndOfTurnEnabled, icon: "waveform.path")
             }
 
             #if DAT_EXPERIMENTAL

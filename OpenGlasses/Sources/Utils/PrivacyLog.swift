@@ -1455,6 +1455,14 @@ enum PrivacyLog {
         /// `assetsRequested` / `assetsInstalled` / `assetsFailed`: its on-device model asked for
         /// from Apple, by `language` only. Never a word of what was said.
         case engineSelected, assetsRequested, assetsInstalled, assetsFailed
+        /// Plan CU P2 PR2, the acoustic end-of-turn detector. `acousticDetectorReady`: the bundled
+        /// model loaded, `seconds` how long it took. `acousticDetectorUnavailable`: it did not
+        /// (`detail` `load`) or a prediction failed (`predict`), and the silence timer keeps the
+        /// turn. `acousticChunksDropped`: at an utterance's end, `count` chunks dropped under
+        /// backpressure, the format changes in `detail`. Never a sample or a score.
+        case acousticDetectorReady, acousticDetectorUnavailable, acousticChunksDropped
+        /// The developer switch installed or removed the detector, at an utterance boundary.
+        case acousticDetectorInstalled, acousticDetectorRemoved
     }
 
     /// `language` is a BCP-47 tag — a property of the session, not of what was said — so it is
