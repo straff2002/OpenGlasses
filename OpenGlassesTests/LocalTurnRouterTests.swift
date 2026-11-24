@@ -389,6 +389,40 @@ final class LocalTurnRouterTests: XCTestCase {
                      "not without reading offered")
     }
 
+    // MARK: - A step that asks nothing
+
+    private let storesAndResets: [LocalToolLoop.Message] = [
+        .user("Start the program the unit size code procedure"),
+        .assistant("Push and hold the button. Release when the code for your model is showing. Hold the button "
+                   + "until the code stops blinking and disappears for two seconds. The control stores it and resets."),
+    ]
+    private let storeReplies = ["code stored, or the control returned to idle without storing",
+                                "The code stopped blinking and the control reset",
+                                "The 10 seconds expired or the control went idle without storing"]
+
+    private func stepRoute(_ turn: String, replies: [String]) -> R.Route? {
+        R.route(turn: turn, history: storesAndResets,
+                context: R.Context(offered: stepTools, procedureActive: true, stepReplies: replies))
+    }
+
+    func testAReplyThatSaysOneOfTheStepsExpectedRepliesAnswersAStepThatAskedNothing() {
+        for turn in ["The code stopped blinking and the control reset", "Code's stored, control reset",
+                     "It went idle without storing", "The 10 seconds expired"] {
+            let routed = stepRoute(turn, replies: storeReplies)
+            XCTAssertEqual(routed?.kind, .procedureAnswer, turn)
+            XCTAssertEqual(routed?.arguments, ["action": "answer", "value": turn], turn)
+        }
+    }
+
+    func testAReplyThatSaysNoneOfThemIsLeftToTheModel() {
+        for turn in ["It's really hot in here", "The control", "Hang on, the button's stuck",
+                     "Which button do I push?", "I'm just grabbing my meter from the van"] {
+            XCTAssertNil(stepRoute(turn, replies: storeReplies), turn)
+        }
+        XCTAssertNil(stepRoute("The code stopped blinking and the control reset", replies: []),
+                     "a step with no expected reply, or one already answered, asks for none")
+    }
+
     // MARK: - A reading logged in one breath
 
     func testALogCommandWithOneValueAndWhatWasMeasuredIsRecorded() {
@@ -542,8 +576,9 @@ final class LocalTurnRouterTests: XCTestCase {
 
         var floor: Double {
             switch self {
-            case .errorCode, .modelNumber, .procedureAnswer: return 0.9
-            case .procedureStart, .procedureNextRepeat, .jobCommand, .evidence, .readingFollowUp, .readingLogged: return 1.0
+            case .errorCode, .modelNumber: return 0.9
+            case .procedureStart, .procedureNextRepeat, .procedureAnswer, .jobCommand, .evidence, .readingFollowUp,
+                 .readingLogged: return 1.0
             }
         }
     }
@@ -561,7 +596,8 @@ final class LocalTurnRouterTests: XCTestCase {
             guard let route = R.route(turn: testCase.turn, history: testCase.loopHistory,
                                       context: R.Context(offered: Set(testCase.offered),
                                                          procedureActive: testCase.procedureActive ?? false,
-                                                         procedures: testCase.procedures ?? [])) else {
+                                                         procedures: testCase.procedures ?? [],
+                                                         stepReplies: testCase.stepReplies ?? [])) else {
                 continue
             }
             if let target { routedByTarget[target, default: 0] += 1 } else { routedElsewhere += 1 }
