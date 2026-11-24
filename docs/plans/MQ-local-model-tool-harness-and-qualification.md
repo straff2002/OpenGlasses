@@ -550,7 +550,8 @@ came from", sent as `show_source` with `which: "first"`, which opens the first c
 than the table. `LocalArgumentCompletion`'s source rule only filled a missing `which`; it now reads
 the one source the turn names (an ordinal, the cited table, a table number or every source) and
 replaces a different `which` from the model, as the conductor and supply rules do. A turn that names
-none leaves the model's alone, and two different sources give none.
+none leaves the model's alone, and two different sources give none. The tool cases on the phone
+with both changes: **326 of 326**, restraint and clean output 100%.
 
 **Not checked on the phone:** what the router and the argument steps say in the real app (the
 qualification run scores scripted tool results, so a reply after a refused call can still quote
