@@ -2683,6 +2683,13 @@ class AppState: ObservableObject, AppStateProtocol {
         manager: OrgProfileManager.shared,
         modelDidChange: { [weak self] in self?.llmService.refreshActiveModel() })
 
+    /// The profile a company's MDM delivers in Managed App Configuration (Plan ND P3).
+    lazy var managedConfigEnrolment: ManagedConfigEnrolment = {
+        var seams = ManagedConfigEnrolment.Seams()
+        seams.modelDidChange = { [weak self] in self?.llmService.refreshActiveModel() }
+        return ManagedConfigEnrolment(manager: OrgProfileManager.shared, seams: seams)
+    }()
+
     /// Joining an Avenkin office by scanning its code (Contracts/commissioning.md). What it applies
     /// lives in `OrgProfileManager.shared` and the office approval stores, as for a setup file.
     lazy var officeCommissioning: OfficeCommissioningService = {
@@ -3714,6 +3721,8 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan LR: staging a pass left behind is swept, and a change held for a job runs when it closes.
         CompanyVaultService.shared.startAtLaunch()
         Task { await OrgProfileManager.shared.renewIfDue() }
+        // Plan ND P3: a company's MDM may deliver the profile; read now, on foreground and on change.
+        managedConfigEnrolment.start(ManagedConfigIngress.shared)
         // Plan CT PR 4: a phone that has left the firm keeps trying to deliver what it owes.
         configureOrgDeparture()
         Task { await OrgDepartureService.shared.settle() }

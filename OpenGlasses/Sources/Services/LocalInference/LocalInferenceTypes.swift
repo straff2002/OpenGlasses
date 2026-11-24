@@ -443,7 +443,7 @@ struct LocalSamplingConfiguration: Codable, Hashable, Sendable {
     var topK: Int?
     var minP: Float?
     var repetitionPenalty: Float?
-    /// MLX only: the GGUF wrapper has no presence penalty, and a GGUF entry may not set one.
+    /// MLX's presence penalty, and llama.cpp's `penalty_present` on GGUF (over its penalty window).
     var presencePenalty: Float?
     /// Fixed seed for deterministic tests. `nil` in production.
     var seed: UInt64?
@@ -591,10 +591,26 @@ struct LocalToolTurn: @unchecked Sendable {
     /// The offered tools' names, in priority order.
     var toolNames: [String] { tools.compactMap(LocalToolFit.name(of:)) }
 
-    /// The first `kept` tools at `detail`.
+    /// The first `kept` tools at `detail` (the fit keeps a priority prefix), in the fixed render
+    /// order (`FieldAssistLocalToolSet.renderOrder`, Plan MQ): what both runtimes hand the template,
+    /// so the same tools render the same way whatever order the turn offered them in.
     func specs(kept: Int, detail: LocalToolFit.Detail) -> [[String: Any]] {
         let source = detail == .compact && !compactTools.isEmpty ? compactTools : tools
-        return Array(source.prefix(max(0, kept)))
+        return Self.inRenderOrder(Array(source.prefix(max(0, kept))))
+    }
+
+    /// `specs` sorted by name into `FieldAssistLocalToolSet.renderOrder`; a spec without a name
+    /// keeps its place after the named ones.
+    static func inRenderOrder(_ specs: [[String: Any]]) -> [[String: Any]] {
+        let names = specs.map { LocalToolFit.name(of: $0) ?? "" }
+        let order = FieldAssistLocalToolSet.renderOrder(names.filter { !$0.isEmpty })
+        var remaining = Array(zip(names, specs))
+        var sorted: [[String: Any]] = []
+        for name in order {
+            guard let index = remaining.firstIndex(where: { $0.0 == name }) else { continue }
+            sorted.append(remaining.remove(at: index).1)
+        }
+        return sorted + remaining.map(\.1)
     }
 
     /// This turn with only the first `kept` tools at `detail`, and `history` in place of its own.
@@ -635,6 +651,13 @@ extension LocalToolTurn {
 /// and the cap it ran under. Counts only. The device qualification app records time to first token
 /// and decode rate from it, and the graders read two faults from it: a reply of zero tokens (almost
 /// always a prompt-format fault, not a model answer) and a reply that stopped at the cap (cut).
+/// Where a generation's prompt was read from (Plan MQ): from the first token, from a KV-cache
+/// prefix the runtime kept (GGUF's trim, H3), or from a state snapshot it restored (GGUF, a cache
+/// that cannot be cut back: Qwen 3.5). MLX always reads from the start.
+enum LocalPromptSource: String, Codable, Sendable, CaseIterable {
+    case fromStart, trimmedPrefix, restoredSnapshot
+}
+
 struct LocalGenerationStats: Equatable, Sendable {
     /// Tokens in the prompt the runtime prefilled.
     let promptTokens: Int
@@ -649,14 +672,24 @@ struct LocalGenerationStats: Equatable, Sendable {
     /// The runtime's own report that it stopped at the cap.
     let stoppedAtCap: Bool
 
+    /// Where the prompt was read from, and how many of its tokens that saved (Plan MQ).
+    var promptSource: LocalPromptSource = .fromStart
+    var reusedPromptTokens = 0
+    /// Bytes of a prefix snapshot this generation saved, when it saved one (GGUF, Plan MQ).
+    var snapshotBytes: Int?
+
     init(promptTokens: Int, generatedTokens: Int, promptSeconds: Double, generateSeconds: Double,
-         tokenCap: Int?, stoppedAtCap: Bool) {
+         tokenCap: Int?, stoppedAtCap: Bool, promptSource: LocalPromptSource = .fromStart,
+         reusedPromptTokens: Int = 0, snapshotBytes: Int? = nil) {
         self.promptTokens = promptTokens
         self.generatedTokens = generatedTokens
         self.promptSeconds = promptSeconds
         self.generateSeconds = generateSeconds
         self.tokenCap = tokenCap
         self.stoppedAtCap = stoppedAtCap
+        self.promptSource = promptSource
+        self.reusedPromptTokens = reusedPromptTokens
+        self.snapshotBytes = snapshotBytes
     }
 
     /// No token at all: the template ended the turn before the model said anything.
@@ -682,12 +715,17 @@ struct LocalLoadConfiguration: Hashable, Sendable {
     let contextLength: Int
     /// Maximum prompt tokens submitted in one decode call.
     let batchSize: Int
+    /// The chunk the GGUF engine computes at once (llama.cpp's `n_ubatch`), at most `batchSize`.
+    /// Nil keeps the engine's default (512). Set only by the device qualification app's
+    /// `--gguf-batch` (Plan MQ), to compare prefill batches on a phone.
+    let physicalBatchSize: Int?
     /// Whether the caller wants the multimodal path attached, when the model has one.
     let wantsVision: Bool
 
-    init(contextLength: Int, batchSize: Int = 512, wantsVision: Bool = false) {
+    init(contextLength: Int, batchSize: Int = 512, physicalBatchSize: Int? = nil, wantsVision: Bool = false) {
         self.contextLength = contextLength
         self.batchSize = batchSize
+        self.physicalBatchSize = physicalBatchSize
         self.wantsVision = wantsVision
     }
 }

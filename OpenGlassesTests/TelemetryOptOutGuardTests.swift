@@ -172,6 +172,10 @@ final class TelemetryOptOutGuardTests: XCTestCase {
         XCTAssertEqual(privacyCopy.components(separatedBy: sentence).count - 1, 2,
                        "both Privacy footers (phone-only and glasses builds) disclose the seat check")
         XCTAssertFalse(privacyCopy.contains("no developer backend"))
+        // Plan ND P3: the feedback the app writes for the company's MDM is disclosed in both footers.
+        let mdm = "A phone your organisation manages through device management (MDM) tells that MDM which version of your organisation's settings it has, whether it is enrolled, and the app build; this goes only to your organisation's own MDM, never to Avenkin."
+        XCTAssertEqual(privacyCopy.components(separatedBy: mdm).count - 1, 2,
+                       "both Privacy footers disclose what the app tells the company's MDM")
 
         XCTAssertEqual(NetworkRoute.licenceSeatLease.dataClasses, [.deviceIdentifier])
         XCTAssertTrue(NetworkRouteRegistry.requiredPrivacyManifestTypes.contains("NSPrivacyCollectedDataTypeDeviceID"))

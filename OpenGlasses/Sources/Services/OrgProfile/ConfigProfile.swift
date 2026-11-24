@@ -385,8 +385,8 @@ enum ProfileSource: String, Codable, CaseIterable, Sendable {
     case licence
     /// Vendor-signed licence and profile delivered inline from an approved Avenkin office.
     case office
-    /// Managed App Configuration written by an MDM. **No reader ships yet** (Plan CT, decided
-    /// 2026-09-24); the case exists so removal and precedence are built and tested for it now.
+    /// Managed App Configuration written by an MDM, read by `ManagedConfigIngress` (Plan ND P3;
+    /// Plan CT built removal and precedence for it).
     case managedConfig
 
     /// The key a Managed App Configuration dictionary (`com.apple.configuration.managed`) carries
@@ -405,9 +405,10 @@ enum ProfileDelivery: Equatable, Sendable {
     case pointer(URL)
 }
 
-/// The seam every way a profile arrives plugs into — the link, the scanner and, later, the MDM
-/// reader. An adapter yields deliveries and its source and nothing else: verification and apply
-/// live in one place, so a new ingress adds no trust path of its own.
+/// The seam every way a profile arrives plugs into — the link, the scanner and the MDM reader
+/// (`ManagedConfigIngress`, Plan ND P3). An adapter yields deliveries and its source and nothing
+/// else: verification and apply live in one place, so a new ingress adds no trust path of its own.
+@MainActor
 protocol ProfileIngress {
     var source: ProfileSource { get }
     func deliveries() -> AsyncStream<ProfileDelivery>

@@ -1,8 +1,8 @@
 # Plan ND — Company Settings from the Portal (the administrator sets them once, every phone that joins follows)
 
-**Status:** 🚧 P0, P1 and P2 built 2026-11-24 (see [As built](#as-built)), on the recommended answer to each of
-the 15 [decisions](#decisions-for-greig), which stay the owner's to change. Owed: P3 (the MDM reader), P4 (the
-portal, private repository), P5 (catalog sync), P6 (device pass).
+**Status:** 🚧 P0, P1, P2 and P3 built 2026-11-24 (see [As built](#as-built)), on the recommended answer to each
+of the 15 [decisions](#decisions-for-greig), which stay the owner's to change. Owed: P4 (the portal, private
+repository), P5 (catalog sync), P6 (device pass).
 **Track:** Field Assist — fleet. The organisation profile, the licence portal, onboarding, Managed App
 Configuration.
 **Builds on:** Plan [CT](CT-org-configuration-profiles.md) (the signed profile, `SettingKey` and its directions,
@@ -463,3 +463,66 @@ every page is the shipping one. The new UI test is in the `conversation-setup` g
 **Strings owed to the catalog (P5):** *Choose your assistant*, *Your company offers these.*, *On this iPhone*, the
 three choice details, *Language*, *Avenkin speaks …, like your phone.* and its plain form, *Change* and its hint,
 and the review's sealed-key footer.
+
+### P3 (2026-11-24)
+
+**The reader** (`ManagedConfigIngress.swift`). `ManagedConfigIngress`, the third `ProfileIngress` (the protocol is
+now main-actor), reads `com.apple.configuration.managed` at launch, on every foreground, and on
+`UserDefaults.didChangeNotification` when the dictionary itself changed (the app writes defaults all the time, so
+an unchanged dictionary hands nothing over). It hands each `ManagedConfigReading` to `ManagedConfigEnrolment`,
+started from `AppState` beside the profile's renewal.
+
+**What a delivery does** (`OrgProfileManager.receiveManagedDelivery`). An MDM's profile applies with no review
+sheet: device management is the company's decision for the phone. It goes through the same verification and
+apply as every other path.
+- An address already in force is not fetched again; it renews like a link. An inline document already in
+  force does nothing. A new inline document renews the lease, so the inline lease runs from each push.
+- The same company's profile keeps the enrolment in force, whatever path made it, and its source becomes
+  `.managedConfig` (`OrgEnrolmentRecord.source` is now a `var`). It then renews like a fetched copy: the
+  generation gate, the hold for an open job, and the follow rule.
+- Another company's profile wins as a move. The one in force is left first, and the log reports it
+  (`managedMoved`). An MDM may also move its own phone to another company. Every other path still refuses a
+  device-managed phone (`managedByDevice`), and *Remove Profile* still does too.
+
+**The activation key** (decision 11). When the phone holds no company secret, the key is looked up once per
+reading. Its licence goes into a new enrolment as the entered licence, so a different company's key is refused
+there. The secret is kept only if `acceptsCompanySecret(forLicence:)` finds the same licensee as the company in
+force. The sealed credentials and the AI key then open without anyone typing the key. If the lookup fails
+offline, it is tried again at the next read.
+
+**Removal** (decision 12). `ManagedConfigAbsence` is stored at `managedConfigAbsence`. One empty read records
+the time and the launch. The phone leaves (`leaveDeviceManagement`, which is the owner's removal, records
+delivered first) only at a read 10 minutes later or in another launch. An `orgProfile` that is present but
+unreadable is not absence, and an empty dictionary never removes a profile that a person enrolled.
+
+**Feedback** (decision 13). `ManagedConfigFeedback` writes `profileId`, `profileGeneration`, `enrolmentState`
+(`notEnrolled`, `enrolled`, `waitingForJob`, `awaitingModelKey`, `lapsed`, `revoked`, `notVerified`) and `build`
+to `com.apple.feedback.managed`. It writes only on a phone an MDM configures or configured, and only when the
+values changed, since a write is itself a change notification. Both Privacy footers in Settings say what is
+sent and that it goes only to the company's MDM; `TelemetryOptOutGuardTests` holds both footers to it. The
+data-store registry's organisation record names the two new stores.
+
+**Log.** The `companyProfile` channel adds `managedEnrolled`, `managedRenewed`, `managedMoved`, `managedAbsent`,
+`managedLeft`, `managedIgnoredKeys` (a count, never the names), `managedUnreadable`, `managedFetchFailed` and
+`managedRefused`, each with a closed vocabulary in `operation`.
+
+**Tests:** `ManagedConfigIngressTests` covers:
+- an address that enrols and is not fetched again;
+- the feedback, written only when it changes, and none on a phone no MDM configures;
+- an inline change, then an older copy refused;
+- a key enrolment that keeps its id when the MDM delivers the same company;
+- a generation held for a job;
+- one empty read, then two reads 10 minutes apart, which leave;
+- absence across a relaunch;
+- a profile that comes back, which resets the clock;
+- an unreadable value, which is not absence;
+- a person's enrolment, which an empty dictionary never removes;
+- another company under management, which wins;
+- the MDM moving its own phone;
+- other paths, still refused;
+- an activation key, kept for the same company only;
+- ignored keys;
+- the ingress handing over a reading only when the dictionary changed.
+
+**Strings owed to the catalog (P5):** the Privacy footer's new sentence (both footers).
+

@@ -309,8 +309,9 @@ final class LocalToolEvalCorpusTests: XCTestCase {
     }
 
     func testAToolOnARestraintCaseFails() async throws {
+        // A call the loop's screen leaves alone (a job started on "Morning!" is screened now).
         let run = try await runCase("chat-morning", script: [
-            #"<tool_call>{"name": "field_session", "arguments": {"action": "start"}}</tool_call>"#, "Started.",
+            #"<tool_call>{"name": "evidence", "arguments": {"action": "keep"}}</tool_call>"#, "Kept.",
         ])
         XCTAssertEqual(run.grades[.toolName], false)
     }

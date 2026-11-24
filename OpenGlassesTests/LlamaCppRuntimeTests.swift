@@ -418,6 +418,8 @@ final class LlamaCppRuntimeTests: XCTestCase {
         XCTAssertEqual(overridden.penaltyRepeat, 1.3)
         // Untouched values keep the app default rather than whatever the engine ships.
         XCTAssertEqual(overridden.minP, LlamaSamplerOptions.defaultMinP)
+        XCTAssertEqual(overridden.penaltyPresence, 0)
+        XCTAssertEqual(LlamaSamplerOptions(LocalSamplingConfiguration(presencePenalty: 1.5)).penaltyPresence, 1.5)
     }
 
     // MARK: - ABI constants restated in Swift

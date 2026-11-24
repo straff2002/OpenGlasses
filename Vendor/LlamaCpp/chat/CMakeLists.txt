@@ -10,8 +10,8 @@
 # at the pinned revision (everything it leaves open is defined by libllama or the system). The
 # build script then checks the merged archive for network symbols and fails if any appear.
 #
-# Left out, deliberately: arg, console, debug, download, hf-cache, http, imatrix-loader,
-# llguidance, preset, subproc. Adding a source here changes BUILD-INFO's options fingerprint.
+# Left out, deliberately: arg, console, debug, download, file-lock, hf-cache, http,
+# imatrix-loader, llguidance, preset, subproc. Adding a source here changes BUILD-INFO's options fingerprint.
 cmake_minimum_required(VERSION 3.14...3.28)
 project(og-llama-chat CXX)
 
@@ -32,6 +32,7 @@ set(OG_LLAMA_CHAT_SOURCES
     chat-auto-parser-helpers.cpp
     chat-diff-analyzer.cpp
     chat-peg-parser.cpp
+    chat-tts-norm.cpp
     common.cpp
     fit.cpp
     jinja/caps.cpp
@@ -41,6 +42,7 @@ set(OG_LLAMA_CHAT_SOURCES
     jinja/string.cpp
     jinja/value.cpp
     json-schema-to-grammar.cpp
+    json-schema.cpp
     json.cpp
     log.cpp
     ngram-cache.cpp
@@ -54,6 +56,13 @@ set(OG_LLAMA_CHAT_SOURCES
     unicode.cpp
 )
 list(TRANSFORM OG_LLAMA_CHAT_SOURCES PREPEND "${LLAMA_SOURCE_DIR}/common/")
+
+# Since v1.0.0 each family with a dedicated handler (Gemma 4, Qwen 3.5's XML calls, LFM2 …) has its
+# own source under common/parsers/, listed by upstream in sources.cmake (absolute paths). They are
+# all chat code, reached through chat.cpp's handler table, so the whole list is taken as upstream
+# keeps it rather than copied here.
+include("${LLAMA_SOURCE_DIR}/common/parsers/sources.cmake")
+list(APPEND OG_LLAMA_CHAT_SOURCES ${LLAMA_CHAT_PARSERS_SOURCES})
 
 # common.cpp reports a build number and commit. Upstream asks git for them at configure time;
 # fixed values from REVISION keep the bytes independent of the checkout's history and the machine.

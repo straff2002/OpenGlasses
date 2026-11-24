@@ -1,8 +1,8 @@
-revision=c1d0e7a004015f23bc0233470b747b596f29b264
-tag=v0.3.0
+revision=b1b770d90d94cad9e9ea5b993bdbc383a522fb28
+tag=v1.0.0
 ios_deployment_target=26.0
 simulator_architectures=arm64;x86_64
-options_digest=0ab88680f22ca9ebd4ab5bce8331b2b72690fae011d651d8dd5725dc962fddba
+options_digest=8ffacd0070189ce0102c7560724cc98f33387ceffc9905373c275505acc0b97f
 xcodebuild=Xcode 26.6 Build version 17F113
 cmake=cmake version 4.5.0
 build_root=/Users/runner/work/OpenGlasses/OpenGlasses

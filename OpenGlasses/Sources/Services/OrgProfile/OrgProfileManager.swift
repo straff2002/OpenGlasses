@@ -8,7 +8,9 @@ import Combine
 struct OrgEnrolmentRecord: Codable, Equatable, Sendable {
     /// The signed document exactly as it was verified. Replaced by each renewal.
     var document: String
-    let source: ProfileSource
+    /// Plan ND P3: a phone enrolled by key whose MDM then delivers the same company's profile keeps
+    /// its enrolment, and its source becomes `.managedConfig`.
+    var source: ProfileSource
     /// A random id for this enrolment, shown on the managed row. Plan CT PR 4 revokes by it.
     let enrolmentId: String
     let enrolledAt: Date
@@ -436,7 +438,8 @@ final class OrgProfileManager: ObservableObject {
         }
         var move: OrgProfileReview.Move?
         if let current = profile, current.profileId != verified.profileId {
-            if let currentRecord = record, !currentRecord.source.isLocallyRemovable {
+            // Device management's own profile is moved away from only by device management.
+            if let currentRecord = record, !currentRecord.source.isLocallyRemovable, source != .managedConfig {
                 return .failure(.managedByDevice(current.organizationName))
             }
             guard allowingMove, let currentRecord = record else {
@@ -522,7 +525,7 @@ final class OrgProfileManager: ObservableObject {
         // the enrolment it was reviewed against.
         var leaving: OrgEnrolmentRecord?
         if let current = profile, current.profileId != review.profile.profileId {
-            if let currentRecord = record, !currentRecord.source.isLocallyRemovable {
+            if let currentRecord = record, !currentRecord.source.isLocallyRemovable, review.source != .managedConfig {
                 return .failure(.managedByDevice(current.organizationName))
             }
             guard let move = review.move, let currentRecord = record else {
@@ -1223,6 +1226,139 @@ final class OrgProfileManager: ObservableObject {
     /// Remove the profile: lift the ceiling, put back the person's own starting values, and clear
     /// the licence only if this profile put it there. The caller has already obtained the device
     /// owner's grant. (Erasing the organisation's content on the way out is Plan CT PR 4.)
+    // MARK: - Device management (Plan ND P3)
+
+    /// What became of a profile device management delivered.
+    enum ManagedDeliveryOutcome: Equatable {
+        /// A new enrolment, on a phone no company managed.
+        case enrolled
+        /// The managed layer won over another company's profile, which was left first. Reported.
+        case moved(from: String)
+        /// The company's profile in force, renewed from the delivery (or adopted as device-managed).
+        case renewed
+        /// A newer generation, held for the open job; the lease renewed from it.
+        case held
+        /// The delivery is the copy already in force.
+        case unchanged
+        /// The delivery revoked this phone.
+        case revoked
+        case refused(Refusal)
+    }
+
+    /// Whether `delivery` is what device management already put in force, so it need not be fetched
+    /// or verified again: the same address (which then renews like a link), or the same document.
+    func managedDeliveryIsInForce(_ delivery: ProfileDelivery) -> Bool {
+        guard let current = record, current.source == .managedConfig, profile != nil else { return false }
+        switch delivery {
+        case .pointer(let url): return current.profileURL == url
+        case .inline(let text): return current.document == text || current.heldProfileDocument == text
+        }
+    }
+
+    /// A profile device management delivered: verified and applied without a review sheet, since
+    /// the company's device management is the company's own decision for this phone. Verification
+    /// and apply are the ones every other path uses.
+    ///
+    /// - The same company's profile keeps the enrolment in force, whatever path made it, and its
+    ///   source becomes `.managedConfig`; it then renews exactly as a fetched copy does (the
+    ///   generation gate, the hold for an open job, the follow rule).
+    /// - Another company's profile wins (Plan CT precedence): the one in force is left first, as a
+    ///   move, and the outcome says so.
+    /// - An inline document has no address: the lease runs from each push of a new one.
+    func receiveManagedDelivery(_ document: String, sourceURL: URL?,
+                                enteredLicence: String? = nil) -> ManagedDeliveryOutcome {
+        if let current = record, current.source == .managedConfig, profile != nil,
+           current.document == document || current.heldProfileDocument == document,
+           sourceURL == nil || sourceURL == current.profileURL {
+            return .unchanged
+        }
+        let verified: ProfileVerification.Document
+        do {
+            verified = try ProfileVerification.verify(document, keys: seams.verificationKeys)
+        } catch let failure as ProfileVerification.Failure {
+            return .refused(.verification(failure))
+        } catch {
+            return .refused(.verification(.malformed))
+        }
+        let incoming: ConfigProfile
+        switch verified {
+        case .revocation(let revocation):
+            guard let profile, revocation.profileId == profile.profileId, record?.revoked != true else {
+                return .refused(.revocation)
+            }
+            markRevoked()
+            evaluateLease()
+            return .revoked
+        case .profile(let profile):
+            incoming = profile
+        }
+
+        if var current = record, let inForce = profile, inForce.profileId == incoming.profileId {
+            guard current.revoked != true else { return .unchanged }
+            let verdict = ProfileGenerationGate.judge(incoming: incoming.profileGeneration,
+                                                      highWater: current.profileGenerationHighWater)
+            if verdict == .stale {
+                PrivacyLog.transfer(.companyProfile, .staleRefused,
+                                    version: PrivacyToken(incoming.profileGeneration.map(String.init) ?? "none"))
+                return .refused(.staleProfile)
+            }
+            if (incoming.revokedEnrolmentIds ?? []).contains(current.enrolmentId) {
+                markRevoked()
+                evaluateLease()
+                return .revoked
+            }
+            current.source = .managedConfig
+            if let sourceURL { current.profileURL = sourceURL }
+            seams.saveRecord(current)
+            record = current
+            if verdict == .newer, seams.activeJobId() != nil, current.lapseErasedAt == nil {
+                holdForJob(document, generation: incoming.profileGeneration)
+                evaluateLease()
+                return .held
+            }
+            renew(with: incoming, document: document)
+            evaluateLease()
+            return .renewed
+        }
+
+        switch review(document: document, source: .managedConfig, sourceURL: sourceURL,
+                      enteredLicence: enteredLicence, allowingMove: true) {
+        case .failure(let refusal):
+            return .refused(refusal)
+        case .success(let reviewed):
+            switch apply(reviewed) {
+            case .failure(let refusal): return .refused(refusal)
+            case .success: return reviewed.move.map { .moved(from: $0.organizationName) } ?? .enrolled
+            }
+        }
+    }
+
+    /// Device management took its profile away, and `ManagedConfigAbsence` confirmed it: leave the
+    /// company exactly as removal does (its records delivered first). Nothing else may call this —
+    /// *Remove Profile* is still refused for a device-managed profile.
+    @discardableResult
+    func leaveDeviceManagement() -> Bool {
+        guard let current = record, current.source == .managedConfig else { return false }
+        leave(current, keepingPackFor: nil)
+        return true
+    }
+
+    /// Whether an activation key's licence belongs to the company in force, so the company secret
+    /// that came with it may be kept: the same licensee as the profile's own licence, or as the
+    /// licence its enrolment activated.
+    func acceptsCompanySecret(forLicence code: String) -> Bool {
+        guard let profile, let current = record, current.revoked != true,
+              let entered = try? LicenseService.decode(code: code, publicKeyBase64: seams.licenceKey) else {
+            return false
+        }
+        for candidate in [profile.licenceCode, current.activatedLicenceCode, seams.storedLicenceCode()] {
+            guard let candidate,
+                  let payload = try? LicenseService.decode(code: candidate, publicKeyBase64: seams.licenceKey) else { continue }
+            return payload.licensee == entered.licensee
+        }
+        return false
+    }
+
     func remove() -> Result<Void, Refusal> {
         guard let current = record else { return .success(()) }
         guard current.source.isLocallyRemovable else { return .failure(.notRemovable) }

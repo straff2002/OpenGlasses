@@ -45,6 +45,18 @@ struct LlamaChatParserHandle: Hashable, Sendable {
     init(bits: UInt) { self.bits = bits }
 }
 
+/// A copy of a context's sequence state, held in host memory (Plan MQ, the Qwen prefix snapshot).
+struct LlamaStateSnapshotHandle: Hashable, Sendable {
+    let bits: UInt
+    init(bits: UInt) { self.bits = bits }
+}
+
+/// A saved snapshot and its size.
+struct LlamaStateSnapshot: Hashable, Sendable {
+    let handle: LlamaStateSnapshotHandle
+    let bytes: Int
+}
+
 // MARK: - Options
 
 struct LlamaModelOptions: Hashable, Sendable {
@@ -70,12 +82,15 @@ struct LlamaModelOptions: Hashable, Sendable {
 struct LlamaContextOptions: Hashable, Sendable {
     let contextTokens: Int
     let batchTokens: Int
+    /// The physical batch (`n_ubatch`), capped at `batchTokens`; nil keeps the engine's default.
+    let physicalBatchTokens: Int?
     /// Keep the KV cache on the GPU. Off trades speed for headroom.
     let offloadKVCache: Bool
 
-    init(contextTokens: Int, batchTokens: Int, offloadKVCache: Bool = true) {
+    init(contextTokens: Int, batchTokens: Int, physicalBatchTokens: Int? = nil, offloadKVCache: Bool = true) {
         self.contextTokens = contextTokens
         self.batchTokens = batchTokens
+        self.physicalBatchTokens = physicalBatchTokens
         self.offloadKVCache = offloadKVCache
     }
 }
@@ -100,6 +115,9 @@ struct LlamaSamplerOptions: Hashable, Sendable {
     var minP: Float
     var penaltyWindow: Int32
     var penaltyRepeat: Float
+    /// Subtracted once from every token already in the penalty window (llama.cpp's
+    /// `penalty_present`); 0 is off, the default when an entry names none.
+    var penaltyPresence: Float
 
     init(seed: UInt32 = LlamaSamplerOptions.randomSeed,
          temperature: Float = 0.7,
@@ -107,7 +125,8 @@ struct LlamaSamplerOptions: Hashable, Sendable {
          topP: Float = 0.9,
          minP: Float = LlamaSamplerOptions.defaultMinP,
          penaltyWindow: Int32 = LlamaSamplerOptions.defaultPenaltyWindow,
-         penaltyRepeat: Float = LlamaSamplerOptions.defaultRepeatPenalty) {
+         penaltyRepeat: Float = LlamaSamplerOptions.defaultRepeatPenalty,
+         penaltyPresence: Float = 0) {
         self.seed = seed
         self.temperature = temperature
         self.topK = topK
@@ -115,6 +134,7 @@ struct LlamaSamplerOptions: Hashable, Sendable {
         self.minP = minP
         self.penaltyWindow = penaltyWindow
         self.penaltyRepeat = penaltyRepeat
+        self.penaltyPresence = penaltyPresence
     }
 
     /// Translate the seam's request-level configuration, filling every value the caller left open
@@ -129,7 +149,8 @@ struct LlamaSamplerOptions: Hashable, Sendable {
                   topP: sampling.topP,
                   minP: sampling.minP ?? Self.defaultMinP,
                   penaltyWindow: Self.defaultPenaltyWindow,
-                  penaltyRepeat: sampling.repetitionPenalty ?? Self.defaultRepeatPenalty)
+                  penaltyRepeat: sampling.repetitionPenalty ?? Self.defaultRepeatPenalty,
+                  penaltyPresence: sampling.presencePenalty ?? 0)
     }
 }
 
@@ -247,6 +268,17 @@ protocol LlamaEngine: Sendable {
     /// kept — `tokens`, or 0 when the cache cannot be cut back there and was cleared instead.
     func keepPrefix(_ context: LlamaContextHandle, tokens: Int) -> Int
 
+    // Prefix snapshots (Plan MQ) — for a model whose cache cannot be cut back
+
+    /// False for a recurrent or hybrid model (Qwen 3.5): `keepPrefix` can never keep anything, so a
+    /// shared start is carried by a state snapshot instead.
+    func memoryCanTrim(_ model: LlamaModelHandle) -> Bool
+    /// Copies the context's sequence state; throws `allocationFailed` past `maximumBytes`.
+    func saveState(_ context: LlamaContextHandle, maximumBytes: Int) throws -> LlamaStateSnapshot
+    /// Puts a snapshot's state back. False when it could not: the sequence is then empty.
+    func restoreState(_ context: LlamaContextHandle, _ snapshot: LlamaStateSnapshotHandle) -> Bool
+    func freeState(_ snapshot: LlamaStateSnapshotHandle)
+
     // Chat templates and tool calls (Plan MQ P2) — llama.cpp's `common/chat`, as JSON text
 
     /// One token's bytes with control tokens rendered when `renderSpecial`: a tool turn needs the
@@ -259,7 +291,9 @@ protocol LlamaEngine: Sendable {
     func freeChatTemplates(_ templates: LlamaChatTemplatesHandle)
     /// `LlamaChatRequest` JSON in, `LlamaChatRender` JSON out.
     func renderChat(_ templates: LlamaChatTemplatesHandle, requestJSON: String) throws -> String
-    func createChatParser(renderJSON: String) throws -> LlamaChatParserHandle
+    /// A parser for the completions of `requestJSON`'s render. The request, not the render: since
+    /// llama.cpp v1.0.0 the family's parser exists only in memory, so it is built from a render.
+    func createChatParser(_ templates: LlamaChatTemplatesHandle, requestJSON: String) throws -> LlamaChatParserHandle
     func freeChatParser(_ parser: LlamaChatParserHandle)
     /// A completion as `LlamaChatParsed` JSON; throws `parseFailed` when it is not the family's format.
     func parseChat(_ parser: LlamaChatParserHandle, text: String, partial: Bool) throws -> String
@@ -280,6 +314,20 @@ extension LlamaEngine {
         tokenBytes(model, token: token)
     }
 
+    /// An engine that does not say otherwise is cut back as before (the trim path).
+    func memoryCanTrim(_ model: LlamaModelHandle) -> Bool { true }
+
+    func saveState(_ context: LlamaContextHandle, maximumBytes: Int) throws -> LlamaStateSnapshot {
+        throw LlamaEngineError.invalidArgument
+    }
+
+    func restoreState(_ context: LlamaContextHandle, _ snapshot: LlamaStateSnapshotHandle) -> Bool {
+        clearMemory(context)
+        return false
+    }
+
+    func freeState(_ snapshot: LlamaStateSnapshotHandle) {}
+
     func chatTemplates(_ model: LlamaModelHandle) throws -> LlamaChatTemplatesHandle {
         throw LlamaEngineError.noChatTemplate
     }
@@ -294,7 +342,7 @@ extension LlamaEngine {
         throw LlamaEngineError.templateFailed
     }
 
-    func createChatParser(renderJSON: String) throws -> LlamaChatParserHandle {
+    func createChatParser(_ templates: LlamaChatTemplatesHandle, requestJSON: String) throws -> LlamaChatParserHandle {
         throw LlamaEngineError.templateFailed
     }
 

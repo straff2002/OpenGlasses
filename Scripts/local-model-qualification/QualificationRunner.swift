@@ -10,6 +10,9 @@ import UIKit
 ///     --apple              Apple's on-device model instead, as the baseline
 ///     --gguf <id>          a GGUF catalog model instead, on the GGUF runtime (Plan MQ P2), its
 ///                          weights file already in Documents/gguf/ (see README.md)
+///     --gguf-batch <n>     a GGUF run's prefill batch, logical and physical (n_batch and n_ubatch),
+///                          for this run only (default the app's: 512 logical, the engine's 512
+///                          physical); the record names it
 ///     --repeats <n>        runs per case (default 3)
 ///     --groups <a,b>       case groups (default fieldAssist, with the restraint and
 ///                          not-in-the-manual categories beside it); `all` for every case
@@ -30,6 +33,8 @@ final class QualificationRunner: ObservableObject {
         var apple = false
         /// Plan MQ P2: a GGUF catalog id, run on `LlamaCppLocalInferenceBackend`.
         var ggufModelID: String?
+        /// Plan MQ: a GGUF run's prefill batch (`n_batch` and `n_ubatch`), to compare on a phone.
+        var ggufBatch: Int?
         var repeats = 3
         var selection = LocalToolEval.Selection.qualification
         var policy = QualificationRunGate.Policy.unattended
@@ -58,6 +63,7 @@ final class QualificationRunner: ObservableObject {
                 case "--model": if let v = value() { options.modelID = v }
                 case "--apple": options.apple = true
                 case "--gguf": if let v = value() { options.ggufModelID = v }
+                case "--gguf-batch": if let v = value().flatMap(Int.init), v > 0 { options.ggufBatch = v }
                 case "--repeats": if let v = value().flatMap(Int.init), v > 0 { options.repeats = v }
                 case "--limit": if let v = value().flatMap(Int.init), v >= 0 { options.selection.limit = v }
                 case "--settle": if let v = value().flatMap(Double.init), v >= 0 { options.policy.settleSeconds = v }
@@ -399,8 +405,11 @@ final class QualificationRunner: ObservableObject {
         record?.memory.fits = fit.fits
         status = "Loading the model"
         let loadStarted = Date()
-        _ = try await gguf.load(installation, configuration: LocalLoadConfiguration(
-            contextLength: entry.descriptor.contextLength))
+        // `--gguf-batch` sets both batches; without it the load is the app's own.
+        let configuration = options.ggufBatch.map {
+            LocalLoadConfiguration(contextLength: entry.descriptor.contextLength, batchSize: $0, physicalBatchSize: $0)
+        } ?? LocalLoadConfiguration(contextLength: entry.descriptor.contextLength)
+        _ = try await gguf.load(installation, configuration: configuration)
         record?.timing.loadSeconds = Date().timeIntervalSince(loadStarted)
         record?.memory.footprintAfterLoadBytes = MemoryHeadroom.appFootprintBytes()
         modelLoaded = true
@@ -467,7 +476,9 @@ final class QualificationRunner: ObservableObject {
             window: .init(ordinaryTokens: LocalModelBudget.contextWindow(for: options.apple ? nil : options.modelID),
                           toolTurnTokens: window.tokens, reason: window.reason.rawValue,
                           toolTurnPromptBudget: LocalModelBudget.promptBudget(for: options.modelID,
-                                                                             contextWindow: window.tokens)))
+                                                                             contextWindow: window.tokens),
+                          ggufBatchTokens: gguf == nil ? nil
+                              : options.ggufBatch ?? LlamaCppLocalInferenceBackend.defaultBatchTokens))
     }
 
     /// The tool-turn window for `modelID`: `LocalModelBudget.toolTurnContextWindow` with native tool

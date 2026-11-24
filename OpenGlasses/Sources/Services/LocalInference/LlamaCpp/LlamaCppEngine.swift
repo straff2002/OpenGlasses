@@ -212,6 +212,7 @@ final class LlamaCppEngine: LlamaEngine, @unchecked Sendable {
         native.n_batch = UInt32(max(1, options.batchTokens))
         // The physical batch never exceeds the logical one; a larger ubatch would allocate compute
         // buffers for work that can never arrive.
+        if let physical = options.physicalBatchTokens { native.n_ubatch = UInt32(max(1, physical)) }
         native.n_ubatch = min(native.n_ubatch, native.n_batch)
         native.offload_kqv = options.offloadKVCache
 
@@ -272,6 +273,7 @@ final class LlamaCppEngine: LlamaEngine, @unchecked Sendable {
         native.min_p = options.minP
         native.penalty_last_n = options.penaltyWindow
         native.penalty_repeat = options.penaltyRepeat
+        native.penalty_presence = options.penaltyPresence
 
         var handle: OpaquePointer?
         let status = withUnsafePointer(to: &native) { optionsPointer in
@@ -302,6 +304,29 @@ final class LlamaCppEngine: LlamaEngine, @unchecked Sendable {
 
     func keepPrefix(_ context: LlamaContextHandle, tokens: Int) -> Int {
         Int(og_llama_context_keep_prefix(self.context(context), Int32(clamping: tokens)))
+    }
+
+    // MARK: - Prefix snapshots (Plan MQ)
+
+    func memoryCanTrim(_ model: LlamaModelHandle) -> Bool {
+        og_llama_model_memory_can_trim(self.model(model))
+    }
+
+    func saveState(_ context: LlamaContextHandle, maximumBytes: Int) throws -> LlamaStateSnapshot {
+        var handle: OpaquePointer?
+        let status = og_llama_state_snapshot_save(self.context(context), Int64(maximumBytes), &handle)
+        guard status == OGLlamaStatusOK, let handle else { throw Self.error(status) }
+        return LlamaStateSnapshot(handle: LlamaStateSnapshotHandle(bits: UInt(bitPattern: handle)),
+                                  bytes: Int(og_llama_state_snapshot_size(handle)))
+    }
+
+    func restoreState(_ context: LlamaContextHandle, _ snapshot: LlamaStateSnapshotHandle) -> Bool {
+        og_llama_state_snapshot_restore(self.context(context), OpaquePointer(bitPattern: snapshot.bits))
+            == OGLlamaStatusOK
+    }
+
+    func freeState(_ snapshot: LlamaStateSnapshotHandle) {
+        og_llama_state_snapshot_free(OpaquePointer(bitPattern: snapshot.bits))
     }
 
     // MARK: - Chat templates and tool calls (Plan MQ P2)
@@ -336,9 +361,9 @@ final class LlamaCppEngine: LlamaEngine, @unchecked Sendable {
         }
     }
 
-    func createChatParser(renderJSON: String) throws -> LlamaChatParserHandle {
+    func createChatParser(_ templates: LlamaChatTemplatesHandle, requestJSON: String) throws -> LlamaChatParserHandle {
         var handle: OpaquePointer?
-        let status = og_llama_chat_parser_create(renderJSON, &handle)
+        let status = og_llama_chat_parser_create(OpaquePointer(bitPattern: templates.bits), requestJSON, &handle)
         guard status == OGLlamaStatusOK, let handle else { throw Self.error(status) }
         return LlamaChatParserHandle(bits: UInt(bitPattern: handle))
     }
