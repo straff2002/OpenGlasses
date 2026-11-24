@@ -1,9 +1,10 @@
 # Plan NE — Settings Search and Pins (find any screen or setting by typing, and keep the ones you use most at the top)
 
-**Status:** 🚧 P0–P2 being built 2026-11-25 in one PR, on the recommended answers below (still the
-owner's to change). P3 (the catalog sync and translation of the new words) follows as its own PR, as
-every string sync does. P4 (bring a found setting into view on its screen, with a brief highlight) is
-deferred.
+**Status:** 🚧 P0–P2 built 2026-11-25 (headless: focused suites green; Release build owed — not run, the machine was out of disk); P3 catalog
+sync + translation owed as its own PR; P4 deferred. Built on the recommended answers below (still
+the owner's to change). The index holds 172 entries: 87 screens (15 categories' own screens and 72
+screens inside them) and 85 individual settings. See "As built" at the end for where the build
+differs from the design.
 
 ## Why
 
@@ -160,3 +161,44 @@ used P1.
 
 Searching content (manuals, memories, notes); voice search of settings ("open blur faces settings"
 is a later tool); syncing pins across devices.
+
+## As built (2026-11-25)
+
+Files: `Services/SettingsHub/SettingsIndex.swift` (entries, gates, destinations, conditions,
+`visible(in:)`, `opens(_:in:)`, breadcrumbs), `SettingsSearch.swift`, `SettingsPins.swift`
+(`SettingsPins`, `SettingsPinStore`); `App/Views/SettingsSearchViews.swift` (the search field
+modifier, results page, Pinned section, `SettingsIndexDestinationScreen`); `SettingsView.swift`
+(body split into the search/hub swap and `hub`); tests `SettingsIndexTests`, `SettingsSearchTests`,
+`SettingsPinsTests`.
+
+Where it differs from the design above:
+
+- **`SettingsDestination` is two-level**: `.category(SettingsCategoryID)` and
+  `.screen(SettingsScreenID)`, with `SettingsScreenID` a `CaseIterable` enum of the 72 screens. This
+  keeps "every destination has an entry" and "the view switch builds each screen" testable without a
+  hand-kept `allCases`. The view switch over `SettingsScreenID` is exhaustive.
+- **`gate` is a list** (`[SettingsIndexGate]`), with more conditions than the design names:
+  `.groupMember(SettingsGroupMemberID)` (an Everyday row, gated by
+  `SettingsGroupCatalog.presentation(of:in:)`, which already combines the category, key, tool and
+  "also opened by" locks), `.categoryVisible(_)` (Display Backend needs Display & HUD visible, as the
+  Glasses page does), `.phoneOnlyBuild` (the teleprompter lives under Hardware & Privacy there),
+  `.fieldAssistOn` (Field Assist's job settings are drawn only while it is on) and
+  `.healthLinkUnderDevices` (Health & Fitness under Devices & Privacy, where Everyday is not on the
+  hub).
+- **An opened result re-checks its screen, not the setting** (`SettingsIndex.opens(_:in:)`): a
+  screen entry for the destination must be visible. A switch moved on that very screen (Agentic
+  Features off, say) does not take the screen away under the person; a lock, Simple Mode or a
+  profile still does. A test holds that every visible entry's screen opens.
+- **Pins are moved among the visible pins**: `move(up:among:)` passes the previous *drawn* pin, so a
+  pin kept while hidden never makes a move look like nothing happened. A full list (8, hidden pins
+  included) disables the pin button on an unpinned result.
+- **The breadcrumb** uses " › " between the hub row and the screens; a category's own screen shows
+  where it sits ("Assistant" for Voice & Triggers, "Settings" for a category that is its own row).
+- Screens built in their parent with the parent's state (Smart Routing, Hardware & Privacy) are
+  built with that state seeded from `Config` the same way, and Hardware & Privacy writes the
+  microphone back on leaving, as Devices & Privacy does.
+- **Not indexed, with reasons in the tests:** the Temple Taps screen's own switch (the screen's
+  entry opens it), the per-trigger Hands-Free switches (the Hands-Free Triggers entry), and the
+  Display & HUD link on the Glasses page (the category's entry). Dynamic rows (per vault, model,
+  add-on, handover) are not indexed; their screens are. Things to Try, About and the Organisation
+  section are on the hub, not behind it.
