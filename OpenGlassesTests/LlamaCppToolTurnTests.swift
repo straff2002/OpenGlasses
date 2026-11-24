@@ -24,6 +24,14 @@ final class LlamaCppToolTurnTests: XCTestCase {
         /// as llama.cpp's fixed list refuses Gemma 4's.
         var legacyTemplateWorks = true
         var chatTemplatesAvailable = true
+        /// False plays a recurrent or hybrid model (Qwen 3.5): the snapshot path (Plan MQ).
+        var canTrim = true
+        /// Whether a restore works.
+        var restoreWorks = true
+        /// A decode at or after this many decode calls throws (an engine fault mid-turn).
+        var failDecodeAfter: Int?
+        /// Each decode sleeps this long, so a cancel can land mid-prefill.
+        var decodeDelay: TimeInterval = 0
 
         private var _generation = -1
         private var _sampleIndex = 0
@@ -32,6 +40,12 @@ final class LlamaCppToolTurnTests: XCTestCase {
         private var _decodes: [(count: Int, position: Int)] = []
         private var _grammarSet = 0
         private var _grammarCleared = 0
+        private var _position = 0
+        private var _nextSnapshot: UInt = 100
+        private var _saved: [(handle: UInt, position: Int)] = []
+        private var _restored: [UInt] = []
+        private var _freed: [UInt] = []
+        private var _cleared = 0
 
         init(templateSource: String) { self.templateSource = templateSource }
 
@@ -40,6 +54,11 @@ final class LlamaCppToolTurnTests: XCTestCase {
         var decodes: [(count: Int, position: Int)] { lock.lock(); defer { lock.unlock() }; return _decodes }
         var grammarSet: Int { lock.lock(); defer { lock.unlock() }; return _grammarSet }
         var grammarCleared: Int { lock.lock(); defer { lock.unlock() }; return _grammarCleared }
+        /// Each snapshot saved, with the position the sequence had reached.
+        var saved: [(handle: UInt, position: Int)] { lock.lock(); defer { lock.unlock() }; return _saved }
+        var restored: [UInt] { lock.lock(); defer { lock.unlock() }; return _restored }
+        var freed: [UInt] { lock.lock(); defer { lock.unlock() }; return _freed }
+        var cleared: Int { lock.lock(); defer { lock.unlock() }; return _cleared }
 
         private static let endOfGeneration: LlamaToken = 9_999
 
@@ -90,12 +109,38 @@ final class LlamaCppToolTurnTests: XCTestCase {
         func freeContext(_ context: LlamaContextHandle) {}
         func contextTokens(_ context: LlamaContextHandle) -> Int { 4096 }
         func batchTokens(_ context: LlamaContextHandle) -> Int { 512 }
-        func clearMemory(_ context: LlamaContextHandle) {}
+        func clearMemory(_ context: LlamaContextHandle) {
+            lock.lock(); _cleared += 1; _position = 0; lock.unlock()
+        }
         func setCancelled(_ context: LlamaContextHandle, _ cancelled: Bool) {}
         func synchronize(_ context: LlamaContextHandle) {}
 
         func decode(_ context: LlamaContextHandle, tokens: [LlamaToken], position: Int, wantsLogitsForLast: Bool) throws {
-            lock.lock(); _decodes.append((tokens.count, position)); lock.unlock()
+            if decodeDelay > 0 { Thread.sleep(forTimeInterval: decodeDelay) }
+            lock.lock(); defer { lock.unlock() }
+            if let failDecodeAfter, _decodes.count >= failDecodeAfter { throw LlamaEngineError.decodeFailed }
+            _decodes.append((tokens.count, position))
+            _position = position + tokens.count
+        }
+
+        func memoryCanTrim(_ model: LlamaModelHandle) -> Bool { canTrim }
+
+        func saveState(_ context: LlamaContextHandle, maximumBytes: Int) throws -> LlamaStateSnapshot {
+            lock.lock(); defer { lock.unlock() }
+            _nextSnapshot += 1
+            _saved.append((_nextSnapshot, _position))
+            return LlamaStateSnapshot(handle: LlamaStateSnapshotHandle(bits: _nextSnapshot), bytes: _position * 1_000)
+        }
+
+        func restoreState(_ context: LlamaContextHandle, _ snapshot: LlamaStateSnapshotHandle) -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            _restored.append(snapshot.bits)
+            if !restoreWorks { _position = 0 }
+            return restoreWorks
+        }
+
+        func freeState(_ snapshot: LlamaStateSnapshotHandle) {
+            lock.lock(); _freed.append(snapshot.bits); lock.unlock()
         }
 
         func createSampler(_ model: LlamaModelHandle, options: LlamaSamplerOptions) throws -> LlamaSamplerHandle {
@@ -169,6 +214,12 @@ final class LlamaCppToolTurnTests: XCTestCase {
             .appendingPathComponent("Fixtures/ChatTemplates/google-gemma-4-31B-it.jinja"), encoding: .utf8)
     }
 
+    /// Qwen 3.5's template: it renders the tools first, ahead of the system prompt.
+    private static func qwenTemplate() throws -> String {
+        try String(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/ChatTemplates/Qwen3.5-4B.jinja"), encoding: .utf8)
+    }
+
     private func loadedBackend(_ engine: ChatFakeEngine) async throws -> LlamaCppLocalInferenceBackend {
         let weights = directory.appendingPathComponent("model.gguf")
         try Data(repeating: 0x47, count: 1024).write(to: weights)
@@ -200,16 +251,24 @@ final class LlamaCppToolTurnTests: XCTestCase {
                                     "unit": ["type": "string", "enum": ["psi", "kPa"]]],
                      "required": ["value"]])
 
+    private static let fieldSessionSpec = OnDeviceToolSchema.localToolSpec(
+        name: "field_session", description: "Open, pause or close the job.",
+        parameters: ["type": "object",
+                     "properties": ["action": ["type": "string", "enum": ["start", "pause", "end"]]],
+                     "required": ["action"]])
+
     /// One pass of the loop, the way `LLMService.sendLocal` sends it through the coordinator.
     private func generate(_ backend: LlamaCppLocalInferenceBackend, history: [LocalToolLoop.Message],
-                          request: LocalToolLoop.GenerationRequest) async throws -> LocalToolLoop.Generation {
+                          request: LocalToolLoop.GenerationRequest,
+                          specs: [[String: Any]] = [readingSpec],
+                          system: String = "You are Avenkin.") async throws -> LocalToolLoop.Generation {
         let toolTurn = LocalToolTurn.forLoopPass(history: history, request: request,
-                                                 toolSpecs: [Self.readingSpec],
-                                                 compactToolSpecs: [Self.readingSpec],
+                                                 toolSpecs: specs,
+                                                 compactToolSpecs: specs,
                                                  fallbackInstructions: "\nUse <tool_call>.")
         let flat = LocalToolTranscript.flattened(request.messages)
         let seam = LocalGenerationRequest(
-            messages: MLXPromptAdapter.compose(systemPrompt: "You are Avenkin.", history: Array(flat.dropLast()),
+            messages: MLXPromptAdapter.compose(systemPrompt: system, history: Array(flat.dropLast()),
                                                userMessage: flat.last?.content ?? ""),
             maxOutputTokens: 128, toolTurn: toolTurn)
         var text = ""
@@ -345,6 +404,22 @@ final class LlamaCppToolTurnTests: XCTestCase {
         XCTAssertTrue(engine.decodes.contains { $0.position == second && $0.count > 1 },
                       "prefill resumes at the kept prefix")
         XCTAssertEqual(engine.decodes.filter { $0.position == 0 }.count, 1, "only the first prompt read from 0")
+        XCTAssertTrue(engine.saved.isEmpty && engine.restored.isEmpty,
+                      "a cache that can be cut back keeps its trim path: no snapshot")
+    }
+
+    func testTheTrimPathReportsATrimmedPrefix() async throws {
+        let engine = ChatFakeEngine(templateSource: try Self.gemmaTemplate())
+        engine.replies = [["One."], ["Two."]]
+        let backend = try await loadedBackend(engine)
+        let first = try await generate(backend, history: [], request: LocalToolLoop.GenerationRequest(
+            messages: [.user("First?")], toolsOffered: true, purpose: .initial, round: 0))
+        let second = try await generate(backend, history: [], request: LocalToolLoop.GenerationRequest(
+            messages: [.user("Second?")], toolsOffered: true, purpose: .initial, round: 0))
+        XCTAssertEqual(first.stats?.promptSource, .fromStart)
+        XCTAssertEqual(second.stats?.promptSource, .trimmedPrefix)
+        XCTAssertEqual(second.stats?.reusedPromptTokens, engine.keepAsked.last)
+        XCTAssertNil(second.stats?.snapshotBytes)
     }
 
     func testACacheThatCannotBeCutBackIsReadFromTheStart() async throws {
@@ -386,6 +461,189 @@ final class LlamaCppToolTurnTests: XCTestCase {
             storage: .managed(directoryName: LocalModelID(id).storageComponent),
             installedAt: Date(timeIntervalSince1970: 0), validatedFiles: [file]),
                                       configuration: LocalLoadConfiguration(contextLength: 4096))
+    }
+
+    // MARK: - Prefix snapshot (Plan MQ), a cache that cannot be cut back
+
+    /// A Qwen 3.5-style backend: its template puts the tools first and its cache cannot be cut back.
+    private func snapshotBackend(_ engine: ChatFakeEngine) async throws -> LlamaCppLocalInferenceBackend {
+        engine.canTrim = false
+        return try await loadedBackend(engine)
+    }
+
+    private func turn(_ backend: LlamaCppLocalInferenceBackend, _ words: String,
+                      system: String = "You are Avenkin.") async throws -> LocalToolLoop.Generation {
+        try await generate(backend, history: [], request: LocalToolLoop.GenerationRequest(
+            messages: [.user(words)], toolsOffered: true, purpose: .initial, round: 0), system: system)
+    }
+
+    func testASnapshotIsSavedAtTheStableStartAndRestoredOnThePromptThatBeginsWithIt() async throws {
+        let engine = ChatFakeEngine(templateSource: try Self.qwenTemplate())
+        engine.replies = [["One."], ["Two."]]
+        let backend = try await snapshotBackend(engine)
+
+        let first = try await turn(backend, "First question?")
+        let saved = try XCTUnwrap(engine.saved.first, "the first prompt saves its stable start")
+        XCTAssertEqual(engine.saved.count, 1)
+        XCTAssertGreaterThanOrEqual(saved.position, LlamaPromptCache.minimumSnapshotTokens)
+        XCTAssertTrue(engine.keepAsked.isEmpty, "the trim is not asked of a cache that cannot be cut back")
+        XCTAssertEqual(first.stats?.promptSource, .fromStart)
+        XCTAssertEqual(first.stats?.snapshotBytes, saved.position * 1_000)
+        XCTAssertLessThan(saved.position, first.stats?.promptTokens ?? 0, "the start, not the whole prompt")
+        XCTAssertTrue(engine.decodes.contains { $0.position + $0.count == saved.position },
+                      "a prefill chunk ends exactly at the stable start, where the state is copied")
+
+        let decodesBefore = engine.decodes.count
+        let second = try await turn(backend, "A different second question?")
+        XCTAssertEqual(engine.restored, [saved.handle], "the second prompt begins with it: restored")
+        let secondDecodes = engine.decodes.dropFirst(decodesBefore)
+        XCTAssertEqual(secondDecodes.first?.position, saved.position, "prefill starts at the snapshot's length")
+        XCTAssertFalse(secondDecodes.contains { $0.position == 0 }, "nothing re-read from 0")
+        XCTAssertEqual(second.stats?.promptSource, .restoredSnapshot)
+        XCTAssertEqual(second.stats?.reusedPromptTokens, saved.position)
+        XCTAssertEqual(engine.saved.count, 1, "the same start: kept, not saved again")
+        XCTAssertTrue(engine.freed.isEmpty)
+    }
+
+    func testASnapshotIsNotRestoredWhenThePromptStartsDifferently() async throws {
+        let engine = ChatFakeEngine(templateSource: try Self.qwenTemplate())
+        engine.replies = [["One."], ["Two."]]
+        let backend = try await snapshotBackend(engine)
+        _ = try await turn(backend, "First question?")
+        let old = try XCTUnwrap(engine.saved.first)
+
+        let decodesBefore = engine.decodes.count
+        let second = try await turn(backend, "Second?", system: "You are Avenkin, on a different job today.")
+        XCTAssertTrue(engine.restored.isEmpty, "a different start is never restored")
+        XCTAssertEqual(engine.decodes.dropFirst(decodesBefore).first?.position, 0, "read from the start")
+        XCTAssertEqual(second.stats?.promptSource, .fromStart)
+        XCTAssertEqual(engine.saved.count, 2, "replaced by the new start")
+        XCTAssertEqual(engine.freed, [old.handle], "the old one freed, before the new one was taken")
+    }
+
+    func testTheToolsInADifferentOrderStillShareTheStart() async throws {
+        let engine = ChatFakeEngine(templateSource: try Self.qwenTemplate())
+        engine.replies = [["One."], ["Two."]]
+        let backend = try await snapshotBackend(engine)
+        _ = try await generate(backend, history: [], request: LocalToolLoop.GenerationRequest(
+            messages: [.user("Log 60 psi")], toolsOffered: true, purpose: .initial, round: 0),
+                               specs: [Self.readingSpec, Self.fieldSessionSpec])
+        let second = try await generate(backend, history: [], request: LocalToolLoop.GenerationRequest(
+            messages: [.user("Open the job")], toolsOffered: true, purpose: .initial, round: 0),
+                                        specs: [Self.fieldSessionSpec, Self.readingSpec])
+        XCTAssertEqual(second.stats?.promptSource, .restoredSnapshot,
+                       "the same tools offered in another order render the same section")
+        let names = try engine.requests.map { request -> [String] in
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(request.utf8)) as? [String: Any])
+            return ((object["tools"] as? [[String: Any]]) ?? []).compactMap(LocalToolFit.name(of:))
+        }.filter { $0.count == 2 }
+        XCTAssertFalse(names.isEmpty)
+        XCTAssertTrue(names.allSatisfy { $0 == ["field_session", "reading"] }, "\(names)")
+    }
+
+    func testAnErrorForgetsTheSnapshot() async throws {
+        let engine = ChatFakeEngine(templateSource: try Self.qwenTemplate())
+        engine.replies = [["One."], ["Two."], ["Three."]]
+        let backend = try await snapshotBackend(engine)
+        _ = try await turn(backend, "First question?")
+        let saved = try XCTUnwrap(engine.saved.first)
+        engine.failDecodeAfter = engine.decodes.count
+        do {
+            _ = try await turn(backend, "Second question?")
+            XCTFail("the decode fault reaches the caller")
+        } catch {}
+        XCTAssertEqual(engine.freed, [saved.handle], "an error frees the snapshot")
+        engine.failDecodeAfter = nil
+        let restoredBefore = engine.restored.count
+        let third = try await turn(backend, "Third question?")
+        XCTAssertEqual(engine.restored.count, restoredBefore, "nothing left to restore after an error")
+        XCTAssertEqual(third.stats?.promptSource, .fromStart)
+    }
+
+    func testACancelForgetsTheSnapshot() async throws {
+        let engine = ChatFakeEngine(templateSource: try Self.qwenTemplate())
+        // The second reply is long, and each decode slow, so the cancel lands before it ends.
+        engine.replies = [["One."], Array(repeating: " word", count: 40), ["Three."]]
+        let backend = try await snapshotBackend(engine)
+        _ = try await turn(backend, "First question?")
+        let saved = try XCTUnwrap(engine.saved.first)
+
+        engine.decodeDelay = 0.05
+        let decodesBefore = engine.decodes.count
+        let pending = Task { try await self.turn(backend, "Second question?") }
+        while engine.decodes.count == decodesBefore { try await Task.sleep(nanoseconds: 5_000_000) }
+        await backend.cancelGeneration()
+        _ = try? await pending.value
+        XCTAssertTrue(engine.freed.contains(saved.handle), "a cancel frees the snapshot")
+
+        engine.decodeDelay = 0
+        let restoredBefore = engine.restored.count
+        let third = try await turn(backend, "Third question?")
+        XCTAssertEqual(engine.restored.count, restoredBefore, "nothing left to restore after a cancel")
+        XCTAssertEqual(third.stats?.promptSource, .fromStart)
+    }
+
+    func testAnUnloadFreesTheSnapshot() async throws {
+        let engine = ChatFakeEngine(templateSource: try Self.qwenTemplate())
+        engine.replies = [["One."], ["Two."]]
+        let backend = try await snapshotBackend(engine)
+        _ = try await turn(backend, "First question?")
+        let saved = try XCTUnwrap(engine.saved.first)
+        await backend.unload()
+        XCTAssertEqual(engine.freed, [saved.handle], "an unload frees the snapshot")
+        _ = try await loadedBackendReload(backend)
+        let again = try await turn(backend, "First question?")
+        XCTAssertTrue(engine.restored.isEmpty, "a reloaded model starts with none")
+        XCTAssertEqual(again.stats?.promptSource, .fromStart)
+    }
+
+    func testARestoreThatFailsReadsFromTheStartAndSavesAfresh() async throws {
+        let engine = ChatFakeEngine(templateSource: try Self.qwenTemplate())
+        engine.replies = [["One."], ["Two."]]
+        let backend = try await snapshotBackend(engine)
+        _ = try await turn(backend, "First question?")
+        let old = try XCTUnwrap(engine.saved.first)
+        engine.restoreWorks = false
+        let decodesBefore = engine.decodes.count
+        let second = try await turn(backend, "Second question?")
+        XCTAssertEqual(engine.restored, [old.handle])
+        XCTAssertEqual(engine.decodes.dropFirst(decodesBefore).first?.position, 0)
+        XCTAssertEqual(second.stats?.promptSource, .fromStart)
+        XCTAssertEqual(engine.freed, [old.handle])
+        XCTAssertEqual(engine.saved.count, 2, "saved again at the same start")
+        XCTAssertEqual(engine.saved.last?.position, old.position)
+    }
+
+    // MARK: - Prefix snapshot, pure (Plan MQ)
+
+    func testTheStableStartIsWhereTheProbeRenderParts() {
+        XCTAssertEqual(LlamaPromptCache.stableStart(prompt: [1, 2, 3, 4, 5], probe: [1, 2, 3, 9]), 3)
+        XCTAssertEqual(LlamaPromptCache.stableStart(prompt: [1, 2, 3], probe: [1, 2, 3, 4]), 2,
+                       "never the whole prompt: one token is decoded for the logits")
+        XCTAssertEqual(LlamaPromptCache.stableStart(prompt: [7, 2], probe: [1, 2]), 0)
+    }
+
+    func testTheSnapshotStepRestoresOnlyAnExactStartAndSavesAtTheStableStart() {
+        let prompt = Array(LlamaToken(0)..<LlamaToken(200))
+        // Nothing held: read from the start, save at the stable start.
+        XCTAssertEqual(LlamaPromptCache.snapshotStep(snapshot: nil, prompt: prompt, stableStart: 120),
+                       .init(restore: false, resumeAt: 0, saveAt: 120))
+        // Held and the prompt begins with it: restore, keep.
+        let held = Array(prompt.prefix(120))
+        XCTAssertEqual(LlamaPromptCache.snapshotStep(snapshot: held, prompt: prompt, stableStart: 120),
+                       .init(restore: true, resumeAt: 120, saveAt: nil))
+        // A longer stable start over a restored one: restore, then replace at the longer start.
+        XCTAssertEqual(LlamaPromptCache.snapshotStep(snapshot: held, prompt: prompt, stableStart: 150),
+                       .init(restore: true, resumeAt: 120, saveAt: 150))
+        // A held start that differs anywhere is never restored.
+        var other = held; other[60] = -1
+        XCTAssertEqual(LlamaPromptCache.snapshotStep(snapshot: other, prompt: prompt, stableStart: 120),
+                       .init(restore: false, resumeAt: 0, saveAt: 120))
+        // A snapshot as long as the prompt leaves no token to decode: not restored.
+        XCTAssertFalse(LlamaPromptCache.snapshotStep(snapshot: prompt, prompt: prompt, stableStart: 120).restore)
+        // A stable start too short to be worth its copy is not saved.
+        XCTAssertNil(LlamaPromptCache.snapshotStep(snapshot: nil, prompt: prompt, stableStart: 10).saveAt)
+        XCTAssertNil(LlamaPromptCache.snapshotStep(snapshot: nil, prompt: prompt, stableStart: nil).saveAt)
     }
 
     // MARK: - Prefix reuse, pure (Plan MQ H3)

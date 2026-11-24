@@ -273,6 +273,11 @@ enum LocalToolEval {
         var promptTokens: [Int] = []
         /// Decode rate per generation: generated tokens a second.
         var decodeTokensPerSecond: [Double] = []
+        /// Per generation: where its prompt was read from (`LocalPromptSource`'s raw value), the
+        /// prompt tokens that saved, and the bytes of a prefix snapshot it saved (0 when none).
+        var promptSources: [String] = []
+        var reusedPromptTokens: [Int] = []
+        var snapshotBytes: [Int] = []
 
         // Plan MQ P3: what the runtime's fit (`LocalToolFit`) sent of the offered tools. Counts only.
         /// Tools offered on the run's first generation that offered any.
@@ -306,6 +311,9 @@ enum LocalToolEval {
             promptSeconds.append(stats.promptSeconds)
             promptTokens.append(stats.promptTokens)
             if let rate = stats.decodeTokensPerSecond { decodeTokensPerSecond.append(rate) }
+            promptSources.append(stats.promptSource.rawValue)
+            reusedPromptTokens.append(stats.reusedPromptTokens)
+            snapshotBytes.append(stats.snapshotBytes ?? 0)
         }
 
         /// One generation's fit report, on a generation that offered tools; `expected` the case's

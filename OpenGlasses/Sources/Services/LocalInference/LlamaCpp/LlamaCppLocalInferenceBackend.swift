@@ -80,6 +80,10 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
     static let defaultBatchTokens = 512
     /// Output allowance when the request names none.
     static let defaultOutputTokens = 512
+    /// The largest prefix snapshot kept (Plan MQ): past this the prompt is read from the start, as
+    /// before. A snapshot is the sequence's KV cells plus a hybrid model's recurrent state, so it
+    /// grows with the stable start; Qwen 3.5 4B's is estimated at about 100–150 MB for ~3,000 tokens.
+    static let maximumSnapshotBytes = 512 * 1024 * 1024
 
     // MARK: - Injected environment
 
@@ -121,6 +125,9 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
         let batchTokens: Int
         let vocabularyAddsBOS: Bool
         let bosPiece: String?
+        /// False for a recurrent or hybrid model (Qwen 3.5): the cache cannot be cut back to a shared
+        /// prefix, so the prompt's stable start is carried by a state snapshot instead (Plan MQ).
+        let memoryCanTrim: Bool
         let loaded: LocalLoadedModel
         /// Headroom at the moment the load finished, so a generation can report the delta.
         let headroomAfterLoadBytes: Int64
@@ -136,10 +143,18 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
 
     private var resources: Resources?
     private var activeGeneration: Task<Void, Never>?
+    /// Which generation `activeGeneration` is, so a cancelled one finishing late cannot clear the
+    /// slot (or the cache) of the one started after it.
+    private var generationID = 0
     /// The tokens the KV cache holds after the last generation, in order (Plan MQ H3): its prompt
     /// and every generated token it decoded. Empty after a cancel, an error or an unload, when
     /// nothing is known about the cache, so the next prompt is read from the start.
     private var cachedTokens: [LlamaToken] = []
+    /// The one prefix snapshot (Plan MQ), on a model whose cache cannot be cut back: the state after
+    /// the stable start of an earlier prompt, keyed by its exact tokens. Forgotten, like
+    /// `cachedTokens`, on a cancel, an error, an unload or another model. Handed to the decode loop
+    /// for the length of a generation, which hands back what to keep.
+    private var prefixSnapshot: PrefixSnapshot?
     /// The `common/chat` format last logged, so it is logged once per model.
     private var chatFormatLogged: String?
 
@@ -290,6 +305,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                           contextLength: actualContext,
                                           capabilities: capabilities)
             cachedTokens = []
+            prefixSnapshot = nil
             chatFormatLogged = nil
             resources = Resources(installation: installation,
                                   model: model,
@@ -302,6 +318,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                   batchTokens: actualBatch,
                                   vocabularyAddsBOS: engine.vocabularyAddsBOS(model),
                                   bosPiece: engine.beginningOfSequencePiece(model),
+                                  memoryCanTrim: engine.memoryCanTrim(model),
                                   loaded: loaded,
                                   headroomAfterLoadBytes: availableProcessBytes())
 
@@ -352,6 +369,8 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
         guard let resources else { return }
         self.resources = nil
         cachedTokens = []
+        if let snapshot = prefixSnapshot { engine.freeState(snapshot.state.handle) }
+        prefixSnapshot = nil
         chatFormatLogged = nil
         tearDown(PartialLoad(model: resources.model,
                              context: resources.context,
@@ -430,6 +449,9 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
         let chat: PreparedChat?
         /// What the runtime sent of a tool turn's tools; nil on a turn with none.
         let fit: LocalToolFit.Report?
+        /// Where the prompt's system/tools section ends (`LlamaPromptCache.stableStart`), measured
+        /// only on a model whose cache cannot be cut back (Plan MQ); nil elsewhere.
+        var stableStart: Int? = nil
     }
 
     private struct PreparedChat {
@@ -581,6 +603,9 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                   sampler: sampler,
                                   promptTokens: prepared.tokens,
                                   cachedTokens: cachedTokens,
+                                  memoryCanTrim: resources.memoryCanTrim,
+                                  snapshot: prefixSnapshot,
+                                  stableStart: prepared.stableStart,
                                   batchTokens: resources.batchTokens,
                                   contextTokens: resources.contextTokens,
                                   maxOutputTokens: reserveTokens,
@@ -590,22 +615,35 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                   fit: prepared.fit,
                                   headroomAfterLoadBytes: resources.headroomAfterLoadBytes,
                                   promptStartedAt: promptStartedAt)
-        // What the cache holds is unknown until this generation reports back.
+        // What the cache holds is unknown until this generation reports back, and the snapshot is
+        // the loop's until then.
         cachedTokens = []
+        prefixSnapshot = nil
 
         // The assignment below happens before this method suspends or returns, so the loop's own
         // `finishGeneration()` — which needs this actor — cannot observe a nil slot and leave the
-        // backend permanently "already generating".
+        // backend permanently "already generating". The caller's stream is finished only after it,
+        // so a caller that starts the next generation the moment this one ends (the tool loop's
+        // next round) never finds the slot still taken.
+        generationID &+= 1
+        let id = generationID
         activeGeneration = Task { [weak self] in
             guard let self else { return }
-            let cached = await self.runLoop(plan, preview: request.previewSink, output: output)
-            await self.finishGeneration(cached: cached)
+            let (kept, failure) = await self.runLoop(plan, preview: request.previewSink, output: output)
+            await self.finishGeneration(id, kept)
+            output.finish(failure)
         }
     }
 
-    private func finishGeneration(cached: [LlamaToken]) {
+    private func finishGeneration(_ id: Int, _ kept: LoopResult) {
+        guard id == generationID else {
+            // Superseded: a newer generation owns the slot and the cache now.
+            if let snapshot = kept.snapshot { engine.freeState(snapshot.state.handle) }
+            return
+        }
         activeGeneration = nil
-        cachedTokens = cached
+        cachedTokens = kept.cached
+        prefixSnapshot = kept.snapshot
     }
 
     /// Log the family `common/chat` recognised, as a token, once per model (Plan MQ P2).
@@ -686,7 +724,22 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
         if kept.count < history.count {
             PrivacyLog.localModel(.historyTrimmed, count: kept.count, total: history.count, tokens: budget)
         }
-        return PreparedPrompt(tokens: try tokens(kept), chat: nil, fit: fit)
+        var prepared = PreparedPrompt(tokens: try tokens(kept), chat: nil, fit: fit)
+        if !resources.memoryCanTrim {
+            // The same system prompt over the probe alone: where the conversation's words begin.
+            let probeTurns = LlamaCppChatTemplate.turns(
+                from: Array(leadingSystem) + [.user(LlamaPromptCache.stableStartProbe)],
+                mergingSystemIntoFirstUser: profile.mergesSystemIntoFirstUser)
+            if let probe = try? engine.applyChatTemplate(profile.template, turns: probeTurns, addAssistantHeader: true),
+               let probeTokens = try? engine.tokenize(resources.model, text: probe,
+                                                      addSpecial: LlamaCppChatTemplate.shouldAddSpecialTokens(
+                                                          rendered: probe, bosPiece: resources.bosPiece,
+                                                          vocabularyAddsBOS: resources.vocabularyAddsBOS),
+                                                      parseSpecial: true) {
+                prepared.stableStart = LlamaPromptCache.stableStart(prompt: prepared.tokens, probe: probeTokens)
+            }
+        }
+        return prepared
     }
 
     private func prepareChat(templates: LlamaChatTemplatesHandle, system: String,
@@ -735,10 +788,17 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
             let ids = (try? engine.tokenize(resources.model, text: piece, addSpecial: false, parseSpecial: true)) ?? []
             if ids.count == 1 { preserved.insert(ids[0]) }
         }
-        return PreparedPrompt(tokens: final.tokens,
-                              chat: PreparedChat(requestJSON: final.request, renderJSON: final.json,
-                                                 render: final.render, preserved: preserved),
-                              fit: fit)
+        var prepared = PreparedPrompt(tokens: final.tokens,
+                                      chat: PreparedChat(requestJSON: final.request, renderJSON: final.json,
+                                                         render: final.render, preserved: preserved),
+                                      fit: fit)
+        if !resources.memoryCanTrim,
+           let probe = try? rendered([.user(LlamaPromptCache.stableStartProbe)], tools: keptSpecs) {
+            // The same system prompt and tools over the probe alone: the system/tools section is
+            // what the two share (Plan MQ). Rendered only for a cache that cannot be cut back.
+            prepared.stableStart = LlamaPromptCache.stableStart(prompt: final.tokens, probe: probe.tokens)
+        }
+        return prepared
     }
 
     /// The leading system messages' text, joined as a template would join them.
@@ -780,6 +840,21 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
         let preserved: Set<LlamaToken>
     }
 
+    /// A prefix snapshot (Plan MQ): a copy of the state after `tokens`, the exact start of an
+    /// earlier prompt. Its bytes stay inside the wrapper; Swift holds the handle and the count.
+    private struct PrefixSnapshot: Sendable {
+        let state: LlamaStateSnapshot
+        let tokens: [LlamaToken]
+    }
+
+    /// What a generation leaves for the next one: the tokens the cache holds, and the snapshot.
+    private struct LoopResult: Sendable {
+        let cached: [LlamaToken]
+        let snapshot: PrefixSnapshot?
+
+        static let forgotten = LoopResult(cached: [], snapshot: nil)
+    }
+
     /// Everything the decode loop needs, captured so the loop can run off the actor.
     private struct GenerationPlan: Sendable {
         let installationID: LocalModelID
@@ -792,6 +867,11 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
         let promptTokens: [LlamaToken]
         /// What the KV cache held when this generation was planned (Plan MQ H3).
         let cachedTokens: [LlamaToken]
+        /// The cache can be cut back (the trim path, H3); false: the snapshot path (Plan MQ).
+        let memoryCanTrim: Bool
+        /// The snapshot the loop now owns, and where this prompt's stable start ends.
+        let snapshot: PrefixSnapshot?
+        let stableStart: Int?
         let batchTokens: Int
         let contextTokens: Int
         let maxOutputTokens: Int
@@ -803,16 +883,54 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
     }
 
     /// Steps 5–10, off the actor so a cancel can reach it. Returns the tokens the KV cache holds
-    /// afterwards, or none when the generation did not finish (the cache is then unknown).
+    /// afterwards and the snapshot to keep, or nothing when the generation did not finish (the
+    /// cache is then unknown, and the snapshot is freed), with the error to finish the stream with.
     private nonisolated func runLoop(_ plan: GenerationPlan,
                                      preview: ((String) -> Void)?,
-                                     output: Output) async -> [LlamaToken] {
+                                     output: Output) async -> (LoopResult, Error?) {
         defer { if let parser = plan.chat?.parser { engine.freeChatParser(parser) } }
-        // 5. Keep the KV cache's shared prefix and drop the rest (Plan MQ H3): a turn that starts as
-        //    the last one did prefills only from where they differ. The sampler's penalty history
-        //    is reset either way, or the previous turn's tokens would keep penalising this one.
-        let keep = LlamaPromptCache.reusablePrefix(cached: plan.cachedTokens, prompt: plan.promptTokens)
-        let kept = min(max(0, engine.keepPrefix(plan.context, tokens: keep)), keep)
+        let model = PrivacyToken(plan.installationID.rawValue)
+        // 5. Where the prompt is read from. A cache that can be cut back keeps its shared prefix and
+        //    drops the rest (Plan MQ H3): a turn that starts as the last one did prefills only from
+        //    where they differ. One that cannot (a recurrent or hybrid model, Qwen 3.5) restores the
+        //    snapshot of a stable start this prompt begins with, or reads from the start and saves
+        //    one at its own stable start (Plan MQ). The sampler's penalty history is reset either
+        //    way, or the previous turn's tokens would keep penalising this one.
+        var kept = 0
+        var source = LocalPromptSource.fromStart
+        var snapshot = plan.snapshot
+        var saveAt: Int?
+        var savedBytes: Int?
+        func forgetSnapshot() {
+            if let held = snapshot { engine.freeState(held.state.handle) }
+            snapshot = nil
+        }
+        if plan.memoryCanTrim {
+            let keep = LlamaPromptCache.reusablePrefix(cached: plan.cachedTokens, prompt: plan.promptTokens)
+            kept = min(max(0, engine.keepPrefix(plan.context, tokens: keep)), keep)
+            if kept > 0 { source = .trimmedPrefix }
+        } else {
+            let step = LlamaPromptCache.snapshotStep(snapshot: snapshot?.tokens, prompt: plan.promptTokens,
+                                                     stableStart: plan.stableStart)
+            saveAt = step.saveAt
+            if step.restore, let held = snapshot {
+                if engine.restoreState(plan.context, held.state.handle) {
+                    kept = step.resumeAt
+                    source = .restoredSnapshot
+                    PrivacyLog.localModel(.promptSnapshot, model: model, tokens: kept,
+                                          detail: PrivacyToken("restored"))
+                } else {
+                    // The sequence is empty now: read from the start, and save afresh.
+                    PrivacyLog.localModel(.promptSnapshot, model: model, tokens: held.tokens.count,
+                                          detail: PrivacyToken("restoreFailed"))
+                    forgetSnapshot()
+                    saveAt = LlamaPromptCache.snapshotStep(snapshot: nil, prompt: plan.promptTokens,
+                                                           stableStart: plan.stableStart).saveAt
+                }
+            } else {
+                engine.clearMemory(plan.context)
+            }
+        }
         engine.resetSampler(plan.sampler)
 
         var accumulator = LlamaUTF8Accumulator()
@@ -852,10 +970,12 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
         do {
             // 6. Prompt decode from the first token the cache does not hold, partitioned to the
             //    context's own batch size, with a cancellation check between chunks.
+            //    On the snapshot path a chunk ends at the stable start, where the state is copied.
             var offset = kept
             while offset < plan.promptTokens.count {
                 if Task.isCancelled { throw CancellationError() }
-                let end = min(offset + plan.batchTokens, plan.promptTokens.count)
+                var end = min(offset + plan.batchTokens, plan.promptTokens.count)
+                if let saveAt, offset < saveAt, end > saveAt { end = saveAt }
                 let chunk = Array(plan.promptTokens[offset..<end])
                 try engine.decode(plan.context,
                                   tokens: chunk,
@@ -863,6 +983,23 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                   wantsLogitsForLast: end == plan.promptTokens.count)
                 position += chunk.count
                 offset = end
+                if let target = saveAt, offset == target {
+                    saveAt = nil
+                    // The one it replaces goes first: two held at once would double the peak.
+                    forgetSnapshot()
+                    let copyStartedAt = monotonicNanoseconds()
+                    do {
+                        let state = try engine.saveState(plan.context, maximumBytes: Self.maximumSnapshotBytes)
+                        snapshot = PrefixSnapshot(state: state, tokens: Array(plan.promptTokens[0..<target]))
+                        savedBytes = state.bytes
+                        PrivacyLog.localModel(.promptSnapshot, model: model, tokens: target,
+                                              kilobytes: state.bytes / 1024, detail: PrivacyToken("saved"),
+                                              milliseconds: Int((monotonicNanoseconds() &- copyStartedAt) / 1_000_000))
+                    } catch {
+                        PrivacyLog.localModel(.promptSnapshot, model: model, tokens: target,
+                                              detail: PrivacyToken("saveFailed"), error: SafeErrorSummary(error))
+                    }
+                }
             }
             let promptDecodedAt = monotonicNanoseconds()
             let decodedPromptTokens = plan.promptTokens.count - kept
@@ -941,22 +1078,25 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                 if !content.isEmpty { output.text(content) }
                 for call in calls { output.event(.toolCall(call)) }
             }
-            output.event(.stats(Self.stats(plan, generated: generated, firstTokenAt: firstTokenAt,
-                                           finishedAt: finishedAt)))
+            var stats = Self.stats(plan, generated: generated, firstTokenAt: firstTokenAt, finishedAt: finishedAt)
+            stats.promptSource = source
+            stats.reusedPromptTokens = kept
+            stats.snapshotBytes = savedBytes
+            output.event(.stats(stats))
             recordCompletion(plan, generated: generated, firstTokenAt: firstTokenAt,
                              position: position)
-            output.finish(nil)
-            return decoded
+            return (LoopResult(cached: decoded, snapshot: snapshot), nil)
         } catch is CancellationError {
             engine.synchronize(plan.context)
+            forgetSnapshot()
             PrivacyLog.localModel(.generationFailed,
                                   model: PrivacyToken(plan.installationID.rawValue),
                                   count: generated,
                                   detail: PrivacyToken("gguf-cancelled"))
-            output.finish(CancellationError())
-            return []
+            return (.forgotten, CancellationError())
         } catch let error as LlamaEngineError {
             engine.synchronize(plan.context)
+            forgetSnapshot()
             let mapped: Error = error == .cancelled ? CancellationError()
                                                     : LlamaBackendError.engine(error)
             PrivacyLog.localModel(.generationFailed,
@@ -964,12 +1104,11 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                   count: generated,
                                   detail: PrivacyToken("gguf"),
                                   error: SafeErrorSummary(mapped))
-            output.finish(mapped)
-            return []
+            return (.forgotten, mapped)
         } catch {
             engine.synchronize(plan.context)
-            output.finish(error)
-            return []
+            forgetSnapshot()
+            return (.forgotten, error)
         }
     }
 

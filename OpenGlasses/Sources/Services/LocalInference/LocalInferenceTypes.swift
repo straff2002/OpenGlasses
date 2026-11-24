@@ -651,6 +651,13 @@ extension LocalToolTurn {
 /// and the cap it ran under. Counts only. The device qualification app records time to first token
 /// and decode rate from it, and the graders read two faults from it: a reply of zero tokens (almost
 /// always a prompt-format fault, not a model answer) and a reply that stopped at the cap (cut).
+/// Where a generation's prompt was read from (Plan MQ): from the first token, from a KV-cache
+/// prefix the runtime kept (GGUF's trim, H3), or from a state snapshot it restored (GGUF, a cache
+/// that cannot be cut back: Qwen 3.5). MLX always reads from the start.
+enum LocalPromptSource: String, Codable, Sendable, CaseIterable {
+    case fromStart, trimmedPrefix, restoredSnapshot
+}
+
 struct LocalGenerationStats: Equatable, Sendable {
     /// Tokens in the prompt the runtime prefilled.
     let promptTokens: Int
@@ -665,14 +672,24 @@ struct LocalGenerationStats: Equatable, Sendable {
     /// The runtime's own report that it stopped at the cap.
     let stoppedAtCap: Bool
 
+    /// Where the prompt was read from, and how many of its tokens that saved (Plan MQ).
+    var promptSource: LocalPromptSource = .fromStart
+    var reusedPromptTokens = 0
+    /// Bytes of a prefix snapshot this generation saved, when it saved one (GGUF, Plan MQ).
+    var snapshotBytes: Int?
+
     init(promptTokens: Int, generatedTokens: Int, promptSeconds: Double, generateSeconds: Double,
-         tokenCap: Int?, stoppedAtCap: Bool) {
+         tokenCap: Int?, stoppedAtCap: Bool, promptSource: LocalPromptSource = .fromStart,
+         reusedPromptTokens: Int = 0, snapshotBytes: Int? = nil) {
         self.promptTokens = promptTokens
         self.generatedTokens = generatedTokens
         self.promptSeconds = promptSeconds
         self.generateSeconds = generateSeconds
         self.tokenCap = tokenCap
         self.stoppedAtCap = stoppedAtCap
+        self.promptSource = promptSource
+        self.reusedPromptTokens = reusedPromptTokens
+        self.snapshotBytes = snapshotBytes
     }
 
     /// No token at all: the template ended the turn before the model said anything.

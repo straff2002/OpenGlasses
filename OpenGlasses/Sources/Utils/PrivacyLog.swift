@@ -1916,6 +1916,10 @@ enum PrivacyLog {
         /// The prompt finished its batched prefill. Separate from `generationStarted` because
         /// prefill time and first-token latency are different diagnostics with different causes.
         case promptDecoded
+        /// Plan MQ: a GGUF prefix snapshot (a cache that cannot be cut back) was saved (`detail`
+        /// `saved`, `tokens` its length, `kilobytes` its size, `milliseconds` the copy), restored
+        /// (`restored`, `tokens`) or could not be (`saveFailed`, `restoreFailed`). Counts only.
+        case promptSnapshot
         case historyTrimmed, toolCall, reasoningProduced, tokenShape
         /// Plan MQ P1: the tool-call format the runtime inferred for the loaded model (`detail`, a
         /// format name such as `gemma4`, or `none` when the Hermes instruction is the fallback), and

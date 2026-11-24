@@ -45,6 +45,18 @@ struct LlamaChatParserHandle: Hashable, Sendable {
     init(bits: UInt) { self.bits = bits }
 }
 
+/// A copy of a context's sequence state, held in host memory (Plan MQ, the Qwen prefix snapshot).
+struct LlamaStateSnapshotHandle: Hashable, Sendable {
+    let bits: UInt
+    init(bits: UInt) { self.bits = bits }
+}
+
+/// A saved snapshot and its size.
+struct LlamaStateSnapshot: Hashable, Sendable {
+    let handle: LlamaStateSnapshotHandle
+    let bytes: Int
+}
+
 // MARK: - Options
 
 struct LlamaModelOptions: Hashable, Sendable {
@@ -253,6 +265,17 @@ protocol LlamaEngine: Sendable {
     /// kept — `tokens`, or 0 when the cache cannot be cut back there and was cleared instead.
     func keepPrefix(_ context: LlamaContextHandle, tokens: Int) -> Int
 
+    // Prefix snapshots (Plan MQ) — for a model whose cache cannot be cut back
+
+    /// False for a recurrent or hybrid model (Qwen 3.5): `keepPrefix` can never keep anything, so a
+    /// shared start is carried by a state snapshot instead.
+    func memoryCanTrim(_ model: LlamaModelHandle) -> Bool
+    /// Copies the context's sequence state; throws `allocationFailed` past `maximumBytes`.
+    func saveState(_ context: LlamaContextHandle, maximumBytes: Int) throws -> LlamaStateSnapshot
+    /// Puts a snapshot's state back. False when it could not: the sequence is then empty.
+    func restoreState(_ context: LlamaContextHandle, _ snapshot: LlamaStateSnapshotHandle) -> Bool
+    func freeState(_ snapshot: LlamaStateSnapshotHandle)
+
     // Chat templates and tool calls (Plan MQ P2) — llama.cpp's `common/chat`, as JSON text
 
     /// One token's bytes with control tokens rendered when `renderSpecial`: a tool turn needs the
@@ -287,6 +310,20 @@ extension LlamaEngine {
     func tokenBytes(_ model: LlamaModelHandle, token: LlamaToken, renderSpecial: Bool) -> [UInt8] {
         tokenBytes(model, token: token)
     }
+
+    /// An engine that does not say otherwise is cut back as before (the trim path).
+    func memoryCanTrim(_ model: LlamaModelHandle) -> Bool { true }
+
+    func saveState(_ context: LlamaContextHandle, maximumBytes: Int) throws -> LlamaStateSnapshot {
+        throw LlamaEngineError.invalidArgument
+    }
+
+    func restoreState(_ context: LlamaContextHandle, _ snapshot: LlamaStateSnapshotHandle) -> Bool {
+        clearMemory(context)
+        return false
+    }
+
+    func freeState(_ snapshot: LlamaStateSnapshotHandle) {}
 
     func chatTemplates(_ model: LlamaModelHandle) throws -> LlamaChatTemplatesHandle {
         throw LlamaEngineError.noChatTemplate

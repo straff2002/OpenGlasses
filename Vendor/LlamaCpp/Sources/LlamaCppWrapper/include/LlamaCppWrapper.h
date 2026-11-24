@@ -237,6 +237,29 @@ void og_llama_context_clear_memory(OGLlamaContext *context);
 /// then cleared, and the caller prefills from the start. `keep_tokens <= 0` clears it.
 int32_t og_llama_context_keep_prefix(OGLlamaContext *context, int32_t keep_tokens);
 
+#pragma mark - Prefix snapshots (Plan MQ, for a cache that cannot be cut back)
+
+/// A copy of sequence 0's whole state (its KV cells and, on a recurrent or hybrid model, its
+/// recurrent state) at one moment, held in host memory. Bytes only: it names no token or text.
+typedef struct OGLlamaStateSnapshot OGLlamaStateSnapshot;
+
+/// Whether `og_llama_context_keep_prefix` can ever keep anything for this model: false for a
+/// recurrent or hybrid model (Qwen 3.5), whose state cannot be cut back to an earlier position.
+bool og_llama_model_memory_can_trim(const OGLlamaModel *model);
+
+/// Copies sequence 0's state. `OGLlamaStatusAllocationFailed` when it would take more than
+/// `max_bytes` (<= 0: no limit) or cannot be allocated; nothing is handed back then.
+OGLlamaStatus og_llama_state_snapshot_save(OGLlamaContext *context, int64_t max_bytes,
+                                           OGLlamaStateSnapshot **out_snapshot);
+/// The snapshot's size in bytes.
+int64_t og_llama_state_snapshot_size(const OGLlamaStateSnapshot *snapshot);
+/// Replaces sequence 0's state with the snapshot's. On failure the sequence is cleared and
+/// `OGLlamaStatusDecodeFailed` returned, so the caller prefills from the start. The logits of the
+/// snapshot's last token are not part of it: decode at least one token before sampling.
+OGLlamaStatus og_llama_state_snapshot_restore(OGLlamaContext *context,
+                                              const OGLlamaStateSnapshot *snapshot);
+void og_llama_state_snapshot_free(OGLlamaStateSnapshot *snapshot);
+
 #pragma mark - Cancellation
 
 /// Cancellation is a flag on the context, not a callback Swift has to vend. Setting it makes an
