@@ -1,7 +1,7 @@
 # Plan NG — Team Learnings Reviewed in the Portal (what a technician files on the job reaches the company's administrator, not a reviewer phone)
 
-**Status:** 📝 Drafted 2026-11-25. Nothing is built. 10 [decisions](#decisions-for-greig), each with a
-recommendation.
+**Status:** 📝 Drafted 2026-11-25. Nothing is built. All 10 [decisions](#decisions-for-greig) taken as
+recommended the same day.
 **Track:** Field Assist — company knowledge. The licence portal, device seats, the team-learning corpus.
 **Builds on:** Plan [FP](FP-team-learnings.md) P1–P3 (the candidate filed on the job, its statuses, the merge
 that counts confirming jobs), Plan [NF](NF-crew-experience-sheet.md) (the portal's review preview and the sealed
@@ -135,6 +135,8 @@ portal. Approve it: phone B answers with it on its next foreground. Mark one "sa
 changes on both phones. Not take one up: phone A's job shows the reason.
 
 ## Decisions for Greig
+
+Taken 2026-11-25: all 10 as recommended.
 
 1. **Use the seat channel, not the organisation endpoint.** *Recommended:* yes. It is already signed per
    device, points only at the vendor-signed origin, and needs nothing configured.
