@@ -231,6 +231,8 @@ enum VanStockSheet {
             let minimum: StockQuantity?
             let standard: StockQuantity?
             let bin: String?
+            /// Short forms and brand names the sheet gave for it, kept as its codes.
+            var otherNames: [String] = []
             var id: Int { row }
         }
 
@@ -291,10 +293,13 @@ enum VanStockSheet {
         case noRecognisableHeader
     }
 
-    /// The header words a sheet somebody else wrote may use.
+    /// The header words a sheet somebody else wrote may use. A clinic's tariff (billing) code is
+    /// the line's number, so the daily check against its records lines up with what it claims
+    /// (Plan MY §8).
     static let headerSynonyms: [Column: Set<String>] = [
         .itemID: ["item id"],
-        .partNumber: ["part", "part number", "part no", "part #", "item", "number", "sku"],
+        .partNumber: ["part", "part number", "part no", "part #", "item", "number", "sku",
+                      "code", "item code", "product code", "tariff", "tariff code", "billing code", "fee code"],
         .description: ["description", "desc", "name", "item description"],
         .onHand: ["on hand", "qty", "quantity", "count", "stock"],
         .unit: ["unit", "units", "uom"],
@@ -302,6 +307,34 @@ enum VanStockSheet {
         .minimum: ["min", "minimum", "reorder point"],
         .bin: ["bin", "location", "shelf"],
     ]
+
+    /// Headers whose cells are other names for a line: a short form ("Inf-IM") or brand names
+    /// ("Fluviral, Fluzone®"). Read in only; a sheet may have several, and each name becomes one
+    /// of the line's codes, which the daily check against the clinic's records matches its words
+    /// against (Plan MY §8). Never written out: the workbook's own columns are `Column`.
+    static let otherNamesHeaders: Set<String> = [
+        "abbreviation", "abbrev", "short name", "also known as", "aka", "other names", "aliases",
+        "brand", "brands", "brand name", "brand names", "trade name", "trade names",
+    ]
+
+    /// The most other names one row may give, and the longest one: a cell that holds more is
+    /// not a list of names.
+    static let otherNamesLimit = 12
+    static let otherNameLengthLimit = 60
+    private static let trademarkSigns: Set<Unicode.Scalar> = ["\u{00AE}", "\u{2122}", "\u{00A9}"]
+
+    /// The names in an other-names cell: split at commas, semicolons and line breaks, with the
+    /// trademark signs dropped ("Fluzone®" is "Fluzone"). A slash stays, as brand names use one
+    /// ("Infanrix-IPV/Hib").
+    static func otherNames(in cell: String) -> [String] {
+        cell.components(separatedBy: CharacterSet(charactersIn: ",;\n"))
+            .map { name in
+                var kept = String.UnicodeScalarView()
+                kept.append(contentsOf: name.unicodeScalars.filter { !trademarkSigns.contains($0) })
+                return String(kept).split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            }
+            .filter { !$0.isEmpty && $0.count <= otherNameLengthLimit }
+    }
 
     static func proposal(from data: Data, log: VanStockLog) -> Result<Proposal, Failure> {
         switch XLSXReader.read(data) {
@@ -329,6 +362,8 @@ enum VanStockSheet {
         let standardSetByBase: Bool
         /// Nil when the sheet has no such column; empty when the cell is.
         let binCell: String?
+        /// Every name the row's other-names columns give, in order, each once.
+        var otherNames: [String] = []
 
         var onHand: StockQuantity? { onHandCell ?? nil }
         var minimum: StockQuantity? { minimumCell ?? nil }
@@ -352,7 +387,7 @@ enum VanStockSheet {
         // sheet that is not the meta sheet, as a workbook somebody else wrote is (Plan MK §3).
         let sheet = sheets.first { stockSheetNames.contains($0.name) }
             ?? sheets.first { !$0.isHidden && $0.name != metaSheetName }
-        guard let sheet, let (headerIndex, columns) = header(in: sheet.rows) else {
+        guard let sheet, let (headerIndex, columns, otherNameColumns) = header(in: sheet.rows) else {
             return .failure(.noRecognisableHeader)
         }
         var read = Read()
@@ -415,6 +450,12 @@ enum VanStockSheet {
                 read.refusals.append(.init(row: rowNumber, reason: refusal, name: Self.refusalName(described, normalised)))
                 continue
             }
+            var otherNames: [String] = []
+            for index in otherNameColumns where index < cells.count {
+                for name in Self.otherNames(in: cells[index]) where !otherNames.contains(name) {
+                    otherNames.append(name)
+                }
+            }
             read.rows.append(Row(
                 number: rowNumber, itemID: cell(.itemID).flatMap { $0.isEmpty ? nil : $0 },
                 partNumber: normalised, description: described, unit: unit,
@@ -422,7 +463,7 @@ enum VanStockSheet {
                 onOrder: numbers[.onOrder] ?? nil,
                 needsCount: (cell(.needsCount) ?? "").lowercased() == "yes",
                 standardSetByBase: setByOutsideWords.contains((cell(.standardSetBy) ?? "").lowercased()),
-                binCell: cell(.bin)))
+                binCell: cell(.bin), otherNames: Array(otherNames.prefix(otherNamesLimit))))
         }
         return .success(read)
     }
@@ -452,7 +493,7 @@ enum VanStockSheet {
                 proposal.newLines.append(.init(
                     row: row.number, number: row.partNumber, description: row.description ?? "",
                     unit: row.unit ?? .each, onHand: row.onHand, minimum: row.minimum,
-                    standard: row.standard, bin: row.bin))
+                    standard: row.standard, bin: row.bin, otherNames: row.otherNames))
                 continue
             }
             if let earlier = seen[item.id] {
@@ -485,6 +526,8 @@ enum VanStockSheet {
             if let bin = row.binCell, bin != (item.bin ?? ""), !bin.isEmpty || read.isOwn {
                 changes.append(.bin(bin.isEmpty ? nil : bin))
             }
+            // Names are only ever added: a sheet without one leaves the line's codes as they are.
+            for name in row.otherNames where !item.codes.contains(name) { changes.append(.addCode(name)) }
             if !changes.isEmpty { proposal.edits.append(.init(itemID: item.id, name: item.name, changes: changes)) }
         }
 
@@ -532,6 +575,7 @@ enum VanStockSheet {
                                    description: line.description.isEmpty ? (checked?.partDescription ?? "") : line.description,
                                    unit: line.unit, minimum: line.minimum, standard: line.standard,
                                    standardSetBy: line.standard == nil ? nil : .van, bin: line.bin,
+                                   codes: line.otherNames,
                                    verified: checked?.verified ?? false, batch: batch)
             if let onHand = line.onHand {
                 log.record(.counted, itemID: item.id, quantity: onHand, at: at, batch: batch, source: .sheet, id: makeID())
@@ -547,24 +591,39 @@ enum VanStockSheet {
 
     // MARK: - Reading a sheet
 
-    /// The header row and where each recognised column is. A header names a part or a
-    /// description, and at least one of the figures.
-    private static func header(in rows: [[String]]) -> (Int, [Column: Int])? {
+    /// The header row, where each recognised column is, and the other-names columns. A header
+    /// names a part or a description and at least one of the figures, or, for a list of what is
+    /// kept with no figures yet (a clinic's vaccine list), both a part and a description: its
+    /// levels come from the first count.
+    private static func header(in rows: [[String]]) -> (Int, [Column: Int], [Int])? {
         for (offset, row) in rows.prefix(10).enumerated() {
             var found: [Column: Int] = [:]
+            var otherNames: [Int] = []
             for (index, raw) in row.enumerated() {
-                let word = raw.lowercased().trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
-                guard !word.isEmpty,
-                      let column = headerSynonyms.first(where: { $0.value.contains(word) })?.key
+                let word = headerWord(raw)
+                guard !word.isEmpty else { continue }
+                if otherNamesHeaders.contains(word) {
+                    otherNames.append(index)
+                    continue
+                }
+                guard let column = headerSynonyms.first(where: { $0.value.contains(word) })?.key
                         ?? Column.allCases.first(where: { $0.rawValue.lowercased() == word }),
                       found[column] == nil else { continue }
                 found[column] = index
             }
             let namesALine = found[.partNumber] != nil || found[.description] != nil
             let hasAFigure = found[.onHand] != nil || found[.standard] != nil || found[.minimum] != nil
-            if namesALine && hasAFigure { return (offset, found) }
+            let isACatalogue = found[.partNumber] != nil && found[.description] != nil
+            if namesALine && (hasAFigure || isACatalogue) { return (offset, found, otherNames) }
         }
         return nil
+    }
+
+    /// A header cell as the synonyms are written: lower case, with a note in brackets dropped
+    /// ("Brand Names (all formulations)" is "brand names") and punctuation trimmed from the ends.
+    static func headerWord(_ raw: String) -> String {
+        let beforeNote = raw.split(separator: "(", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? raw
+        return beforeNote.lowercased().trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
     }
 
     static func match(id: String?, number: String?, description: String?, in log: VanStockLog) -> VanStockItem? {
