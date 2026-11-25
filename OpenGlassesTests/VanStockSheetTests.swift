@@ -252,6 +252,76 @@ final class VanStockSheetTests: XCTestCase {
         XCTAssertEqual(VanStockSheet.proposal(from: Data("not a workbook".utf8), log: log), .failure(.workbook(.notAWorkbook)))
     }
 
+    // MARK: A clinic's list, with no quantities (Plan MY §8)
+
+    /// The shape of a province's publicly funded vaccine list: a short form, a description, the
+    /// tariff code it is claimed under, and its brand names. No quantities.
+    private var clinicList: [XLSXReader.Sheet] {
+        [XLSXReader.Sheet(name: "Vaccines", isHidden: false, rows: [
+            ["Publicly Funded Immunization Tariff Code Listing"],
+            ["Abbreviation", "Description", "Tariff", "Brand Names (all formulations)"],
+            ["Inf-IM", "INFLUENZA - INTRAMUSCULAR - SEASONAL", "8791", "Fluviral, Fluzone®, Flucelvax®"],
+            ["HPV-9", "HPV 9 TYPES", "8971", "Gardasil®9"],
+            ["DTaP-IPV-Hib", "DIPHTHERIA, TETANUS, ACELLULAR PERTUSSIS, INACTIVATED POLIO, HIB", "8802",
+             "Pentacel®, Infanrix-IPV/Hib™"],
+        ])]
+    }
+
+    func testAClinicsListWithNoQuantitiesBecomesNewLines() throws {
+        let proposal = try VanStockSheet.proposal(from: clinicList, log: VanStockLog()).get()
+        XCTAssertEqual(proposal.refusals, [])
+        XCTAssertEqual(proposal.counts, [], "nothing is counted: the first count sets the levels")
+        XCTAssertEqual(proposal.newLines.map(\.number), ["8791", "8971", "8802"], "the tariff code is the line's number")
+        XCTAssertEqual(proposal.newLines.map(\.description).first, "INFLUENZA - INTRAMUSCULAR - SEASONAL")
+        XCTAssertEqual(proposal.newLines.map(\.unit), [.each, .each, .each])
+        XCTAssertEqual(proposal.newLines.map(\.onHand), [nil, nil, nil])
+        XCTAssertEqual(proposal.newLines.map(\.otherNames), [
+            ["Inf-IM", "Fluviral", "Fluzone", "Flucelvax"],
+            ["HPV-9", "Gardasil9"],
+            ["DTaP-IPV-Hib", "Pentacel", "Infanrix-IPV/Hib"],
+        ], "the short form and each brand, trademark signs dropped, a slash kept")
+    }
+
+    func testAClinicsLinesAreFoundByTariffCodeShortFormOrBrand() throws {
+        var log = VanStockLog()
+        VanStockSheet.apply(try VanStockSheet.proposal(from: clinicList, log: log).get(), to: &log,
+                            at: time(0), batch: "import", verify: verify)
+        XCTAssertEqual(log.items.count, 3)
+        let flu = try XCTUnwrap(log.items.first { $0.number == "8791" })
+        XCTAssertEqual(flu.codes, ["Inf-IM", "Fluviral", "Fluzone", "Flucelvax"])
+        for name in ["8791", "inf im", "FLUZONE", "Flucelvax"] {
+            XCTAssertEqual(ImmunisationLineAliases.line(for: name, in: log.items)?.id, flu.id, name)
+        }
+        XCTAssertEqual(ImmunisationLineAliases.line(for: "Gardasil 9", in: log.items)?.number, "8971")
+        XCTAssertNil(ImmunisationLineAliases.line(for: "Shingrix", in: log.items))
+    }
+
+    func testImportingTheListAgainOnlyAddsNewNames() throws {
+        var log = VanStockLog()
+        VanStockSheet.apply(try VanStockSheet.proposal(from: clinicList, log: log).get(), to: &log,
+                            at: time(0), batch: "import", verify: verify)
+        XCTAssertTrue(try VanStockSheet.proposal(from: clinicList, log: log).get().changesNothing)
+
+        var rows = clinicList[0].rows
+        rows[2][3] = "Fluviral, Fluzone®, Flucelvax®, Fluzone Quadrivalent"
+        let again = [XLSXReader.Sheet(name: "Vaccines", isHidden: false, rows: rows)]
+        let proposal = try VanStockSheet.proposal(from: again, log: log).get()
+        XCTAssertEqual(proposal.newLines, [])
+        XCTAssertEqual(proposal.edits.map(\.changes), [[.addCode("Fluzone Quadrivalent")]])
+    }
+
+    func testAListWithNoQuantitiesNeedsBothANumberAndADescription() {
+        let descriptionsOnly = [XLSXReader.Sheet(name: "Notes", isHidden: false, rows: [["Description"], ["Igniter"]])]
+        XCTAssertEqual(VanStockSheet.proposal(from: descriptionsOnly, log: log), .failure(.noRecognisableHeader))
+    }
+
+    func testOtherNamesAreBoundedAndAHeaderNoteIsIgnored() {
+        XCTAssertEqual(VanStockSheet.headerWord("Brand Names (all formulations)"), "brand names")
+        XCTAssertEqual(VanStockSheet.headerWord(" Tariff: "), "tariff")
+        XCTAssertEqual(VanStockSheet.otherNames(in: "A; B\nC,, "), ["A", "B", "C"])
+        XCTAssertEqual(VanStockSheet.otherNames(in: String(repeating: "x", count: 61)), [], "a paragraph is not a name")
+    }
+
     // MARK: The list's place (Plan MK P0)
 
     private func meta(_ sheets: [XLSXReader.Sheet]) -> [[String]] {

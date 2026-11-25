@@ -109,7 +109,7 @@ struct VanStockImportReviewSheet: View {
         case .workbook(.tooManyRows):
             return Text("That spreadsheet has more than 5,000 rows.")
         case .noRecognisableHeader:
-            return Text("That spreadsheet has no header row this recognises. It needs Part number or Description, and On hand.")
+            return Text("That spreadsheet has no header row this recognises. It needs Part number or Description, and On hand. A list with no quantities yet needs both Part number and Description.")
         case .nothingToChange:
             return Text("That spreadsheet matches the list already. There is nothing to import.")
         case .heldBySystem(let system):

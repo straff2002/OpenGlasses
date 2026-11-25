@@ -246,15 +246,19 @@ enum ImmunisationListReader {
 
 /// Which line an EMR's name or code for a vaccine means (Plan MY §8). Pure.
 ///
-/// The EMR's words are kept as the line's aliases in `codes`, chosen once by the person. A name is
-/// matched against each line's codes and its description, with case, spaces and punctuation
-/// forgiven; it means a line only when exactly one line matches.
+/// The EMR's words are kept as the line's aliases in `codes`, chosen once by the person or read
+/// from the clinic's own list (its short forms and brand names). A name is matched against each
+/// line's codes and number (a tariff code, when the list gave one), then its description, with
+/// case, spaces and punctuation forgiven; it means a line only when exactly one line matches.
 enum ImmunisationLineAliases {
 
     static func line(for vaccine: String, in items: [VanStockItem]) -> VanStockItem? {
         let wanted = ImmunisationListReader.columnKey(vaccine)
         guard !wanted.isEmpty else { return nil }
-        let byCode = items.filter { item in item.codes.contains { ImmunisationListReader.columnKey($0) == wanted } }
+        let byCode = items.filter { item in
+            item.codes.contains { ImmunisationListReader.columnKey($0) == wanted }
+                || item.number.map { ImmunisationListReader.columnKey($0) == wanted } == true
+        }
         if byCode.count == 1 { return byCode[0] }
         if byCode.count > 1 { return nil }
         let byName = items.filter { ImmunisationListReader.columnKey($0.description) == wanted }
