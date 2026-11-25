@@ -160,7 +160,7 @@ struct AgentScheduleTool: NativeTool {
             .replacingOccurrences(of: " ", with: "-")
             .filter { $0.isLetter || $0.isNumber || $0 == "-" }
         let baseID = slug.isEmpty ? "task" : slug
-        let existingIDs = Set(tasks.map(\.id)).union(["morning-briefing"])
+        let existingIDs = Set(tasks.map(\.id)).union(AgentScheduler.retiredTaskIDs)
         var id = baseID
         var suffix = 2
         while existingIDs.contains(id) {

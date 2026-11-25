@@ -3,8 +3,13 @@ import UIKit
 
 /// Pre-built Shortcut templates that users can preview, select, and install.
 /// Installing one creates its scheduled task, switched off: the task runs a Siri Shortcut the
-/// person builds themselves, and until that Shortcut exists every run would fail (the "Check
-/// Email" task ran every 15 minutes in an app with no email access of its own).
+/// person builds themselves, and until that Shortcut exists every run would fail.
+///
+/// Check Email is an automation template instead (`Setup.automation`). As a scheduled task it never
+/// worked: the app can open Shortcuts only from the foreground, a plain run returns nothing to read,
+/// and with agent mode on every run waited for an approval or was held while the person was away
+/// (field report, build 770). Now the person's own Shortcuts automation hands the mail to
+/// `ReviewEmailIntent`, which runs in the background.
 struct ShortcutTemplatesView: View {
     @EnvironmentObject var appState: AppState
     @State private var templates = ShortcutTemplate.allTemplates
@@ -109,7 +114,7 @@ struct ShortcutTemplatesView: View {
                         .foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("Each template adds a scheduled task that runs a Siri Shortcut you build yourself. Tap to preview what it does before installing.")
+                Text("Most templates add a scheduled task that runs a Siri Shortcut you build yourself. Check Email is an automation you set up in Shortcuts instead. Tap to preview what each does before installing.")
             }
 
             // Install button
@@ -157,21 +162,29 @@ struct ShortcutTemplatesView: View {
         var created = 0
 
         for template in selected {
-            // Create the scheduled task
+            // An automation template adds no task: its automation is built in Shortcuts.
+            guard let task = template.scheduledTask else { continue }
             var tasks = AgentScheduler.savedTasks()
             // Skip if already installed
-            if tasks.contains(where: { $0.id == template.taskId }) { continue }
+            if tasks.contains(where: { $0.id == task.id }) { continue }
 
-            tasks.append(template.scheduledTask)
+            tasks.append(task)
             AgentScheduler.saveTasks(tasks)
             created += 1
         }
 
-        installResult = created == 1
+        let tasksLine = created == 1
             ? String(localized: "Added 1 scheduled task, switched off. Build the matching Shortcut in the Shortcuts app, then switch it on in Scheduled Tasks.")
             : created > 0
             ? String(localized: "Added \(created) scheduled tasks, switched off. Build the matching Shortcuts in the Shortcuts app, then switch them on in Scheduled Tasks.")
-            : String(localized: "All selected templates are already installed.")
+            : nil
+        let automationNames = selected.filter { $0.setup == .automation }.map(\.name)
+        let automationLine = automationNames.isEmpty ? nil
+            : String(localized: "\(automationNames.formatted(.list(type: .and))) adds no task here. Set up its automation in the Shortcuts app, with the steps shown.")
+        installResult = [tasksLine, automationLine].compactMap { $0 }.joined(separator: " ")
+        if installResult?.isEmpty ?? true {
+            installResult = String(localized: "All selected templates are already installed.")
+        }
     }
 }
 
@@ -186,17 +199,30 @@ struct ShortcutTemplate: Identifiable {
     let shortcutSteps: String       // What the Shortcut does (human-readable)
     let agentBehavior: String       // What the agent does with the output
     let scheduleDescription: String
-    let taskId: String              // ID for the scheduled task
-    let taskPrompt: String          // The prompt the agent runs
-    let intervalMinutes: Int
-    let speakResult: Bool
+    var taskId: String = ""         // ID for the scheduled task
+    var taskPrompt: String = ""     // The prompt the agent runs
+    var intervalMinutes: Int = 0
+    var speakResult: Bool = false
+    var setup: Setup = .scheduledTask
     var selected: Bool = false
 
-    /// The scheduled task installing this template adds — always switched off. It runs a Shortcut
-    /// the person has to build first, and the app can't tell whether they have, so they switch it
-    /// on once they have.
-    var scheduledTask: AgentScheduler.ScheduledTask {
-        AgentScheduler.ScheduledTask(
+    /// How a template is set up.
+    enum Setup: Equatable {
+        /// The app runs the person's Shortcut on a schedule. It works only while the app is in
+        /// front, since iOS opens Shortcuts for an app in the foreground only.
+        case scheduledTask
+        /// The person's own Shortcuts automation runs on its schedule and hands its output to one
+        /// of the app's actions, which runs in the background. Installing adds nothing: the
+        /// automation is built in the Shortcuts app.
+        case automation
+    }
+
+    /// The scheduled task installing this template adds, always switched off, or nil for an
+    /// automation template, which adds none. The task runs a Shortcut the person has to build
+    /// first, and the app can't tell whether they have, so they switch it on once they have.
+    var scheduledTask: AgentScheduler.ScheduledTask? {
+        guard setup == .scheduledTask, !taskId.isEmpty else { return nil }
+        return AgentScheduler.ScheduledTask(
             id: taskId,
             name: name,
             prompt: taskPrompt,
@@ -213,14 +239,11 @@ struct ShortcutTemplate: Identifiable {
             name: "Check Email",
             icon: "envelope",
             category: String(localized: "Communication"),
-            description: String(localized: "Runs a Check Email shortcut you build, which reads Apple Mail, and summarizes urgent ones. This app can't read your email without it."),
-            shortcutSteps: String(localized: "1. Find Emails (Unread, Last 1 Hour)\n2. Get Subject + Sender for each\n3. Output as text list"),
-            agentBehavior: String(localized: "Reads the email summaries, identifies urgent ones, and only notifies you about those. Routine newsletters and promotions are silently ignored."),
-            scheduleDescription: String(localized: "Every 15 minutes"),
-            taskId: "shortcut-email-check",
-            taskPrompt: "Run the Siri Shortcut 'Check Email' to get recent unread emails. Review the results. Only report emails that are urgent, from important contacts, or require action. Ignore newsletters, marketing, and automated notifications. If nothing urgent, there's nothing to report.",
-            intervalMinutes: 15,
-            speakResult: true
+            description: String(localized: "An automation you set up in Shortcuts finds your unread mail and hands it to Avenkin, which tells you only about the emails that need you. Avenkin never opens your mailbox itself."),
+            shortcutSteps: String(localized: "1. Shortcuts › Automation › New › Time of Day: pick a time, Repeat Daily, Run Immediately\n2. Find Message (Mail): unread mail, received in the last hour, where the action offers those filters\n3. Review Email with Avenkin, with the found messages as Emails\nAdd one automation for each time of day you want a check."),
+            agentBehavior: String(localized: "Reads only the text your automation hands it, and never acts on anything an email says. If an email is urgent, asks you to reply, or comes from a person rather than a mailing list, you get one silent notification. Newsletters and promotions are ignored."),
+            scheduleDescription: String(localized: "When your automation runs"),
+            setup: .automation
         ),
         ShortcutTemplate(
             id: "message-check",

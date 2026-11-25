@@ -128,7 +128,11 @@ final class PlanStopWordingTests: XCTestCase {
     func testTemplatesInstallSwitchedOff() {
         XCTAssertFalse(ShortcutTemplate.allTemplates.isEmpty)
         for template in ShortcutTemplate.allTemplates {
-            let task = template.scheduledTask
+            guard let task = template.scheduledTask else {
+                // An automation template adds no task; its automation is built in Shortcuts.
+                XCTAssertEqual(template.setup, .automation, "\(template.id) installs nothing")
+                continue
+            }
             XCTAssertFalse(task.enabled, "\(template.id) must wait for its Shortcut to exist")
             XCTAssertEqual(task.id, template.taskId)
             XCTAssertEqual(task.prompt, template.taskPrompt)
