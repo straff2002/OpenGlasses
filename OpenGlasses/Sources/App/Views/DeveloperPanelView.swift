@@ -31,6 +31,10 @@ struct DeveloperPanelView: View {
     @AppStorage(Config.geminiLiveStartSensitivityKey) private var geminiStartSensitivity = GeminiLiveStartSensitivity.high.rawValue
     /// Plan MQ P1 — `Config.localNativeToolCallsEnabled`, the same key and default (off).
     @AppStorage("localNativeToolCallsEnabled") private var localNativeToolCallsEnabled = false
+    /// Plan DZ / MQ P2 — `Config.ggufModelsEnabled`, the same key and default (off). The only place
+    /// the GGUF runtime can be switched on: off hides the GGUF section of Local Models and refuses
+    /// every GGUF load, and leaves installed GGUF files on disk.
+    @AppStorage("ggufModelsEnabled") private var ggufModelsEnabled = false
 
     init(appState: AppState) {
         self.appState = appState
@@ -83,8 +87,9 @@ struct DeveloperPanelView: View {
 
             OGSection(
                 header: "Downloaded Models",
-                footer: "Lets Gemma 4 E2B call tools in its own format, look things up more than once in a turn, and use the Field Assist job tools while it is being tested. Other downloaded models are unchanged. Applies from the next question."
+                footer: "GGUF models adds the GGUF downloads to Local Models, including Gemma 4 E2B and Qwen 3.5 4B, and lets them load. Turning it off keeps any you downloaded. Native tool calls lets Gemma 4 E2B (both kinds), Gemma 4 E4B (GGUF) and Qwen 3.5 4B (GGUF) call tools in their own format, look things up more than once in a turn, and use the Field Assist job tools while they are being tested. Other downloaded models are unchanged. Applies from the next question."
             ) {
+                OGRow("GGUF models", isOn: $ggufModelsEnabled, icon: "shippingbox")
                 OGRow("Native tool calls", isOn: $localNativeToolCallsEnabled, icon: "cpu")
             }
 
