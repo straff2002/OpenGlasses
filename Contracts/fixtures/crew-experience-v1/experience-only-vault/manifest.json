@@ -1,0 +1,24 @@
+{
+  "documents" : [
+
+  ],
+  "documents_dir" : "documents",
+  "files" : [
+    "crew-models.md"
+  ],
+  "gating" : {
+    "iap" : "enterprise"
+  },
+  "id" : "fixture-crew-units",
+  "name" : "Fixture Crew Units",
+  "prompt_rules" : [
+    "Never fabricate a fault code, a model, a setting or a procedure.",
+    "This vault holds no manufacturer's manual: answer only from the company's crew experience, and open every answer with \"From your company's experience (not the manufacturer's manual):\"",
+    "Cite the crew experience entry on every claim, by the name it is given.",
+    "Identify the exact model first; an entry written for another model is not evidence.",
+    "If the crew experience does not cover the question, say so plainly rather than guessing."
+  ],
+  "source_attribution_format" : "Source: {files}",
+  "source_attribution_required" : true,
+  "version" : "1.0.0"
+}

@@ -1,0 +1,264 @@
+{
+  "changedByRedaction" : 0,
+  "ignoredColumns" : [
+
+  ],
+  "ready" : 1,
+  "rows" : [
+    {
+      "number" : 2,
+      "problems" : [
+        {
+          "message" : "Row 2: no model and no equipment type.",
+          "name" : "noSubject"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    },
+    {
+      "number" : 3,
+      "problems" : [
+        {
+          "column" : "model",
+          "message" : "Row 3: this vault has no model by that spelling. Did you mean QXRT-990?",
+          "name" : "unknownModel",
+          "nearest" : "QXRT-990"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    },
+    {
+      "number" : 4,
+      "problems" : [
+        {
+          "column" : "model",
+          "message" : "Row 4: this vault has no model by that spelling. Fix it, or add it as a model you service.",
+          "name" : "unknownModel"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    },
+    {
+      "number" : 5,
+      "problems" : [
+        {
+          "column" : "equipment_type",
+          "message" : "Row 5: the equipment type is not one of this vault's.",
+          "name" : "unknownEquipmentType"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    },
+    {
+      "modelToken" : "QXRT-990",
+      "number" : 6,
+      "problems" : [
+        {
+          "column" : "symptom",
+          "message" : "Row 6: no symptom.",
+          "name" : "missingSymptom"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    },
+    {
+      "modelToken" : "QXRT-990",
+      "number" : 7,
+      "problems" : [
+        {
+          "column" : "fix",
+          "message" : "Row 7: no fix.",
+          "name" : "missingFix"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    },
+    {
+      "modelToken" : "QXRT-990",
+      "number" : 8,
+      "problems" : [
+        {
+          "column" : "fix",
+          "count" : 640,
+          "limit" : 500,
+          "message" : "Row 8: the fix is 640 characters; at most 500.",
+          "name" : "tooLong"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    },
+    {
+      "modelToken" : "QXRT-990",
+      "number" : 9,
+      "problems" : [
+        {
+          "column" : "symptom",
+          "count" : 501,
+          "limit" : 500,
+          "message" : "Row 9: the symptom is 501 characters with the fault code in front; at most 500.",
+          "name" : "tooLong"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    },
+    {
+      "modelToken" : "QXRT-990",
+      "number" : 10,
+      "problems" : [
+        {
+          "column" : "checked",
+          "message" : "Row 10: the list of checks holds a character that can't be published.",
+          "name" : "controlCharacter"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    },
+    {
+      "id" : "NOT-AN-ID",
+      "modelToken" : "QXRT-990",
+      "number" : 11,
+      "problems" : [
+        {
+          "column" : "id",
+          "message" : "Row 11: the id has been changed; leave it as it was downloaded, or empty for a new row.",
+          "name" : "badId"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    },
+    {
+      "id" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+      "modelToken" : "QXRT-990",
+      "number" : 12,
+      "problems" : [
+
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "ready"
+    },
+    {
+      "id" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+      "modelToken" : "QXRT-990",
+      "number" : 13,
+      "problems" : [
+        {
+          "column" : "id",
+          "message" : "Row 13: another row has the same id.",
+          "name" : "duplicateId"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    },
+    {
+      "id" : "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2",
+      "modelToken" : "QXRT-990",
+      "number" : 14,
+      "problems" : [
+        {
+          "column" : "id",
+          "message" : "Row 14: the id is not one of this vault's published rows; empty it to add the row as new.",
+          "name" : "unknownId"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    },
+    {
+      "modelToken" : "QXRT-990",
+      "number" : 15,
+      "problems" : [
+        {
+          "column" : "how_sure",
+          "message" : "Row 15: say how sure in words, for example \"fixed it most times\".",
+          "name" : "howSureIsANumber"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    },
+    {
+      "modelToken" : "QXRT-990",
+      "number" : 16,
+      "problems" : [
+        {
+          "column" : "date",
+          "message" : "Row 16: the date must be written YYYY-MM-DD.",
+          "name" : "badDate"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    },
+    {
+      "modelToken" : "QXRT-990",
+      "number" : 17,
+      "problems" : [
+        {
+          "message" : "Row 17: there are cells beyond the last column.",
+          "name" : "extraCells"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    },
+    {
+      "modelToken" : "QXRT-990",
+      "number" : 18,
+      "problems" : [
+        {
+          "column" : "symptom",
+          "message" : "Row 18: the symptom holds a character that can't be published.",
+          "name" : "controlCharacter"
+        }
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "to_fix"
+    }
+  ],
+  "toFix" : 16
+}

@@ -1,0 +1,7 @@
+id,brand,model,equipment_type,fault_code,symptom,checked,fix,notes,how_sure,added_by,date
+00000000000000000000000000000001,Fixturetherm,QXRT-990,rooftop unit,E999,"E999: Unit trips on start, fan runs",Pressure switch and its harness,Reseated the pressure switch harness at the plug,E999: Reseated the pressure switch harness at the plug,fixed it most times,,
+00000000000000000000000000000002,Fixturetherm,QXRT-990,,E998,E998: No heat on stage two,"Gas valve coil, 24 V at the board",Replaced the stage two relay and its socket,"Check the relay first.
+The coil is rarely the cause.",fixed it every time,,
+00000000000000000000000000000004,,,walk-in cooler,,Door frame sweats in summer,Heater wire continuity,Replaced the door frame heater fuse,Replaced the door frame heater fuse,,,
+,Fixturetherm,QXRT-990,,E996,Blower stops after ten minutes,Blower motor amps,Cleaned the blower wheel,,fixed it most times,,
+,Examplair,ZPL-2040,,,Ice on the evaporator,Airflow across the coil,Replaced the clogged return filter,,fixed it once,,

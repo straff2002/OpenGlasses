@@ -1,0 +1,197 @@
+{
+  "diff" : {
+    "changed" : [
+      "00000000000000000000000000000002"
+    ],
+    "new" : [
+      "00000000000000000000000000000005",
+      "00000000000000000000000000000006"
+    ],
+    "removed" : [
+      "00000000000000000000000000000003"
+    ],
+    "unchanged" : [
+      "00000000000000000000000000000001",
+      "00000000000000000000000000000004"
+    ]
+  },
+  "entries" : [
+    {
+      "approvedAt" : 1795564800,
+      "approvedByRole" : "Service manager",
+      "authorIsApprover" : true,
+      "contradictsSafetyNote" : false,
+      "entryID" : "00000000000000000000000000000001",
+      "faultCode" : "E999",
+      "finding" : "E999: Reseated the pressure switch harness at the plug",
+      "fix" : "Reseated the pressure switch harness at the plug",
+      "origin" : "recollection",
+      "outcome" : "fixed it most times",
+      "subject" : {
+        "equipmentType" : "rooftop unit",
+        "kind" : "model",
+        "manufacturer" : "Fixturetherm",
+        "modelToken" : "QXRT-990"
+      },
+      "symptom" : "E999: Unit trips on start, fan runs",
+      "tried" : "Pressure switch and its harness",
+      "vaultIDs" : [
+        "fixture-crew-units"
+      ]
+    },
+    {
+      "approvedAt" : 1797379200,
+      "approvedByRole" : "Service manager",
+      "authorIsApprover" : false,
+      "contradictsSafetyNote" : false,
+      "entryID" : "00000000000000000000000000000002",
+      "faultCode" : "E998",
+      "finding" : "Check the relay first.\nThe coil is rarely the cause.",
+      "fix" : "Replaced the stage two relay and its socket",
+      "origin" : "recollection",
+      "outcome" : "fixed it every time",
+      "subject" : {
+        "kind" : "model",
+        "manufacturer" : "Fixturetherm",
+        "modelToken" : "QXRT-990"
+      },
+      "symptom" : "E998: No heat on stage two",
+      "tried" : "Gas valve coil, 24 V at the board",
+      "vaultIDs" : [
+        "fixture-crew-units"
+      ]
+    },
+    {
+      "approvedAt" : 1795564800,
+      "approvedByRole" : "Service manager",
+      "authorIsApprover" : true,
+      "contradictsSafetyNote" : false,
+      "entryID" : "00000000000000000000000000000004",
+      "finding" : "Replaced the door frame heater fuse",
+      "fix" : "Replaced the door frame heater fuse",
+      "origin" : "recollection",
+      "subject" : {
+        "equipmentType" : "walk-in cooler",
+        "kind" : "symptom",
+        "phrase" : "Door frame sweats in summer"
+      },
+      "symptom" : "Door frame sweats in summer",
+      "tried" : "Heater wire continuity",
+      "vaultIDs" : [
+        "fixture-crew-units"
+      ]
+    },
+    {
+      "approvedAt" : 1797379200,
+      "approvedByRole" : "Service manager",
+      "authorIsApprover" : false,
+      "contradictsSafetyNote" : false,
+      "entryID" : "00000000000000000000000000000005",
+      "faultCode" : "E996",
+      "finding" : "E996: Cleaned the blower wheel",
+      "fix" : "Cleaned the blower wheel",
+      "origin" : "recollection",
+      "outcome" : "fixed it most times",
+      "subject" : {
+        "kind" : "model",
+        "manufacturer" : "Fixturetherm",
+        "modelToken" : "QXRT-990"
+      },
+      "symptom" : "E996: Blower stops after ten minutes",
+      "tried" : "Blower motor amps",
+      "vaultIDs" : [
+        "fixture-crew-units"
+      ]
+    },
+    {
+      "approvedAt" : 1797379200,
+      "approvedByRole" : "Service manager",
+      "authorIsApprover" : false,
+      "contradictsSafetyNote" : false,
+      "entryID" : "00000000000000000000000000000006",
+      "finding" : "Replaced the clogged return filter",
+      "fix" : "Replaced the clogged return filter",
+      "origin" : "recollection",
+      "outcome" : "fixed it once",
+      "subject" : {
+        "kind" : "model",
+        "manufacturer" : "Examplair",
+        "modelToken" : "ZPL-2040"
+      },
+      "symptom" : "Ice on the evaporator",
+      "tried" : "Airflow across the coil",
+      "vaultIDs" : [
+        "fixture-crew-units"
+      ]
+    }
+  ],
+  "report" : {
+    "changedByRedaction" : 0,
+    "ignoredColumns" : [
+
+    ],
+    "ready" : 5,
+    "rows" : [
+      {
+        "equipmentType" : "rooftop unit",
+        "id" : "00000000000000000000000000000001",
+        "modelToken" : "QXRT-990",
+        "number" : 2,
+        "problems" : [
+
+        ],
+        "redactions" : [
+
+        ],
+        "status" : "ready"
+      },
+      {
+        "id" : "00000000000000000000000000000002",
+        "modelToken" : "QXRT-990",
+        "number" : 3,
+        "problems" : [
+
+        ],
+        "redactions" : [
+
+        ],
+        "status" : "ready"
+      },
+      {
+        "equipmentType" : "walk-in cooler",
+        "id" : "00000000000000000000000000000004",
+        "number" : 4,
+        "problems" : [
+
+        ],
+        "redactions" : [
+
+        ],
+        "status" : "ready"
+      },
+      {
+        "modelToken" : "QXRT-990",
+        "number" : 5,
+        "problems" : [
+
+        ],
+        "redactions" : [
+
+        ],
+        "status" : "ready"
+      },
+      {
+        "modelToken" : "ZPL-2040",
+        "number" : 6,
+        "problems" : [
+
+        ],
+        "redactions" : [
+
+        ],
+        "status" : "ready"
+      }
+    ],
+    "toFix" : 0
+  }
+}

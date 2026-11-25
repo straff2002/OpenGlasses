@@ -309,6 +309,8 @@ enum LearningReview {
             return VaultRetriever.ModelScope.identity(x) == VaultRetriever.ModelScope.identity(y)
         case (.practice(let x), .practice(let y)):
             return normalisedFinding(x) == normalisedFinding(y)
+        case (.symptom(let xType, let xPhrase), .symptom(let yType, let yPhrase)):
+            return normalisedFinding(xType) == normalisedFinding(yType) && normalisedFinding(xPhrase) == normalisedFinding(yPhrase)
         default:
             return false
         }
@@ -393,6 +395,9 @@ enum LearningReview {
             return plain(token).map { .model(modelToken: $0, manufacturer: plain(manufacturer), equipmentType: plain(type)) }
         case .practice(let topic):
             return plain(topic).map { .practice(topic: $0) }
+        case .symptom(let type, let phrase):
+            guard let type = plain(type), let phrase = plain(phrase) else { return nil }
+            return .symptom(equipmentType: type, phrase: phrase)
         }
     }
 

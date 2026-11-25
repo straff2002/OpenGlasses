@@ -425,7 +425,7 @@ final class TeamLearningCaptureTests: XCTestCase {
     }
 
     func testEveryOriginDecodesAndTheRecordUsesTheContractsNames() throws {
-        XCTAssertEqual(LearningCandidate.Origin.allCases.map(\.rawValue), ["spoken", "report", "reportReview"])
+        XCTAssertEqual(LearningCandidate.Origin.allCases.map(\.rawValue), ["spoken", "report", "reportReview", "recollection"])
         let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
         for origin in LearningCandidate.Origin.allCases {

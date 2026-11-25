@@ -1,6 +1,6 @@
 # Plan NF — Crew Experience Sheet (the company's own fixes, kept in a spreadsheet, answered beside the manuals)
 
-**Status:** 📝 Drafted 2026-11-25. Nothing is built. [Decisions](#decisions-for-greig) taken the same day: 1–8 and
+**Status:** 🚧 P0 built 2026-11-25, PR pending: `Contracts/crew-experience.md`, the team-learning amendment (§11 there), the shared core `CrewExperience.swift` beside `VaultPackRules` (parser, row rules, mapping, set, `crew-models.md`, experience-only vault), the `experience` catalog field with its checks, golden fixtures in `Contracts/fixtures/crew-experience-v1/`, and the phone's entry fields (`faultCode`, `tried`, `outcome`, origin `recollection`, IM's symptom subject). Not built: P1 onwards (no phone applies a set, cites *Crew experience* or opens with its lead-in yet), the seal (its domain is fixed in the contract), the safety second confirmation (S1). Drafted 2026-11-25. [Decisions](#decisions-for-greig) taken the same day: 1–8 and
 10–14 as recommended; 9 changed to add an on-phone route for a one-person shop (§9, phase P5), built only if the
 partner's feedback says one-person shops matter; 15 became its own plan, [NG](NG-team-learnings-reviewed-in-the-portal.md).
 **Track:** Field Assist — company knowledge. The licence portal, company vaults, the team-learning corpus.

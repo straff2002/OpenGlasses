@@ -64,17 +64,30 @@ enum LearningCorpus {
 
     // MARK: - The artefact
 
-    /// The text a learning is retrieved and quoted by: the subject, then what was seen, worked out
-    /// and done. Plain text; the citation travels as the document's name, not in the body.
+    /// The text a learning is retrieved and quoted by: the subject, then the fault code, what was
+    /// seen, checked, worked out and done, and how sure the crew is — in words, so the answer can say
+    /// "fixed it most times". Plain text; the citation travels as the document's name, not in the body.
+    /// An entry without the crew-experience fields reads exactly as before.
     nonisolated static func documentText(_ entry: LearningEntry) -> String {
         var lines: [String] = []
         switch entry.subject {
         case .model(let token, _, _): lines.append("Model: \(token)")
         case .practice(let topic): lines.append("Practice: \(topic)")
+        case .symptom(let equipmentType, _): lines.append("Equipment: \(equipmentType)")
         }
-        if let symptom = entry.symptom, !symptom.isEmpty { lines.append("Symptom: \(symptom)") }
+        func add(_ label: String, _ value: String?) {
+            if let value, !value.isEmpty { lines.append("\(label): \(value)") }
+        }
+        add("Fault code", entry.faultCode)
+        if case .symptom(_, let phrase) = entry.subject, entry.symptom?.isEmpty ?? true {
+            add("Symptom", phrase)
+        } else {
+            add("Symptom", entry.symptom)
+        }
+        add("Checked", entry.tried)
         lines.append("Finding: \(entry.finding)")
-        if let fix = entry.fix, !fix.isEmpty { lines.append("Fix: \(fix)") }
+        add("Fix", entry.fix)
+        add("How sure", entry.outcome)
         return lines.joined(separator: "\n")
     }
 

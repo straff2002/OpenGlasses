@@ -1,0 +1,88 @@
+[
+  {
+    "approvedAt" : 1795564800,
+    "approvedByRole" : "Service manager",
+    "authorIsApprover" : true,
+    "contradictsSafetyNote" : false,
+    "entryID" : "00000000000000000000000000000001",
+    "faultCode" : "E999",
+    "finding" : "E999: Reseated the pressure switch harness at the plug",
+    "fix" : "Reseated the pressure switch harness at the plug",
+    "origin" : "recollection",
+    "outcome" : "fixed it most times",
+    "subject" : {
+      "equipmentType" : "rooftop unit",
+      "kind" : "model",
+      "manufacturer" : "Fixturetherm",
+      "modelToken" : "QXRT-990"
+    },
+    "symptom" : "E999: Unit trips on start, fan runs",
+    "tried" : "Pressure switch and its harness",
+    "vaultIDs" : [
+      "fixture-crew-units"
+    ]
+  },
+  {
+    "approvedAt" : 1795564800,
+    "approvedByRole" : "Service manager",
+    "authorIsApprover" : false,
+    "contradictsSafetyNote" : false,
+    "entryID" : "00000000000000000000000000000002",
+    "faultCode" : "E998",
+    "finding" : "Check the relay first.\nThe coil is rarely the cause.",
+    "fix" : "Replaced the stage two relay on the board",
+    "origin" : "recollection",
+    "outcome" : "fixed it every time",
+    "subject" : {
+      "kind" : "model",
+      "manufacturer" : "Fixturetherm",
+      "modelToken" : "QXRT-990"
+    },
+    "symptom" : "E998: No heat on stage two",
+    "tried" : "Gas valve coil, 24 V at the board",
+    "vaultIDs" : [
+      "fixture-crew-units"
+    ]
+  },
+  {
+    "approvedAt" : 1795564800,
+    "approvedByRole" : "Service manager",
+    "authorIsApprover" : false,
+    "contradictsSafetyNote" : false,
+    "entryID" : "00000000000000000000000000000003",
+    "finding" : "Moved the defrost sensor clip to the middle row of the coil",
+    "fix" : "Moved the defrost sensor clip to the middle row of the coil",
+    "origin" : "recollection",
+    "outcome" : "fixed it once",
+    "subject" : {
+      "kind" : "model",
+      "manufacturer" : "Examplair",
+      "modelToken" : "ZPL-2040"
+    },
+    "symptom" : "Display shows \"LO\" after defrost",
+    "tried" : "Defrost sensor reading",
+    "vaultIDs" : [
+      "fixture-crew-units"
+    ]
+  },
+  {
+    "approvedAt" : 1795564800,
+    "approvedByRole" : "Service manager",
+    "authorIsApprover" : true,
+    "contradictsSafetyNote" : false,
+    "entryID" : "00000000000000000000000000000004",
+    "finding" : "Replaced the door frame heater fuse",
+    "fix" : "Replaced the door frame heater fuse",
+    "origin" : "recollection",
+    "subject" : {
+      "equipmentType" : "walk-in cooler",
+      "kind" : "symptom",
+      "phrase" : "Door frame sweats in summer"
+    },
+    "symptom" : "Door frame sweats in summer",
+    "tried" : "Heater wire continuity",
+    "vaultIDs" : [
+      "fixture-crew-units"
+    ]
+  }
+]

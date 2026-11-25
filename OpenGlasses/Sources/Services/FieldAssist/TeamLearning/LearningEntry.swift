@@ -6,21 +6,30 @@ import Foundation
 /// **Field names follow `Contracts/team-learning.md` §5** (`entryID`, `subject`, `vaultIDs`,
 /// `finding`/`symptom`/`fix`, `approvedAt`, `approvedByRole`, `authorIsApprover`,
 /// `contradictsSafetyNote`, `supersedes`, `candidateID`) plus the 2026-10-09 amendment (`origin`,
-/// `sourceJobIDs`, `confirmedJobCount`), so P3's learning-set codec is a straight mapping. What the
+/// `sourceJobIDs`, `confirmedJobCount`) and the 2026-11-25 crew-experience amendment (`faultCode`,
+/// `tried`, `outcome`, origin `recollection`, the symptom subject — Plan NF P0), so P3's learning-set
+/// codec is a straight mapping. What the
 /// phone keeps beside them — the approver's name, the text as captured, and the supersession and
 /// retraction stamps — is its own review history and is not part of the wire entry.
 struct LearningEntry: Codable, Equatable, Identifiable {
 
-    /// What the entry is about (contract §5): a machine by identity, or a practice by topic.
+    /// What the entry is about (contract §5): a machine by identity, a practice by topic, or (the
+    /// crew-experience amendment, Plan IM decision 4) a symptom bounded by an equipment type from the
+    /// vault's closed list.
     enum Subject: Equatable {
         case model(modelToken: String, manufacturer: String? = nil, equipmentType: String? = nil)
         case practice(topic: String)
+        /// An equipment type alone, with the symptom phrase it was recorded under. No retrieval path
+        /// reads it yet: matching it to a turn's equipment type is IM P0's.
+        case symptom(equipmentType: String, phrase: String)
 
-        /// The `<subject>` part of the citation name: the model token or the topic (§7.1).
+        /// The `<subject>` part of the citation name: the model token, the topic or the equipment
+        /// type (§7.1).
         var citationSubject: String {
             switch self {
             case .model(let token, _, _): return token
             case .practice(let topic): return topic
+            case .symptom(let equipmentType, _): return equipmentType
             }
         }
 
@@ -50,6 +59,12 @@ struct LearningEntry: Codable, Equatable, Identifiable {
     var finding: String
     var symptom: String?
     var fix: String?
+    /// The fault code the case is about, as the display shows it (crew-experience amendment).
+    var faultCode: String?
+    /// What was checked or tried on the way to the fix (Plan IM decision 3).
+    var tried: String?
+    /// How sure the crew is, in their words ("fixed it most times"), never a number (IM decision 3).
+    var outcome: String?
     let approvedAt: Date
     let approvedByRole: String
     let authorIsApprover: Bool
@@ -61,6 +76,7 @@ struct LearningEntry: Codable, Equatable, Identifiable {
     /// Job identifiers only — never a customer, site or address.
     var sourceJobIDs: [String]?
     /// How many jobs it was *filed on* (not "resolved": that needs an outcome the app does not hold).
+    /// A `recollection` was bound to no job: absent, which reads as 0.
     var confirmedJobCount: Int?
 
     // Phone-side review history, not part of the wire entry.
@@ -76,6 +92,7 @@ struct LearningEntry: Codable, Equatable, Identifiable {
 
     init(id: String = LearningCandidate.newID(), subject: Subject, vaultIDs: [String],
          finding: String, symptom: String? = nil, fix: String? = nil,
+         faultCode: String? = nil, tried: String? = nil, outcome: String? = nil,
          approvedAt: Date, approvedByRole: String, approvedByName: String,
          authorIsApprover: Bool = false, contradictsSafetyNote: Bool = false,
          supersedes: String? = nil, candidateID: String? = nil,
@@ -88,6 +105,9 @@ struct LearningEntry: Codable, Equatable, Identifiable {
         self.finding = finding
         self.symptom = symptom
         self.fix = fix
+        self.faultCode = faultCode
+        self.tried = tried
+        self.outcome = outcome
         self.approvedAt = approvedAt
         self.approvedByRole = approvedByRole
         self.approvedByName = approvedByName
@@ -113,7 +133,8 @@ struct LearningEntry: Codable, Equatable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id = "entryID"
-        case subject, vaultIDs, finding, symptom, fix, approvedAt, approvedByRole, authorIsApprover
+        case subject, vaultIDs, finding, symptom, fix, faultCode, tried, outcome
+        case approvedAt, approvedByRole, authorIsApprover
         case contradictsSafetyNote, supersedes, candidateID, origin, sourceJobIDs, confirmedJobCount
         case approvedByName, captured, supersededAt, supersededBy, retractedAt, retractionReason
     }
@@ -122,7 +143,7 @@ struct LearningEntry: Codable, Equatable, Identifiable {
 // MARK: - Subject coding (contract §5)
 
 extension LearningEntry.Subject: Codable {
-    private enum Keys: String, CodingKey { case kind, modelToken, manufacturer, equipmentType, topic }
+    private enum Keys: String, CodingKey { case kind, modelToken, manufacturer, equipmentType, topic, phrase }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -133,6 +154,9 @@ extension LearningEntry.Subject: Codable {
                           equipmentType: try c.decodeIfPresent(String.self, forKey: .equipmentType))
         case "practice":
             self = .practice(topic: try c.decode(String.self, forKey: .topic))
+        case "symptom":
+            self = .symptom(equipmentType: try c.decode(String.self, forKey: .equipmentType),
+                            phrase: try c.decode(String.self, forKey: .phrase))
         case let other:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c,
                                                    debugDescription: "unknown subject kind \(other)")
@@ -150,6 +174,10 @@ extension LearningEntry.Subject: Codable {
         case .practice(let topic):
             try c.encode("practice", forKey: .kind)
             try c.encode(topic, forKey: .topic)
+        case .symptom(let equipmentType, let phrase):
+            try c.encode("symptom", forKey: .kind)
+            try c.encode(equipmentType, forKey: .equipmentType)
+            try c.encode(phrase, forKey: .phrase)
         }
     }
 }

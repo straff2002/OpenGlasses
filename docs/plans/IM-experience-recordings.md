@@ -1,6 +1,6 @@
 # Plan IM — Experience Recordings (what the crew already knows, one case per recording)
 
-**Status:** 📝 Drafted 2026-10-16 — nothing implemented.
+**Status:** 📝 Drafted 2026-10-16. Part of P0 built by Plan NF P0 (2026-11-25): `LearningCandidate.Origin.recollection`, the entry fields `tried`/`outcome` (on `LearningEntry`, not yet on the candidate), `LearningEntry.Subject.symptom(equipmentType:phrase:)` decoded additively, and the team-learning contract amendment (§11). Not built: `recording` evidence, the `equipment_types` manifest list, the retriever's symptom matching, the recalled lead-in and ranking.
 **Track:** Field Assist (B2B).
 **Depends on:** Plan [FP](FP-team-learnings.md) P0–P3 (shipped: candidate, review, entry, corpus,
 bundle) and FP P4 (the review queue on a screen) before anything here is usable by a supervisor.
