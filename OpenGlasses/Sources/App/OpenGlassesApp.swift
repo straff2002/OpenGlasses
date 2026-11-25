@@ -7697,10 +7697,13 @@ class AppState: ObservableObject, AppStateProtocol {
         presenceMonitor.motionActive = { [weak self] in self?.motionProvider.isActive ?? false }
         motionProvider.start()
 
-        // Surface anything the supervisor held while the user was away, on re-engagement (TTS + HUD).
+        // Surface anything the supervisor held while the user was away, on re-engagement: a quiet
+        // notification (and the lens, where there is one), never speech. Re-engagement fires on
+        // motion and the wake word with the phone locked beside the wearer, and a spoken line was
+        // heard back by the phone's own mic as a request (`HeldRecommendationNotification`).
         presenceMonitor.onReEngage = { [weak self] in
             guard let self, let line = self.heldRecommendations.drainSummary() else { return }
-            Task { @MainActor in await self.speechService.speak(line, source: .alert) }
+            HeldRecommendationNotification.post(body: line)
             self.glassesDisplay.showNotification(
                 title: String(localized: "Held while away",
                               comment: "Glasses display heading: actions held while the user was away, shown when they come back."),

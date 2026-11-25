@@ -29,9 +29,10 @@ final class JobUpdateNotificationsTests: XCTestCase {
 
     /// With the app open an update is shown; every other notification is presented exactly as
     /// when no delegate answers at all.
-    func testOnlyAnUpdateIsShownWhileTheAppIsOpen() {
+    func testOnlyAnUpdateMakesASoundWhileTheAppIsOpen() {
         XCTAssertEqual(JobSendNotificationRouter.presentation(identifier: JobUpdateNotifications.identifier(jobID: "job-2031")),
                        [.banner, .list, .sound])
+        // Held while away is shown too, without a sound (HeldRecommendationNotificationTests).
         for other in [JobSendNotifications.identifier, "timer-1", "alarm", "geofence.home", ""] {
             XCTAssertEqual(JobSendNotificationRouter.presentation(identifier: other), [], other)
         }
