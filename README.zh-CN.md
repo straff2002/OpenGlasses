@@ -82,7 +82,7 @@ Reading Assistant（阅读助手）和 Blind Assistant（盲人助手）预设�
 
 团队可以导入自己的手册与知识库，获取附有来源的答案，并导出会话记录。临床录音功能另提供生物识别访问控制、数据保留设置、审计记录及医疗数据导出选项。
 
-这些功能按不同权限等级开放。[了解专业功能](docs/CAPABILITIES.md#field-and-clinical-work)、[创建现场知识库](docs/field-assist-vault-guide.md)，或[联系 Skunkworks NZ Ltd](mailto:g@skunkworks.kiwi)了解团队授权。
+这些功能按不同权限等级开放。[了解专业功能](docs/CAPABILITIES.md#field-and-clinical-work)、[创建现场知识库](docs/field-assist-vault-guide.md)，或[联系 SKUNKWORKS NZ LIMITED](mailto:g@skunkworks.kiwi)了解团队授权。
 
 安全、隐私与 AI 工程已按 SOC 2、ISO 27001、ISO 27701、ISO 42001 及欧盟《人工智能法案》进行对照记录，见[合规计划](docs/plans/EP-compliance-programme.md)与[2026 年 10 月的审查](docs/eu-ai-act-review-2026-10.md)。
 
@@ -120,4 +120,4 @@ Avenkin 正在公测。最快的方式是通过 TestFlight（Apple 的预发布�
 
 Avenkin 采用 **[BSL 1.1](LICENSE)，源代码可用**，允许非商业用途，注明于 2030 年 3 月 24 日转为 Apache 2.0。商业用途需要另行授权，请联系 [g@skunkworks.kiwi](mailto:g@skunkworks.kiwi)。
 
-由 **Skunkworks NZ Ltd** 的 [Skunk0](https://github.com/straff2002) 开发。本项目独立于 Meta 和 Anthropic。
+由 **SKUNKWORKS NZ LIMITED** 的 [Skunk0](https://github.com/straff2002) 开发。本项目独立于 Meta 和 Anthropic。

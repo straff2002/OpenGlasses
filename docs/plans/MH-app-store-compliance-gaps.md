@@ -6,7 +6,9 @@ offer ("1 week free, then $4.99/month"). P1 built 2026-11-19 (headless): **Repor
 every stored assistant reply opens the support report scoped to that one turn
 (`ReportedReplyScope`), never offered in a private conversation; `support.html` publishes the route
 and the review notes carry the four lines. Owed: the catalog sync for P0's and P1's strings, and the
-P4 device pass. P2–P4 not started. Decision 4 taken as recommended; 5 decisions open.
+P4 device pass. P2–P4 not started; P2's copyright line now uses the legal name, SKUNKWORKS NZ
+LIMITED. Decision 4 taken as recommended; decision 1 taken 2026-11-25 (convert the developer
+membership to an Organization for the company; requested, not yet complete); 4 decisions open.
 **Track:** the phone-only App Store build (`OPENGLASSES_PHONE_ONLY=1`). Every change also reaches the
 glasses build, where it does no harm.
 **Builds on:**
@@ -33,7 +35,7 @@ sequences the other six.
 | 2 | The paywalls never state a trial's length or the price after it | 3.1.2 | **P0 ✅** |
 | 3 | There is no way to report an AI reply, and no published route for content complaints | 1.2, 4.7 | P1 |
 | 4 | `HomeKit` and `CarPlay` are used as search keywords | 2.3.7 | P2 |
-| 5 | The copyright names Skunkworks NZ Ltd while the seller is an Individual account, and the EU DSA trader status is not filed | 5.x / DSA | P2 (decision 1) |
+| 5 | The copyright names SKUNKWORKS NZ LIMITED while the developer membership is still an Individual one (conversion to an Organization for the company requested 2026-11-25), and the EU DSA trader status is not filed | 5.x / DSA | P2 (decision 1) |
 | 6 | The Shared Location and Dating declarations (due 12 Jan 2027) and the new age-rating questionnaire are not done | 2026–27 | P2 |
 | 7 | The review notes do not justify the `*.ts.net` plain-HTTP exception | 2.5 / ATS | P1 (notes) |
 | 8 | There is no 5.2.2 evidence that a third-party app may use Claude subscription OAuth (`ClaudeOAuth`) | 5.2.2 | P3 (decision 5) |
@@ -134,9 +136,12 @@ composer.
 
 - **Keywords:** replace `HomeKit` and `CarPlay` with generic terms ("smart home", "car"). The
   description can keep saying the app works with them.
-- **Copyright and seller:** fix the copyright line once decision 1 is taken.
-- **EU DSA trader status:** file it for whoever the seller is. As an Individual seller this
-  publishes an address and phone number on EU storefronts.
+- **Copyright and seller:** the copyright line is "2026 SKUNKWORKS NZ LIMITED", the company's legal
+  name. Once Apple completes the conversion (decision 1), the company is the seller and the line
+  matches it; check the seller name App Store Connect shows before the first submission.
+- **EU DSA trader status:** file it for the company once the conversion is complete, with the
+  company's address and contact details. Filing it while the membership is still an Individual one
+  would publish a personal address and phone number on EU storefronts.
 - **Shared Location and Dating/Relationships declarations**, due 12 Jan 2027. The recommended
   answer to both is "no": the app never shares a wearer's location with another user. A job sent to
   an expert carries a site address, but the wearer sends it through Messages, Mail or the share
@@ -164,9 +169,13 @@ On the exact phone-only archive, with a sandbox account:
 ## Decisions
 
 1. **Seller entity.** Stay an Individual (the copyright names the account holder, and the trader
-   address is a personal one) or move to an Organisation account for Skunkworks NZ Ltd before
+   address is a personal one) or move to an Organisation account for SKUNKWORKS NZ LIMITED before
    launch. *Recommendation:* decide before the first public release; an Organisation account needs
-   a D-U-N-S number and takes weeks.
+   a D-U-N-S number and takes weeks. **Taken 2026-11-25: move to an Organization.** The owner asked
+   Apple to convert the existing Individual membership to an Organization membership for SKUNKWORKS
+   NZ LIMITED, using the company's D-U-N-S record; Apple's lookup confirmed that legal name. Until
+   Apple completes the conversion the seller is still the Individual account; afterwards it is the
+   company. The repository's copy already uses the legal name.
 2. **Replacement keywords.** *Recommendation:* "smart home,car".
 3. **Shared Location answer.** *Recommendation:* no.
 4. **Report destination.** The email in `support.html`, or a form on avenkin.com.

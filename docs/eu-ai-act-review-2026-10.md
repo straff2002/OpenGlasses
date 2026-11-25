@@ -31,7 +31,7 @@ Penalties: up to EUR 35 m or 7 % of turnover for Art. 5, EUR 15 m or 3 % for the
 
 ## 2. Who Avenkin is under the Act
 
-- **Provider:** Skunkworks NZ Ltd, New Zealand. The Act applies to a provider placing an AI system on the EU market regardless of where it is established (Art. 2(1)(a)). For a high-risk system a non-EU provider must also appoint an EU authorised representative (Art. 22). Not needed for Art. 50-only systems.
+- **Provider:** SKUNKWORKS NZ LIMITED, New Zealand. The Act applies to a provider placing an AI system on the EU market regardless of where it is established (Art. 2(1)(a)). For a high-risk system a non-EU provider must also appoint an EU authorised representative (Art. 22). Not needed for Art. 50-only systems.
 - **Not a GPAI model provider.** Avenkin integrates Claude, Gemini, OpenAI, Mistral, DeepSeek and downloads open models from Hugging Face at the user's request. It trains and places no general-purpose model. The fingerspelling model is a narrow task model.
 - **No open-source exemption** (Art. 2(12)). The licence is BSL 1.1 and the app is sold. Art. 2(12) also never covers Art. 5 or Art. 50 systems.
 - **Personal users** are outside the Act as deployers (Art. 2(10)). This removes *their* duties, not the provider's. Avenkin's own obligations for a feature do not change because the buyer is a private individual.
