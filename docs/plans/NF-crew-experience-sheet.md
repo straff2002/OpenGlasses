@@ -1,7 +1,8 @@
 # Plan NF — Crew Experience Sheet (the company's own fixes, kept in a spreadsheet, answered beside the manuals)
 
-**Status:** 📝 Drafted 2026-11-25. Nothing is built. 15 [decisions](#decisions-for-greig), each with a
-recommendation.
+**Status:** 📝 Drafted 2026-11-25. Nothing is built. [Decisions](#decisions-for-greig) taken the same day: 1–8 and
+10–14 as recommended; 9 changed to add an on-phone route for a one-person shop (§9, phase P5), built only if the
+partner's feedback says one-person shops matter; 15 became its own plan, [NG](NG-team-learnings-reviewed-in-the-portal.md).
 **Track:** Field Assist — company knowledge. The licence portal, company vaults, the team-learning corpus.
 **Builds on:** Plan [FP](FP-team-learnings.md) P0–P3 (the learning entry, its own corpus beside the manuals,
 the citation and the "learning alone" lead-in, the rule that a learning never outranks a safety note), Plan
@@ -205,6 +206,28 @@ The template is the one intake every later source writes to, so nothing built he
 - **Later, on the phone:** Plan IM's one-case-per-recording, landing in the same preview rather than on a
   reviewer device.
 
+### 9 · A one-person shop, on the phone (decision 9)
+
+A solo subscriber has their own vaults (`.ownVaults`) and no portal. They get the same sheet on the phone. The
+parser and row rules are the shared-core files from P0, compiled into the app the way Plan LW's
+`VaultDrafts.swift` already is, so the phone and the portal accept exactly the same rows.
+
+- **Three ways in**, from **Add your experience** on an owned vault: import a `.csv` from Files (Numbers, Excel
+  and Google Sheets on the phone all export one); **paste rows** copied from any spreadsheet app, which arrive
+  on the clipboard as tab-separated text, so no file is needed; or paste a chat assistant's answer to the
+  notes-to-rows prompt (§8), using Plan LW's `PromptKit` pattern.
+- **One review screen**, the portal's preview on the phone: ready, to fix, changed by redaction. Saving is the
+  approval. The owner is author and approver (`authorIsApprover: true`, role "Owner").
+- **Kept with the vault.** Entries go into that vault's experience store and through the same union reconcile.
+  The citation and lead-in are unchanged.
+- **Export current sheet** writes a CSV with its ids to the share sheet, so the owner can edit it in their
+  spreadsheet and import it again, and it moves with them to a new phone. This is the owner's own text, not a
+  manual, so the rule against sharing manuals doesn't apply to it. A received vault, a My Manuals vault and a
+  company vault can't take a sheet (`VaultAuthoring.isOwned`).
+- **A new capability, `.ownExperience`,** in the solo tier and above. FP's `.teamLearnings` gate doesn't change.
+- **On the job,** a solo technician's "note that fix" (FP's spoken note) files into the same review screen
+  instead of a team queue. They are their own reviewer.
+
 ## Phases
 
 One PR each on the app side. The service steps are outlined only.
@@ -258,7 +281,15 @@ the sheet: the answer has the manual first and then the cited experience. Ask th
 vault: the lead-in opens the answer. Publish a change to one row: the old wording is gone on both phones. Let
 the licence lapse: the answers still come. Turn on HIPAA: they don't.
 
+### P5 — One-person shop, on the phone (only if the partner's feedback asks for it)
+
+The §9 route: `.ownExperience`, CSV import, tab-separated paste, the prompt kit, the review screen, export, and
+the solo spoken note. It reuses P0's parser and P1's store and reconcile, so it can come after P1 in one PR.
+
 ## Decisions for Greig
+
+Taken 2026-11-25: 1–8 and 10–14 as recommended. 9 changed (below). 15 became Plan
+[NG](NG-team-learnings-reviewed-in-the-portal.md).
 
 1. **The portal converts; the phone never reads a spreadsheet.** *Recommended:* yes (§1).
 2. **`.xlsx` is converted in the browser and the server accepts strict CSV only.** *Recommended:* yes. It keeps
@@ -277,7 +308,9 @@ the licence lapse: the answers still come. Turn on HIPAA: they don't.
 8. **Delivery as a sealed set on the company-vault catalog, not an office channel.** *Recommended:* yes (§5).
    It works for every portal company today, with no office.
 9. **Team and enterprise only.** *Recommended:* yes. A solo subscriber has no portal. Their own
-   experience is Plan MW's tips and FP's spoken note.
+   experience is Plan MW's tips and FP's spoken note. **Changed 2026-11-25:** the portal route stays team and
+   enterprise, and a one-person shop gets the same sheet on the phone, in its own vaults (§9, P5). Whether to
+   build P5 waits on the partner's feedback about one-person shops.
 10. **One sheet per vault.** *Recommended:* yes. An "every vault" sheet makes the model check meaningless.
 11. **Unknown models are fixed or added as company models, never dropped.** *Recommended:* yes (§4, §6). It
     closes gotcha 1.
@@ -288,7 +321,7 @@ the licence lapse: the answers still come. Turn on HIPAA: they don't.
     *Recommended:* later. Ship the sheet and the notes-to-rows prompt first, and see what customers actually
     write.
 15. **Phone-filed FP candidates reviewed in the portal instead of on a reviewer device.** *Recommended:* a
-    separate plan. It is the natural next step once the portal has a review screen, but it needs the phone to
+    separate plan. **Taken:** Plan [NG](NG-team-learnings-reviewed-in-the-portal.md). It is the natural next step once the portal has a review screen, but it needs the phone to
     send candidates to the service, which nothing does today.
 
 ## Acceptance
