@@ -139,6 +139,8 @@ enum SensitiveStore: String, CaseIterable {
     // Operational
     case offlineQueue
     case usage
+    /// Seconds of assistant time per local day, for the daily allowance (Plan NH).
+    case assistantTime
     case operationJournal
     case remoteInvokeAudit
     case debugEventLog
@@ -1265,6 +1267,21 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "UsageStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/Usage/UsageStore.swift"],
                           location: "Documents/usage.sqlite")
+
+        case .assistantTime:
+            // Plan NH §3: seconds of assistant time per local calendar day, for the 15-minute daily
+            // allowance — day keys and whole seconds, nothing said and nobody named. The wearer's own
+            // use, so a subject erasure has nothing to find. On the phone only: first-unlock (turns
+            // are counted while the phone is locked), out of backup and never in iCloud, so it
+            // never leaves the phone; a reinstall resets it, which decision 10 accepts.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("the last 7 days; an older day is dropped on the next write"),
+                          deleteAll: .api("AssistantTimeLedger.deleteAll()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "AssistantTimeLedger",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Allowance/AssistantTimeLedger.swift"],
+                          location: "Application Support/Allowance/assistant-time.json")
 
         case .toolDefinitionDigests:
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .none,
