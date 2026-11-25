@@ -613,7 +613,7 @@ class AgentScheduler: ObservableObject {
     private func loadTasks() -> [ScheduledTask] {
         if let data = UserDefaults.standard.data(forKey: "agentScheduledTasks"),
            let tasks = try? JSONDecoder().decode([ScheduledTask].self, from: data) {
-            return Self.withoutLegacyMyDayTask(tasks)
+            return Self.withoutRetiredTasks(tasks)
         }
         return ScheduledTask.defaults
     }
@@ -631,18 +631,26 @@ class AgentScheduler: ObservableObject {
     static func savedTasks() -> [ScheduledTask] {
         if let data = UserDefaults.standard.data(forKey: "agentScheduledTasks"),
            let tasks = try? JSONDecoder().decode([ScheduledTask].self, from: data) {
-            return withoutLegacyMyDayTask(tasks)
+            return withoutRetiredTasks(tasks)
         }
         return ScheduledTask.defaults
     }
 
     static func saveTasks(_ tasks: [ScheduledTask]) {
-        if let data = try? JSONEncoder().encode(withoutLegacyMyDayTask(tasks)) {
+        if let data = try? JSONEncoder().encode(withoutRetiredTasks(tasks)) {
             UserDefaults.standard.set(data, forKey: "agentScheduledTasks")
         }
     }
 
-    private static func withoutLegacyMyDayTask(_ tasks: [ScheduledTask]) -> [ScheduledTask] {
-        tasks.filter { $0.id != "morning-briefing" }
+    /// Tasks that are dropped wherever the saved list is read or written. `morning-briefing` is the
+    /// old My Day task. `shortcut-email-check` is the old Check Email template's task: it ran a
+    /// Shortcut every 15 minutes, which iOS doesn't allow from the background, read nothing back,
+    /// and with agent mode on piled up approvals and held runs while the person was away (field
+    /// report, build 770). Check Email is now the person's own automation handing mail to
+    /// `ReviewEmailIntent`, so the task can never do anything useful.
+    nonisolated static let retiredTaskIDs: Set<String> = ["morning-briefing", "shortcut-email-check"]
+
+    nonisolated static func withoutRetiredTasks(_ tasks: [ScheduledTask]) -> [ScheduledTask] {
+        tasks.filter { !retiredTaskIDs.contains($0.id) }
     }
 }
