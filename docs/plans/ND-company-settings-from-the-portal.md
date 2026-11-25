@@ -1,9 +1,8 @@
 # Plan ND — Company Settings from the Portal (the administrator sets them once, every phone that joins follows)
 
-**Status:** 🚧 P0, P1, P2 and P3 built 2026-11-24, and P4's phone half and P5 2026-11-25 (see
+**Status:** 🚧 P0–P3 built 2026-11-24, and P4 (the phone and the portal) and P5 2026-11-25 (see
 [As built](#as-built)), on the recommended answer to each of the 15 [decisions](#decisions-for-greig), which stay
-the owner's to change. Owed: P4's service half (the portal, private repository) and P6 (device pass, with its
-[checklist](#p6--the-device-pass-checklist-owed)).
+the owner's to change. Owed: P6, the device pass, with its [checklist](#p6--the-device-pass-checklist-owed).
 **Track:** Field Assist — fleet. The organisation profile, the licence portal, onboarding, Managed App
 Configuration.
 **Builds on:** Plan [CT](CT-org-configuration-profiles.md) (the signed profile, `SettingKey` and its directions,
@@ -550,6 +549,17 @@ version dropped, the version kept when the vaults are dropped for size).
 
 **Strings owed to the catalog (P5):** the Privacy footer's seat sentence, now naming the settings version (both
 footers).
+
+### P4, the portal (2026-11-25)
+
+Built in the private repository, against this contract (`core.lock` at the commit that carries the seat
+renewal's version):
+- the administrator's Settings page, within the preset and `administratorEditable`;
+- Publish, which re-signs with the next generation and refuses an edit made against an older one;
+- History, and Revert as a new generation;
+- Preview;
+- `ETag` / `304` on the profile address and its edge copy;
+- the MDM page, and the fleet line (*"N of M phones on version G"*).
 
 ### P5 (2026-11-25)
 
