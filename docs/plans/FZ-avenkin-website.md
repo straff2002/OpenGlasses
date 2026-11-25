@@ -244,7 +244,7 @@ The reasons, weighed:
 | **Licence keys** (2.4.5(vi): may not "require license keys, or implement their own copy protection") | The Office is unlocked by a vendor-signed organisation licence and setup file. On the Mac App Store that conflicts directly. The in-app purchase rules (3.1.1) would have to be reconciled with the enterprise exception (3.1.3(c)) | Licence files sold directly to organisations are the whole model |
 | **Updates** (2.4.5(vii): "must use the Mac App Store to distribute updates") | Store-managed only. Every fix waits for review | The in-app updater, a signed manifest on avenkin.com, releases on the owner's schedule, and rollback in minutes |
 | **Review latency** | Every v1 fix waits for review, for a fast-moving product | None. Notarisation is automated and usually takes minutes |
-| **Signing identity** | App Store distribution under the individual developer account | Developer ID under the same **individual** account: allowed, but Gatekeeper and the certificate show the owner's personal name, not the company (open question 3) |
+| **Signing identity** | App Store distribution under the developer account | Developer ID under the same account. While the membership is an Individual one, Gatekeeper and the certificate show the owner's personal name, not the company; once Apple completes the conversion to an Organization (requested 2026-11-25), a new certificate shows the company (open question 3) |
 | **Discoverability and trust** | Store listing, store search, familiar install | Must be earned: the download page, checksums, a clear publisher name, and notarisation so Gatekeeper opens it without warnings |
 | **Payment** | Apple's in-app purchase for anything unlocked in the app | Merchant-of-record checkout or invoice (P4) |
 
@@ -254,7 +254,7 @@ Guideline numbers and quotes were checked against Apple's published App Review G
 **Windows signing.** An unsigned or newly signed installer triggers SmartScreen warnings until the
 signature builds reputation. Code-signing certificates now require the private key in a hardware
 token or a cloud signing service, and an organisation-validated certificate is issued to the company
-(Skunkworks NZ Ltd), which needs company validation. The options are open question 4. The v1
+(SKUNKWORKS NZ LIMITED), which needs company validation. The options are open question 4. The v1
 decision can be made without resolving them, because unsigned preview builds are never published.
 
 ---
@@ -627,9 +627,11 @@ platform all refused.
 - **R8 — Anti-steering.** A purchase link reachable from inside the iOS app could fail review.
   *Mitigation:* I5 and the site check.
 - **R9 — An individual developer account on a company product.** Developer ID signatures show the
-  owner's name. Moving to an organisation account later changes the Team ID, which affects keychain
-  groups, App Group and entitlements for the phone app. *Mitigation:* decide before the first
-  production Office release (open question 3).
+  owner's name. Moving to an organisation account later could change the Team ID, which affects
+  keychain groups, App Group and entitlements for the phone app. *Mitigation:* decide before the first
+  production Office release (open question 3). **2026-11-25:** the owner asked Apple to convert the
+  existing membership to an Organization for SKUNKWORKS NZ LIMITED. Check whether the Team ID changed
+  once the conversion completes, then issue a new Developer ID certificate in the company's name.
 - **R10 — Legal text written without review** (EULA, terms, privacy covering Office and payments).
   *Mitigation:* legal review before P3's first public download and P4's first sale.
 
@@ -643,8 +645,9 @@ platform all refused.
    the billing portal) versus a plain payment processor plus our own tax handling. Lean: merchant of
    record. Enterprise stays on invoice either way.
 3. **Developer account:** stay individual (Developer ID shows your name), or move to an organisation
-   account for Skunkworks NZ Ltd before the first production Office release (needs a D-U-N-S number;
-   see R9 for the phone-side cost)?
+   account for SKUNKWORKS NZ LIMITED before the first production Office release (needs a D-U-N-S number;
+   see R9 for the phone-side cost)? **Taken 2026-11-25: organisation.** The conversion is requested
+   and not yet complete; until it is, signatures still show the owner's name.
 4. **Windows code signing:** an organisation-validated certificate on a hardware token, a cloud
    signing service, or both? It affects who can sign (only the machine holding the token) and how
    fast SmartScreen trust builds.

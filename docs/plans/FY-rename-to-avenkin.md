@@ -118,10 +118,11 @@ Fixed in P1 (F2), so the name changes in the same release as everything else.
 where you are: phone, watch, or glasses". Copy that describes a glasses-only feature keeps the word
 glasses; copy that describes the product or a device-neutral feature drops it.
 
-**D7 — The company name is unchanged.** The company is **Skunkworks NZ Limited**, written
-"Skunkworks NZ Ltd" in copy: the copyright lines, `LICENSE`, the privacy, support and about pages and
-the contact lines always use the full name, never a bare "Skunkworks NZ". This plan renames the product
-only.
+**D7 — The company name is unchanged.** The company is **SKUNKWORKS NZ LIMITED**, written exactly
+that way in copy: the copyright lines, `LICENSE`, the privacy, support and about pages and the contact
+lines always use the full legal name, never a bare "Skunkworks NZ" or a shortened "Ltd". (Copy said
+"Skunkworks NZ Ltd" until 2026-11-25, when it moved to the legal name as Apple's D-U-N-S lookup gives
+it.) This plan renames the product only.
 
 **D8 — Privacy copy moves in the same PR as any change to it.** The website privacy page and the
 in-app privacy copy are renamed together. The `PrivacyInfo.xcprivacy` manifests mention the name
@@ -294,7 +295,7 @@ the phases below are written to match:
   a custom wake phrase (P3.2).
 - **OpenClaw `userAgent` (Q5):** renamed to `avenkin-ios/…` in P1.5; no gateway keys on it.
 - **P4 (Q6):** not done. It stays unscheduled, revisited only if the old names confuse contributors.
-- **Desktop licence (Q9):** Avenkin Office's private code carries a plain "© 2026 Skunkworks NZ Ltd.
+- **Desktop licence (Q9):** Avenkin Office's private code carries a plain "© 2026 SKUNKWORKS NZ LIMITED.
   All rights reserved." notice, with a customer licence agreement shipped with the installer later.
   `Contracts/` and `Transport/` keep this repository's BSL 1.1 (and MPL-2.0 for the vendored sync
   engine).
@@ -973,12 +974,12 @@ Added 2026-09-28:
    setting pointing at avenkin.com. The translations address on `raw.githubusercontent.com` is not
    served by Pages and stays where it is while the repository is public.
 9. **Licence for the desktop's private code.** The phone app keeps BSL 1.1 with the notice
-   "© 2026 Skunkworks NZ Ltd" (Change Date 2030-03-24, then Apache 2.0, per `LICENSE`); that is not in
+   "© 2026 SKUNKWORKS NZ LIMITED" (Change Date 2030-03-24, then Apache 2.0, per `LICENSE`); that is not in
    question. For Avenkin Office's code in the private desktop repository, the options are the same BSL
    terms and notice for consistency, a plain all-rights-reserved notice, or a commercial licence.
    `Contracts/` and `Transport/` are public in this repository, so they carry this repository's
    licence (and, for the vendored sync engine, its own MPL-2.0 terms). The owner decides; nothing in
-   this plan depends on it. **Decided 2026-09-29:** a plain "© 2026 Skunkworks NZ Ltd. All rights
+   this plan depends on it. **Decided 2026-09-29:** a plain "© 2026 SKUNKWORKS NZ LIMITED. All rights
    reserved." notice, with a customer licence agreement shipped with the installer later.
 10. **Brand orange and the AI accent.** The app's AI accent is coral `#F08A4B`; the brand orange is
     `#E77F47`. They are close enough to read as a mistake side by side. Converge (the AI accent becomes

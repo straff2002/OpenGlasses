@@ -182,8 +182,8 @@ struct SettingsView: View {
                 header: "About",
                 // The tagline and the device line, in the owner's words (Plan FY P2.1).
                 footer: GlassesSupportPolicy.isSupported
-                    ? "Your AI. Your terms. On your iPhone, through headphones or AirPods, from your wrist, or hands-free with glasses.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nJoin the Discord for help, ideas, and to share what you've built."
-                    : "Your AI. Your terms. On your iPhone, through headphones or AirPods, or from your wrist.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nJoin the Discord for help, ideas, and to share what you've built."
+                    ? "Your AI. Your terms. On your iPhone, through headphones or AirPods, from your wrist, or hands-free with glasses.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nJoin the Discord for help, ideas, and to share what you've built."
+                    : "Your AI. Your terms. On your iPhone, through headphones or AirPods, or from your wrist.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nJoin the Discord for help, ideas, and to share what you've built."
             ) {
                 OGRow("Version", icon: "info.circle", mutedIcon: true, verbatimValue: Self.appVersion, showsChevron: false)
                 OGDivider()

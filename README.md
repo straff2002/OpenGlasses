@@ -82,7 +82,7 @@ Check AI, speech recognition, spoken voice and remote tools separately: selectin
 
 Teams can add their own manuals and knowledge vaults for answers with source references and exportable session records. Clinical recording features add biometric access, retention controls, audit records, and medical export options.
 
-These features have separate access tiers. [Explore professional capabilities](docs/CAPABILITIES.md#field-and-clinical-work), [build a field knowledge vault](docs/field-assist-vault-guide.md), or [contact Skunkworks NZ Ltd](mailto:g@skunkworks.kiwi) about team access.
+These features have separate access tiers. [Explore professional capabilities](docs/CAPABILITIES.md#field-and-clinical-work), [build a field knowledge vault](docs/field-assist-vault-guide.md), or [contact SKUNKWORKS NZ LIMITED](mailto:g@skunkworks.kiwi) about team access.
 
 Security, privacy and AI engineering is documented against SOC 2, ISO 27001, ISO 27701, ISO 42001 and the EU AI Act in [the compliance plans](docs/plans/EP-compliance-programme.md) and [the October 2026 review](docs/eu-ai-act-review-2026-10.md).
 
@@ -120,4 +120,4 @@ Found a security defect? Please report it privately—see [SECURITY.md](SECURITY
 
 Avenkin is **source-available under [BSL 1.1](LICENSE)**, with non-commercial use permitted and a stated change date of March 24, 2030 to Apache 2.0. Commercial use requires a separate licence: [g@skunkworks.kiwi](mailto:g@skunkworks.kiwi).
 
-Built by [Skunk0](https://github.com/straff2002) at **Skunkworks NZ Ltd**. Independent of Meta and Anthropic.
+Built by [Skunk0](https://github.com/straff2002) at **SKUNKWORKS NZ LIMITED**. Independent of Meta and Anthropic.

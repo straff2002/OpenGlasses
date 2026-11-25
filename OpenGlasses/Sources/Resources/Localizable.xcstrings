@@ -713480,166 +713480,166 @@
         }
       }
     },
-    "Your AI. Your terms. On your iPhone, through headphones or AirPods, from your wrist, or hands-free with glasses.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nJoin the Discord for help, ideas, and to share what you've built." : {
+    "Your AI. Your terms. On your iPhone, through headphones or AirPods, from your wrist, or hands-free with glasses.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nJoin the Discord for help, ideas, and to share what you've built." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ذكاءك الاصطناعي. شروطك. على هاتفك، من معصمك، أو بدون استخدام اليدين باستخدام النظارات.\n\nAvenkin © 2026 شركة Skunkworks NZ Ltd.\n\nانضم إلى ديسكورد للحصول على المساعدة، الأفكار، ومشاركة ما قمت ببنائه."
+            "value" : "ذكاءك الاصطناعي. شروطك. على هاتفك، من معصمك، أو بدون استخدام اليدين باستخدام النظارات.\n\nAvenkin © 2026 شركة SKUNKWORKS NZ LIMITED.\n\nانضم إلى ديسكورد للحصول على المساعدة، الأفكار، ومشاركة ما قمت ببنائه."
           }
         },
         "es-MX" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tu IA. Tus reglas. En tu celular, desde tu muñeca o con manos libres con lentes.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nÚnete a Discord para obtener ayuda, ideas y compartir lo que has creado."
+            "value" : "Tu IA. Tus reglas. En tu celular, desde tu muñeca o con manos libres con lentes.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nÚnete a Discord para obtener ayuda, ideas y compartir lo que has creado."
           }
         },
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Votre IA. Vos conditions. Sur votre téléphone, depuis votre poignet, ou mains libres avec des lunettes.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nRejoignez le Discord pour obtenir de l'aide, des idées et partager ce que vous avez construit."
+            "value" : "Votre IA. Vos conditions. Sur votre téléphone, depuis votre poignet, ou mains libres avec des lunettes.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nRejoignez le Discord pour obtenir de l'aide, des idées et partager ce que vous avez construit."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Az Ön MI-je. Az Ön feltételei. A telefonján, a csuklójáról vagy kéz nélküli szemüveggel.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nCsatlakozzon a Discordhoz segítségért, ötletekért és hogy megossza, amit létrehozott."
+            "value" : "Az Ön MI-je. Az Ön feltételei. A telefonján, a csuklójáról vagy kéz nélküli szemüveggel.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nCsatlakozzon a Discordhoz segítségért, ötletekért és hogy megossza, amit létrehozott."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La tua intelligenza artificiale. I tuoi termini. Sul telefono, dal polso o in vivavoce con gli occhiali.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nUnisciti a Discord per ricevere aiuto, idee e condividere ciò che hai costruito."
+            "value" : "La tua intelligenza artificiale. I tuoi termini. Sul telefono, dal polso o in vivavoce con gli occhiali.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nUnisciti a Discord per ricevere aiuto, idee e condividere ciò che hai costruito."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "あなたのAI。あなたの条件。あなたの電話で、手首から、またはメガネでハンズフリーで使用できます。\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nサポート、アイデア、作成したものの共有にはDiscordに参加してください。"
+            "value" : "あなたのAI。あなたの条件。あなたの電話で、手首から、またはメガネでハンズフリーで使用できます。\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nサポート、アイデア、作成したものの共有にはDiscordに参加してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "당신의 AI. 귀하의 조건. 휴대폰에서, 손목에서, 또는 안경을 쓴 핸즈프리에서.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\n도움과 아이디어를 얻고 여러분이 만든 것을 공유하려면 Discord에 가입하세요."
+            "value" : "당신의 AI. 귀하의 조건. 휴대폰에서, 손목에서, 또는 안경을 쓴 핸즈프리에서.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\n도움과 아이디어를 얻고 여러분이 만든 것을 공유하려면 Discord에 가입하세요."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Uw AI. Uw voorwaarden. Op uw telefoon, vanaf uw pols, of handsfree met een bril.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nWord lid van de Discord voor hulp, ideeën en om te delen wat u gebouwd heeft."
+            "value" : "Uw AI. Uw voorwaarden. Op uw telefoon, vanaf uw pols, of handsfree met een bril.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nWord lid van de Discord voor hulp, ideeën en om te delen wat u gebouwd heeft."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sua IA. Seus termos. No seu telefone, no seu pulso ou mãos-livres com óculos.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nParticipe do Discord para obter ajuda, ideias e compartilhar o que você construiu."
+            "value" : "Sua IA. Seus termos. No seu telefone, no seu pulso ou mãos-livres com óculos.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nParticipe do Discord para obter ajuda, ideias e compartilhar o que você construiu."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ваш ИИ. Ваши правила. На телефоне, с запястья или без рук — в очках.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nПрисоединяйтесь к Discord за помощью, идеями и чтобы поделиться тем, что вы создали."
+            "value" : "Ваш ИИ. Ваши правила. На телефоне, с запястья или без рук — в очках.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nПрисоединяйтесь к Discord за помощью, идеями и чтобы поделиться тем, что вы создали."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "آپ کا AI۔ آپ کی شرائط۔ آپ کے iPhone پر، ہیڈفون یا AirPods کے ذریعے، آپ کی کلائی سے، یا عینک کے ساتھ ہینڈز فری۔\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nمدد، آئیڈیاز اور اپنی بنائی ہوئی چیزیں شیئر کرنے کے لیے Discord میں شامل ہوں۔"
+            "value" : "آپ کا AI۔ آپ کی شرائط۔ آپ کے iPhone پر، ہیڈفون یا AirPods کے ذریعے، آپ کی کلائی سے، یا عینک کے ساتھ ہینڈز فری۔\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nمدد، آئیڈیاز اور اپنی بنائی ہوئی چیزیں شیئر کرنے کے لیے Discord میں شامل ہوں۔"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "您的人工智能。您的条款。在您的手机上，从手腕上，或使用眼镜免提使用。\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\n加入 Discord 获取帮助、分享想法以及展示您创建的内容。"
+            "value" : "您的人工智能。您的条款。在您的手机上，从手腕上，或使用眼镜免提使用。\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\n加入 Discord 获取帮助、分享想法以及展示您创建的内容。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "您的 AI。您的條款。在您的電話上，從您的手錶，或戴著眼鏡免持操作。\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\n加入 Discord 以獲取幫助、分享想法，以及展示您所創建的內容。"
+            "value" : "您的 AI。您的條款。在您的電話上，從您的手錶，或戴著眼鏡免持操作。\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\n加入 Discord 以獲取幫助、分享想法，以及展示您所創建的內容。"
           }
         }
       }
     },
-    "Your AI. Your terms. On your iPhone, through headphones or AirPods, or from your wrist.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nJoin the Discord for help, ideas, and to share what you've built." : {
+    "Your AI. Your terms. On your iPhone, through headphones or AirPods, or from your wrist.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nJoin the Discord for help, ideas, and to share what you've built." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ذكاؤك الاصطناعي. شروطك. على هاتفك، عبر سماعات الرأس أو AirPods، أو من معصمك.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nانضم إلى Discord للحصول على المساعدة والأفكار ومشاركة ما بنيته."
+            "value" : "ذكاؤك الاصطناعي. شروطك. على هاتفك، عبر سماعات الرأس أو AirPods، أو من معصمك.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nانضم إلى Discord للحصول على المساعدة والأفكار ومشاركة ما بنيته."
           }
         },
         "es-MX" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tu IA. Tus reglas. En tu iPhone, con audífonos o AirPods, o desde tu muñeca.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nÚnete a Discord para obtener ayuda, ideas y compartir lo que has creado."
+            "value" : "Tu IA. Tus reglas. En tu iPhone, con audífonos o AirPods, o desde tu muñeca.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nÚnete a Discord para obtener ayuda, ideas y compartir lo que has creado."
           }
         },
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Votre IA. Vos conditions. Sur votre iPhone, avec des écouteurs ou des AirPods, ou depuis votre poignet.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nRejoignez le Discord pour obtenir de l’aide, des idées et partager ce que vous avez construit."
+            "value" : "Votre IA. Vos conditions. Sur votre iPhone, avec des écouteurs ou des AirPods, ou depuis votre poignet.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nRejoignez le Discord pour obtenir de l’aide, des idées et partager ce que vous avez construit."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Az Ön MI-je. Az Ön feltételei. A telefonján, fejhallgatón vagy AirPodson keresztül, vagy a csuklójáról.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nCsatlakozzon a Discordhoz segítségért, ötletekért, és hogy megossza, amit létrehozott."
+            "value" : "Az Ön MI-je. Az Ön feltételei. A telefonján, fejhallgatón vagy AirPodson keresztül, vagy a csuklójáról.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nCsatlakozzon a Discordhoz segítségért, ötletekért, és hogy megossza, amit létrehozott."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La tua intelligenza artificiale. I tuoi termini. Sul tuo iPhone, con le cuffie o gli AirPods, oppure dal polso.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nUnisciti a Discord per ricevere aiuto, idee e condividere ciò che hai costruito."
+            "value" : "La tua intelligenza artificiale. I tuoi termini. Sul tuo iPhone, con le cuffie o gli AirPods, oppure dal polso.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nUnisciti a Discord per ricevere aiuto, idee e condividere ciò che hai costruito."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "あなたのAI。あなたの条件。iPhoneで、ヘッドフォンやAirPodsで、または手首から。\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nサポート、アイデア、作成したものの共有にはDiscordに参加してください。"
+            "value" : "あなたのAI。あなたの条件。iPhoneで、ヘッドフォンやAirPodsで、または手首から。\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nサポート、アイデア、作成したものの共有にはDiscordに参加してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "당신의 AI. 당신의 조건. iPhone에서, 헤드폰이나 AirPods로, 또는 손목에서.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\n도움과 아이디어를 얻고 여러분이 만든 것을 공유하려면 Discord에 가입하세요."
+            "value" : "당신의 AI. 당신의 조건. iPhone에서, 헤드폰이나 AirPods로, 또는 손목에서.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\n도움과 아이디어를 얻고 여러분이 만든 것을 공유하려면 Discord에 가입하세요."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Uw AI. Uw voorwaarden. Op uw iPhone, via een hoofdtelefoon of AirPods, of vanaf uw pols.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nWord lid van de Discord voor hulp, ideeën en om te delen wat u gebouwd heeft."
+            "value" : "Uw AI. Uw voorwaarden. Op uw iPhone, via een hoofdtelefoon of AirPods, of vanaf uw pols.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nWord lid van de Discord voor hulp, ideeën en om te delen wat u gebouwd heeft."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sua IA. Seus termos. No seu iPhone, com fones de ouvido ou AirPods, ou direto do seu pulso.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nParticipe do Discord para obter ajuda, ideias e compartilhar o que você construiu."
+            "value" : "Sua IA. Seus termos. No seu iPhone, com fones de ouvido ou AirPods, ou direto do seu pulso.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nParticipe do Discord para obter ajuda, ideias e compartilhar o que você construiu."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ваш ИИ. Ваши правила. На iPhone, через наушники или AirPods, или с запястья.\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nПрисоединяйтесь к Discord за помощью, идеями и чтобы поделиться тем, что вы создали."
+            "value" : "Ваш ИИ. Ваши правила. На iPhone, через наушники или AirPods, или с запястья.\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nПрисоединяйтесь к Discord за помощью, идеями и чтобы поделиться тем, что вы создали."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "آپ کا AI۔ آپ کی شرائط۔ آپ کے iPhone پر، ہیڈفون یا AirPods کے ذریعے، یا آپ کی کلائی سے۔\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\nمدد، آئیڈیاز اور اپنی بنائی ہوئی چیزیں شیئر کرنے کے لیے Discord میں شامل ہوں۔"
+            "value" : "آپ کا AI۔ آپ کی شرائط۔ آپ کے iPhone پر، ہیڈفون یا AirPods کے ذریعے، یا آپ کی کلائی سے۔\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\nمدد، آئیڈیاز اور اپنی بنائی ہوئی چیزیں شیئر کرنے کے لیے Discord میں شامل ہوں۔"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "您的人工智能。您的条款。在您的 iPhone 上，通过耳机或 AirPods，或从您的手腕上使用。\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\n加入 Discord 获取帮助、分享想法，并展示您创建的内容。"
+            "value" : "您的人工智能。您的条款。在您的 iPhone 上，通过耳机或 AirPods，或从您的手腕上使用。\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\n加入 Discord 获取帮助、分享想法，并展示您创建的内容。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "您的 AI。您的條款。在您的 iPhone 上、透過耳機或 AirPods，或從您的手腕上使用。\n\nAvenkin © 2026 Skunkworks NZ Ltd.\n\n加入 Discord 以獲取協助、分享想法，並展示您所創建的內容。"
+            "value" : "您的 AI。您的條款。在您的 iPhone 上、透過耳機或 AirPods，或從您的手腕上使用。\n\nAvenkin © 2026 SKUNKWORKS NZ LIMITED.\n\n加入 Discord 以獲取協助、分享想法，並展示您所創建的內容。"
           }
         }
       }
