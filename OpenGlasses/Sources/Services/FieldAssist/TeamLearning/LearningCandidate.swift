@@ -16,8 +16,8 @@ import Foundation
 /// bookkeeping and is not part of the wire shape.
 struct LearningCandidate: Codable, Equatable, Identifiable {
 
-    /// Where a candidate came from (decided 2026-10-09). The phone files only `spoken`; the other
-    /// two are drafted at the office, and exist here so a bundle carrying them decodes.
+    /// Where a candidate came from (decided 2026-10-09). The phone files only `spoken`; the others
+    /// are drafted at the office or the portal, and exist here so a bundle or set carrying them decodes.
     enum Origin: String, Codable, CaseIterable {
         /// Said on the job through `team_learning`.
         case spoken
@@ -25,6 +25,10 @@ struct LearningCandidate: Codable, Equatable, Identifiable {
         case report
         /// Drafted by the office's review pass over committed reports, for a person to approve.
         case reportReview
+        /// Known before any recorded job confirmed it: a row of the company's crew experience sheet
+        /// (Plan NF) or an experience recording (Plan IM). Bound to no job, so its entry starts with
+        /// no `confirmedJobCount`, and it is worded as recalled, never as seen on a job.
+        case recollection
     }
 
     /// What has become of it. P1 produces `filed` and `withdrawn`. P3: `sent` when a bundle carrying

@@ -1,0 +1,13 @@
+{
+  "equipmentTypes": [
+    "rooftop unit",
+    "walk-in cooler"
+  ],
+  "modelSpellings": [
+    "QXRT-990",
+    "QXRT990",
+    "ZPL-2040",
+    "ZPL2040"
+  ],
+  "vaultId": "fixture-crew-units"
+}

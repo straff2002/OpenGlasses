@@ -1,0 +1,81 @@
+{
+  "changedByRedaction" : 3,
+  "ignoredColumns" : [
+
+  ],
+  "ready" : 1,
+  "rows" : [
+    {
+      "modelToken" : "QXRT-990",
+      "number" : 2,
+      "problems" : [
+
+      ],
+      "redactions" : [
+        {
+          "column" : "symptom",
+          "patterns" : [
+            "phone"
+          ]
+        },
+        {
+          "column" : "fix",
+          "patterns" : [
+            "email"
+          ]
+        }
+      ],
+      "status" : "changed_by_redaction"
+    },
+    {
+      "modelToken" : "QXRT-990",
+      "number" : 3,
+      "problems" : [
+
+      ],
+      "redactions" : [
+        {
+          "column" : "checked",
+          "patterns" : [
+            "openai_key"
+          ]
+        },
+        {
+          "column" : "notes",
+          "patterns" : [
+            "nz_ird"
+          ]
+        }
+      ],
+      "status" : "changed_by_redaction"
+    },
+    {
+      "modelToken" : "QXRT-990",
+      "number" : 4,
+      "problems" : [
+
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "ready"
+    },
+    {
+      "modelToken" : "QXRT-990",
+      "number" : 5,
+      "problems" : [
+
+      ],
+      "redactions" : [
+        {
+          "column" : "how_sure",
+          "patterns" : [
+            "phone"
+          ]
+        }
+      ],
+      "status" : "changed_by_redaction"
+    }
+  ],
+  "toFix" : 0
+}

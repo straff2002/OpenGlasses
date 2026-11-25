@@ -124,23 +124,49 @@ public enum CompanyVaultContract {
         /// A company layer: the `vaultId` of the vault in this catalog this entry adds files and
         /// prompt rules to. A layer never carries `publisher`.
         public let extends: String?
+        /// Plan NF: the company's crew experience for this vault, a sealed set of its own
+        /// (`Contracts/crew-experience.md` §6). Absent from the JSON when nil. Never on a layer.
+        public let experience: Experience?
 
         public init(id: String, vaultId: String, version: String, name: String, summary: String? = nil,
                     author: String? = nil, minAppBuild: Int? = nil, sizeBytes: Int, downloadURL: String,
                     sha256: String, packSignature: String, publisher: Publisher? = nil, sealedCore: Bool? = nil,
-                    expects: [ExpectedManual]? = nil, frozen: Bool? = nil, extends: String? = nil) {
+                    expects: [ExpectedManual]? = nil, frozen: Bool? = nil, extends: String? = nil,
+                    experience: Experience? = nil) {
             self.id = id; self.vaultId = vaultId; self.version = version; self.name = name
             self.summary = summary; self.author = author; self.minAppBuild = minAppBuild
             self.sizeBytes = sizeBytes; self.downloadURL = downloadURL; self.sha256 = sha256
             self.packSignature = packSignature
             self.publisher = publisher; self.sealedCore = sealedCore; self.expects = expects
-            self.frozen = frozen; self.extends = extends
+            self.frozen = frozen; self.extends = extends; self.experience = experience
         }
 
         /// Whether the archive is sealed for the company. Absent reads as false.
         public var isSealedCore: Bool { sealedCore == true }
         /// Whether the publisher has stopped updating it. Absent reads as false.
         public var isFrozen: Bool { frozen == true }
+    }
+
+    /// Plan NF: where a vault's crew experience set is, and what it is. The catalog's signature
+    /// covers this pointer; the seal and `sealedSha256` cover the file.
+    public struct Experience: Codable, Equatable, Sendable {
+        /// The set's own `sequence`. Rises with every publish for the vault, and raising it raises
+        /// the catalog's `generation`.
+        public let sequence: Int
+        /// Entries in the set.
+        public let count: Int
+        /// The plaintext set's length in bytes, at most `CrewExperienceSheet.Limits.bytes`.
+        public let sizeBytes: Int
+        /// Lowercase hex SHA-256 of the plaintext set.
+        public let revision: String
+        /// Lowercase hex SHA-256 of the sealed file as served.
+        public let sealedSha256: String
+        public let downloadURL: String
+
+        public init(sequence: Int, count: Int, sizeBytes: Int, revision: String, sealedSha256: String, downloadURL: String) {
+            self.sequence = sequence; self.count = count; self.sizeBytes = sizeBytes; self.revision = revision
+            self.sealedSha256 = sealedSha256; self.downloadURL = downloadURL
+        }
     }
 
     /// Plan LV: the partner a published vault belongs to.
@@ -295,7 +321,7 @@ public enum CompanyVaultContract {
             guard packIds.insert(vault.id).inserted, vaultIds.insert(vault.vaultId).inserted else {
                 throw refuse("\(vault.vaultId) is listed twice")
             }
-            total += Int64(vault.sizeBytes)
+            total += Int64(vault.sizeBytes) + Int64(vault.experience?.sizeBytes ?? 0)
         }
         // Plan LV: a company layer extends a vault in this same catalog, never another layer.
         let layers = Dictionary(catalog.vaults.compactMap { v in v.extends.map { (v.vaultId, $0) } }, uniquingKeysWith: { a, _ in a })
@@ -361,6 +387,7 @@ public enum CompanyVaultContract {
                 return "\(vault.vaultId) must extend another vault"
             }
         }
+        if let experience = vault.experience, let problem = experienceProblem(experience, in: vault) { return problem }
         if let expects = vault.expects {
             guard expects.count <= Limits.expectsPerVault else {
                 return "\(vault.vaultId) expects at most \(Limits.expectsPerVault) manuals"
@@ -377,6 +404,55 @@ public enum CompanyVaultContract {
                     return "\(expected.key)'s revision is not a lowercase SHA-256"
                 }
             }
+        }
+        return nil
+    }
+
+    /// Plan NF: why a vault row's `experience` pointer cannot be used, or nil. A layer carries
+    /// none: the experience belongs on the vault it is about.
+    static func experienceProblem(_ experience: Experience, in vault: Vault) -> String? {
+        if let base = vault.extends { return "\(vault.vaultId) is a company layer; its crew experience belongs on \(base)" }
+        guard experience.sequence >= 1 else { return "\(vault.vaultId)'s crew experience sequence must be 1 or more" }
+        guard (0...CrewExperienceSheet.Limits.rows).contains(experience.count) else {
+            return "\(vault.vaultId)'s crew experience holds at most \(CrewExperienceSheet.Limits.rows) entries"
+        }
+        guard (1...CrewExperienceSheet.Limits.bytes).contains(experience.sizeBytes) else {
+            return "\(vault.vaultId)'s crew experience is \(experience.sizeBytes) bytes; the limit is \(CrewExperienceSheet.Limits.bytes)"
+        }
+        guard isHexDigest(experience.revision), isHexDigest(experience.sealedSha256) else {
+            return "\(vault.vaultId)'s crew experience has no revision or checksum"
+        }
+        guard isDownloadURL(experience.downloadURL) else { return "\(vault.vaultId)'s crew experience download address must be HTTPS" }
+        return nil
+    }
+
+    /// Plan NF: what the service holds a new catalog to against the one it replaces. A vault's
+    /// experience sequence never goes down, a changed set (another `revision`) has a higher
+    /// sequence, and any change to a vault's experience comes with a higher `generation`, so a phone
+    /// sees it on its next foreground. Nil when `next` may follow `previous`.
+    public static func experienceAdvanceProblem(previous: Catalog, next: Catalog) -> String? {
+        let before = Dictionary(previous.vaults.map { ($0.vaultId, $0.experience) }, uniquingKeysWith: { first, _ in first })
+        var moved = false
+        for vault in next.vaults {
+            guard let held = before[vault.vaultId] ?? nil else {
+                if vault.experience != nil { moved = true }
+                continue
+            }
+            guard let now = vault.experience else { moved = true; continue }
+            guard now.sequence >= held.sequence else {
+                return "\(vault.vaultId)'s crew experience sequence went down from \(held.sequence) to \(now.sequence)"
+            }
+            if now != held {
+                guard now.sequence > held.sequence else {
+                    return "\(vault.vaultId)'s crew experience changed without a higher sequence"
+                }
+                moved = true
+            }
+        }
+        let after = Set(next.vaults.map(\.vaultId))
+        if previous.vaults.contains(where: { $0.experience != nil && !after.contains($0.vaultId) }) { moved = true }
+        if moved, next.generation <= previous.generation {
+            return "a crew experience changed, so the generation must rise above \(previous.generation)"
         }
         return nil
     }

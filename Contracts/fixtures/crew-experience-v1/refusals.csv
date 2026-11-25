@@ -1,0 +1,18 @@
+id,brand,model,equipment_type,fault_code,symptom,checked,fix,notes,how_sure,added_by,date
+,,,,,Rattles at start,,Tightened the fan guard,,,,
+,Fixturetherm,QXRT-99O,,,Fan slow to start,,Replaced the run capacitor,,,,
+,Fixturetherm,MNOP-12345,,,Fan slow to start,,Replaced the run capacitor,,,,
+,,,chiller,,Fan slow to start,,Replaced the run capacitor,,,,
+,Fixturetherm,QXRT-990,,E999,,Pressure switch,Reseated the harness,,,,
+,Fixturetherm,QXRT-990,,E999,Trips on start,Pressure switch,,,,,
+,Fixturetherm,QXRT-990,,,Trips on start,,Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board. Replaced the board.x,,,,
+,Fixturetherm,QXRT-990,,E997,SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSx,,Reseated the harness,,,,
+,Fixturetherm,QXRT-990,,,Trips on start,Pressureswitch,Reseated the harness,,,,
+NOT-AN-ID,Fixturetherm,QXRT-990,,,Trips on start,,Reseated the harness,,,,
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1,Fixturetherm,QXRT-990,,,Trips on start,,Reseated the harness,,,,
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1,Fixturetherm,QXRT-990,,,Trips on start,,Reseated the harness,,,,
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2,Fixturetherm,QXRT-990,,,Trips on start,,Reseated the harness,,,,
+,Fixturetherm,QXRT-990,,,Trips on start,,Reseated the harness,,90%,,
+,Fixturetherm,QXRT-990,,,Trips on start,,Reseated the harness,,,,25/11/2026
+,Fixturetherm,QXRT-990,,,Trips on start,,Reseated the harness,,,,,stray
+,Fixturetherm,QXRT-990,,,Trips ‮on start,,Reseated the harness,,,,

@@ -1,0 +1,5 @@
+id,brand,model,equipment_type,fault_code,symptom,checked,fix,notes,how_sure,added_by,date
+,Fixturetherm,QXRT-990,,E999,Customer asked us to call 021 555 0199 when done,,Sent the photos to service@example.test,,,,
+,Fixturetherm,QXRT-990,,,Trips on start,Logged in with sk-proj-ABCDEFGHIJKLMNOPQRSTUV,Reseated the harness,Reference 12-345-678 on the form,,,
+,Fixturetherm,QXRT-990,,,Reading was 350 kPa on 2026-11-25,,Reseated the harness,,,,
+,Fixturetherm,QXRT-990,,,Trips on start,,Reseated the harness,,"fixed it most times, ask +64 21 555 0100",,

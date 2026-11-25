@@ -1,0 +1,8 @@
+﻿id,brand,model,equipment_type,fault_code,symptom,checked,fix,notes,how_sure,added_by,date,photo
+,Fixturetherm,QXRT-990,rooftop unit,E999,"Unit trips on start, fan runs",Pressure switch and its harness,Reseated the pressure switch harness at the plug,,fixed it most times,Avery Example,2026-11-20,
+,Fixturetherm,qxrt990,,E998,No heat on stage two,"Gas valve coil, 24 V at the board",Replaced the stage two relay on the board,"Check the relay first.
+The coil is rarely the cause.",fixed it every time,Jordan Sample,2026-11-21,img-1
+,Examplair,ZPL-2040,,,"Display shows ""LO"" after defrost",Defrost sensor reading,Moved the defrost sensor clip to the middle row of the coil,,fixed it once,,,
+,,,walk-in cooler,,Door frame sweats in summer,Heater wire continuity,Replaced the door frame heater fuse,,,Avery Example,2026-11-22T09:30:00Z,
+,,,,,,,,,,,,
+

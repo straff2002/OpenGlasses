@@ -1,0 +1,55 @@
+{
+  "changedByRedaction" : 0,
+  "ignoredColumns" : [
+    "photo"
+  ],
+  "ready" : 4,
+  "rows" : [
+    {
+      "equipmentType" : "rooftop unit",
+      "modelToken" : "QXRT-990",
+      "number" : 2,
+      "problems" : [
+
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "ready"
+    },
+    {
+      "modelToken" : "QXRT-990",
+      "number" : 3,
+      "problems" : [
+
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "ready"
+    },
+    {
+      "modelToken" : "ZPL-2040",
+      "number" : 4,
+      "problems" : [
+
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "ready"
+    },
+    {
+      "equipmentType" : "walk-in cooler",
+      "number" : 5,
+      "problems" : [
+
+      ],
+      "redactions" : [
+
+      ],
+      "status" : "ready"
+    }
+  ],
+  "toFix" : 0
+}

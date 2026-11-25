@@ -1,0 +1,200 @@
+[
+  {
+    "name" : "the sequence goes down",
+    "next" : {
+      "format" : "openglasses.company-vault-catalog",
+      "generation" : 31,
+      "issued" : "2026-11-25T00:00:00Z",
+      "manuals" : [
+
+      ],
+      "manualsOnAnyNetwork" : false,
+      "profileId" : "fixture-company",
+      "vaults" : [
+        {
+          "downloadURL" : "https://licence.example.test/c/opaque/v/fixture-crew-units-1.zip",
+          "experience" : {
+            "count" : 4,
+            "downloadURL" : "https://licence.example.test/c/opaque/x/fixture-crew-units-1",
+            "revision" : "cd33ceaff4d58afde5fbb29afb73b52df4751a5ee0478456faf7dea8c97f8db4",
+            "sealedSha256" : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "sequence" : 1,
+            "sizeBytes" : 2345
+          },
+          "id" : "com.openglasses.vault.fixture-crew-units",
+          "name" : "Fixture Crew Units",
+          "packSignature" : "c2lnbmF0dXJl",
+          "sha256" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sizeBytes" : 2048,
+          "vaultId" : "fixture-crew-units",
+          "version" : "1"
+        }
+      ],
+      "version" : 1
+    },
+    "previous" : {
+      "format" : "openglasses.company-vault-catalog",
+      "generation" : 30,
+      "issued" : "2026-11-25T00:00:00Z",
+      "manuals" : [
+
+      ],
+      "manualsOnAnyNetwork" : false,
+      "profileId" : "fixture-company",
+      "vaults" : [
+        {
+          "downloadURL" : "https://licence.example.test/c/opaque/v/fixture-crew-units-1.zip",
+          "experience" : {
+            "count" : 4,
+            "downloadURL" : "https://licence.example.test/c/opaque/x/fixture-crew-units-1",
+            "revision" : "cd33ceaff4d58afde5fbb29afb73b52df4751a5ee0478456faf7dea8c97f8db4",
+            "sealedSha256" : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "sequence" : 2,
+            "sizeBytes" : 2345
+          },
+          "id" : "com.openglasses.vault.fixture-crew-units",
+          "name" : "Fixture Crew Units",
+          "packSignature" : "c2lnbmF0dXJl",
+          "sha256" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sizeBytes" : 2048,
+          "vaultId" : "fixture-crew-units",
+          "version" : "1"
+        }
+      ],
+      "version" : 1
+    },
+    "refusal" : "fixture-crew-units's crew experience sequence went down from 2 to 1"
+  },
+  {
+    "name" : "a changed set at the same sequence",
+    "next" : {
+      "format" : "openglasses.company-vault-catalog",
+      "generation" : 31,
+      "issued" : "2026-11-25T00:00:00Z",
+      "manuals" : [
+
+      ],
+      "manualsOnAnyNetwork" : false,
+      "profileId" : "fixture-company",
+      "vaults" : [
+        {
+          "downloadURL" : "https://licence.example.test/c/opaque/v/fixture-crew-units-1.zip",
+          "experience" : {
+            "count" : 5,
+            "downloadURL" : "https://licence.example.test/c/opaque/x/fixture-crew-units-1",
+            "revision" : "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "sealedSha256" : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "sequence" : 2,
+            "sizeBytes" : 2345
+          },
+          "id" : "com.openglasses.vault.fixture-crew-units",
+          "name" : "Fixture Crew Units",
+          "packSignature" : "c2lnbmF0dXJl",
+          "sha256" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sizeBytes" : 2048,
+          "vaultId" : "fixture-crew-units",
+          "version" : "1"
+        }
+      ],
+      "version" : 1
+    },
+    "previous" : {
+      "format" : "openglasses.company-vault-catalog",
+      "generation" : 30,
+      "issued" : "2026-11-25T00:00:00Z",
+      "manuals" : [
+
+      ],
+      "manualsOnAnyNetwork" : false,
+      "profileId" : "fixture-company",
+      "vaults" : [
+        {
+          "downloadURL" : "https://licence.example.test/c/opaque/v/fixture-crew-units-1.zip",
+          "experience" : {
+            "count" : 4,
+            "downloadURL" : "https://licence.example.test/c/opaque/x/fixture-crew-units-1",
+            "revision" : "cd33ceaff4d58afde5fbb29afb73b52df4751a5ee0478456faf7dea8c97f8db4",
+            "sealedSha256" : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "sequence" : 2,
+            "sizeBytes" : 2345
+          },
+          "id" : "com.openglasses.vault.fixture-crew-units",
+          "name" : "Fixture Crew Units",
+          "packSignature" : "c2lnbmF0dXJl",
+          "sha256" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sizeBytes" : 2048,
+          "vaultId" : "fixture-crew-units",
+          "version" : "1"
+        }
+      ],
+      "version" : 1
+    },
+    "refusal" : "fixture-crew-units's crew experience changed without a higher sequence"
+  },
+  {
+    "name" : "a new set at the same generation",
+    "next" : {
+      "format" : "openglasses.company-vault-catalog",
+      "generation" : 30,
+      "issued" : "2026-11-25T00:00:00Z",
+      "manuals" : [
+
+      ],
+      "manualsOnAnyNetwork" : false,
+      "profileId" : "fixture-company",
+      "vaults" : [
+        {
+          "downloadURL" : "https://licence.example.test/c/opaque/v/fixture-crew-units-1.zip",
+          "experience" : {
+            "count" : 5,
+            "downloadURL" : "https://licence.example.test/c/opaque/x/fixture-crew-units-1",
+            "revision" : "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "sealedSha256" : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "sequence" : 3,
+            "sizeBytes" : 2345
+          },
+          "id" : "com.openglasses.vault.fixture-crew-units",
+          "name" : "Fixture Crew Units",
+          "packSignature" : "c2lnbmF0dXJl",
+          "sha256" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sizeBytes" : 2048,
+          "vaultId" : "fixture-crew-units",
+          "version" : "1"
+        }
+      ],
+      "version" : 1
+    },
+    "previous" : {
+      "format" : "openglasses.company-vault-catalog",
+      "generation" : 30,
+      "issued" : "2026-11-25T00:00:00Z",
+      "manuals" : [
+
+      ],
+      "manualsOnAnyNetwork" : false,
+      "profileId" : "fixture-company",
+      "vaults" : [
+        {
+          "downloadURL" : "https://licence.example.test/c/opaque/v/fixture-crew-units-1.zip",
+          "experience" : {
+            "count" : 4,
+            "downloadURL" : "https://licence.example.test/c/opaque/x/fixture-crew-units-1",
+            "revision" : "cd33ceaff4d58afde5fbb29afb73b52df4751a5ee0478456faf7dea8c97f8db4",
+            "sealedSha256" : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "sequence" : 2,
+            "sizeBytes" : 2345
+          },
+          "id" : "com.openglasses.vault.fixture-crew-units",
+          "name" : "Fixture Crew Units",
+          "packSignature" : "c2lnbmF0dXJl",
+          "sha256" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sizeBytes" : 2048,
+          "vaultId" : "fixture-crew-units",
+          "version" : "1"
+        }
+      ],
+      "version" : 1
+    },
+    "refusal" : "a crew experience changed, so the generation must rise above 30"
+  }
+]

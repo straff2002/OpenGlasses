@@ -1,0 +1,52 @@
+[
+  {
+    "case": "notUTF8",
+    "csvBase64": "bW9kZWwsc3ltcHRvbSxmaXgNClFYUlQtOTkwLP/+LHgNCg==",
+    "refusal": "notUTF8"
+  },
+  {
+    "case": "empty file",
+    "csvBase64": "",
+    "refusal": "noHeader"
+  },
+  {
+    "case": "blank header",
+    "csvBase64": "LCwNClFYUlQtOTkwLGEsYg0K",
+    "refusal": "noHeader"
+  },
+  {
+    "case": "no symptom column",
+    "csvBase64": "bW9kZWwsZml4DQpRWFJULTk5MCxSZXNlYXRlZCB0aGUgaGFybmVzcw0K",
+    "refusal": "missingColumn"
+  },
+  {
+    "case": "no fix column",
+    "csvBase64": "bW9kZWwsc3ltcHRvbQ0KUVhSVC05OTAsVHJpcHMgb24gc3RhcnQNCg==",
+    "refusal": "missingColumn"
+  },
+  {
+    "case": "no model or equipment_type column",
+    "csvBase64": "c3ltcHRvbSxmaXgNClRyaXBzIG9uIHN0YXJ0LFJlc2VhdGVkIHRoZSBoYXJuZXNzDQo=",
+    "refusal": "noSubjectColumn"
+  },
+  {
+    "case": "a column twice",
+    "csvBase64": "bW9kZWwsTW9kZWwsc3ltcHRvbSxmaXgNClFYUlQtOTkwLFFYUlQtOTkwLFRyaXBzLFJlc2VhdGVkDQo=",
+    "refusal": "duplicateColumn"
+  },
+  {
+    "case": "a quote never closed",
+    "csvBase64": "bW9kZWwsc3ltcHRvbSxmaXgNClFYUlQtOTkwLCJUcmlwcyBvbiBzdGFydCxSZXNlYXRlZA0K",
+    "refusal": "unterminatedQuote"
+  },
+  {
+    "case": "a quote inside an unquoted cell",
+    "csvBase64": "bW9kZWwsc3ltcHRvbSxmaXgNClFYUlQtOTkwLFNob3dzICJMTyIsUmVzZWF0ZWQNCg==",
+    "refusal": "strayQuote"
+  },
+  {
+    "case": "text after a closing quote",
+    "csvBase64": "bW9kZWwsc3ltcHRvbSxmaXgNClFYUlQtOTkwLCJTaG93cyBMTyJ4LFJlc2VhdGVkDQo=",
+    "refusal": "strayQuote"
+  }
+]

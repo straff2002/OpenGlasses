@@ -124,7 +124,7 @@ the same sequence are identical and a missed set costs nothing once a later one 
 | Field | Meaning |
 |---|---|
 | `entryID` | 32 lowercase hex; never reused |
-| `subject` | `{ kind: "model", modelToken, manufacturer?, equipmentType? }` or `{ kind: "practice", topic }` |
+| `subject` | `{ kind: "model", modelToken, manufacturer?, equipmentType? }` or `{ kind: "practice", topic }`; amended (§11): or `{ kind: "symptom", equipmentType, phrase }` |
 | `vaultIDs` | The vaults whose answers may use this entry; empty means every vault of the organisation (§10.1) |
 | `finding` | As approved — which may differ from the text as captured; 1–2,000 characters |
 | `symptom?`, `fix?` | Up to 500 characters each |
@@ -134,6 +134,9 @@ the same sequence are identical and a missed set costs nothing once a later one 
 | `contradictsSafetyNote` | `true` when the reviewer confirmed, twice, an entry that departs from a safety note (§7.3) |
 | `supersedes?` | The `entryID` this entry replaces |
 | `candidateID?` | The candidate it came from, when it came from one |
+| `origin?` | Amended (§11): `spoken`, `report`, `reportReview` or `recollection`; absent reads as `spoken` |
+| `faultCode?`, `tried?`, `outcome?` | Amended (§11): the fault code (1–40), what was checked (1–500) and how sure, in words (1–120) |
+| `sourceJobIDs?`, `confirmedJobCount?` | Job identifiers only, and how many jobs it was filed on; absent for a `recollection` (read as 0) |
 
 **Site notes are not in the set.** What an organisation knows about a customer's site — access,
 hazards, who to ask — names people and places. It reaches a technician only as notes on a job
@@ -159,6 +162,10 @@ Each rule gets a golden fixture; both sides must produce the same result.
 `modelToken` or `topic`, `<date>` is `approvedAt` as `YYYY-MM-DD` in UTC, and `<role>` is
 `approvedByRole`. This is the name the phone cites and the name the office shows beside the
 entry, so a technician quoting an answer and a supervisor looking it up read the same words.
+
+Amended (§11): an entry whose `origin` is `recollection` is cited
+`Crew experience · <subject> · <date> · approved by <role>`, where `<subject>` is the `modelToken`,
+or the `equipmentType` of a symptom subject.
 
 ### 7.2 Model match
 
@@ -218,3 +225,37 @@ text that must be refused.
 7. **Delta versus whole set.** FP P3's unsigned decisions bundle is applied as a delta (nothing
    absent is removed; only a retraction withdraws), while the learning set here replaces the
    namespace whole (§6). A phone on both routes would need a rule for which wins.
+
+## 11. Amendment — crew experience (2026-11-25, Plan NF; additive to v1)
+
+Plan [NF](../docs/plans/NF-crew-experience-sheet.md) takes Plan [IM](../docs/plans/IM-experience-recordings.md)'s
+recollection origin and its fields and builds them first, for the company's crew experience sheet
+([crew experience contract](crew-experience.md)). Every addition is optional: a set, bundle or file
+without them reads exactly as before, and the entry fields are decoded with `decodeIfPresent` on the
+phone. A set that carries a subject kind or origin the phone does not know is refused whole by name, as
+any newer version is (§6).
+
+- **Origin `recollection`.** Known before a recorded job confirmed it: a sheet row, or (Plan IM) an
+  experience recording. It is bound to no job, so `sourceJobIDs` and `confirmedJobCount` are absent and
+  `confirmedJobCount` reads as 0. When FP's merge later confirms one on a job, the count rises and the
+  citation earns FP's stronger wording. It is worded as recalled, never as seen on a job.
+- **Entry fields** `faultCode?` (1–40 characters: the code as the display shows it), `tried?` (1–500:
+  what was checked or tried) and `outcome?` (1–120: how sure the crew is, in words, never a number).
+  Plain text, no line feed (§7.4). The phone's document text for an entry gains `Fault code:`,
+  `Checked:` and `How sure:` lines; an entry without them reads as before.
+- **Symptom subject** `{ kind: "symptom", equipmentType, phrase }` (Plan IM decision 4): an equipment
+  type from the vault's closed list, with the symptom phrase. It answers only within that equipment
+  type. Its citation subject is the equipment type. FP's unsigned bundle (no office) does not carry it
+  and refuses it by name.
+- **Citation** (§7.1): `Crew experience · <subject> · <YYYY-MM-DD> · approved by <role>` for a
+  `recollection`.
+- **Lead-in**, when an answer rests on crew experience alone: *"From your company's experience (not
+  the manufacturer's manual):"*.
+- **A company without an office** receives crew experience as a sealed set on the company-vault
+  catalog, bound to its `profileId` and one `vaultId`, under its own kind
+  (`avenkin.crew-experience-set`) — the crew experience contract §6–7. No office key is needed.
+
+What is built (NF P0): the phone's `LearningEntry` and `LearningCandidate.Origin` carry all of this, and
+the shared core writes it. The phone does not yet apply a crew-experience set, cite `Crew experience`
+or open with its lead-in (NF P1), and no retrieval path reads a symptom subject (IM P0).
+
