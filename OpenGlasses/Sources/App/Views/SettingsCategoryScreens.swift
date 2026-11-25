@@ -163,7 +163,10 @@ struct DisplayHUDSections: View {
     @AppStorage(LensHighlightColour.storageKey) private var highlightColour: LensHighlightColour = .standard
     @AppStorage(LensAnswerStyle.storageKey) private var answerStyle: LensAnswerStyle = .scroll
     @AppStorage(LensAnswerLifetime.storageKey) private var answerLifetime: LensAnswerLifetime = .untilClosed
+    #if !AVENKIN_PHONE_ONLY
+    // The phone-only build excludes the display backends, so only glasses builds read the choice.
     @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
+    #endif
 
     var body: some View {
         #if !AVENKIN_PHONE_ONLY
