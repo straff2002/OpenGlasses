@@ -1,7 +1,7 @@
 # Plan NH — Daily Allowance and the Standard Subscription (15 minutes of the assistant a day for everyone, unlimited for subscribers)
 
-**Status:** 📝 Drafted 2026-11-25. Nothing is built. 13 [decisions](#decisions-for-greig), each with a
-recommendation.
+**Status:** 📝 Drafted 2026-11-25. Nothing is built. All 13 [decisions](#decisions-for-greig) taken as
+recommended the same day.
 **Track:** Consumer pricing. The phone-only App Store build first; the glasses build gets the same rules.
 **Builds on:** Plan [GB](GB-field-test-round-3.md) P5 (the spend cap: a pure policy and a gate in
 `LLMService` that answers a turn instead of sending it), Plan [JK](JK-my-manuals.md) (the My Manuals
@@ -177,6 +177,8 @@ On the phone-only archive with a sandbox account:
 - ask Siri at zero: the line is spoken and the notification opens the sheet.
 
 ## Decisions for Greig
+
+Taken 2026-11-25: all 13 as recommended.
 
 1. **What counts is assistant time, as §1 defines it**, not turns or tokens. *Recommended:* yes. It is the
    "15 minutes" the owner named, and it treats a long Live chat and many short questions the same way.
