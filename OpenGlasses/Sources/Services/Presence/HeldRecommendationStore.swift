@@ -17,10 +17,10 @@ struct HeldRecommendation: Identifiable, Equatable {
 }
 
 /// Collects high-impact actions the [[SafetySupervisor]] held while the user was disengaged, and
-/// produces a single spoken/HUD summary when they re-engage (Plan W). Capped so a long idle stretch
-/// can't grow it without bound. The recording and the drain are deterministic and unit-tested; the
-/// live wiring (router records on a ceiling block; `PresenceMonitor`'s idle→active transition
-/// drains to TTS + HUD) lives in AppState.
+/// produces a single summary when they re-engage (Plan W). Capped so a long idle stretch can't grow
+/// it without bound. The recording and the drain are deterministic and unit-tested; the live wiring
+/// (router records on a ceiling block; `PresenceMonitor`'s idle→active transition drains to a quiet
+/// notification + HUD, never speech — see `HeldRecommendationNotification`) lives in AppState.
 @MainActor
 final class HeldRecommendationStore: ObservableObject {
     @Published private(set) var held: [HeldRecommendation] = []
@@ -46,7 +46,7 @@ final class HeldRecommendationStore: ObservableObject {
         }
     }
 
-    /// Remove and return everything held as one spoken line, or `nil` when nothing was held. Use on
+    /// Remove and return everything held as one line, or `nil` when nothing was held. Use on
     /// re-engagement: "While you were away, I held 2 suggestions: …".
     func drainSummary() -> String? {
         guard !held.isEmpty else { return nil }

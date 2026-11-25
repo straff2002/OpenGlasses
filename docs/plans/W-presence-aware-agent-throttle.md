@@ -14,7 +14,7 @@
 **Live integration shipped** (`feat/presence-live-integration`, follow-up PR) — the deferred wiring is now landed:
 - **Loops throttled** — `LiveCoachService` and `ProactiveAlertService` each carry a `LoopThrottle` gate (pure, tested) and read `PresenceMonitor.decision` per tick: the timer keeps waking at base cadence but the expensive work (frame+LLM / calendar query) runs only once `base × multiplier` has elapsed, and not while paused. Live Coach uses no floor (idle → 4×, away → paused); proactive alerts floor at `.present` (time-sensitive, never slower than 2× / never paused by mere idle — the existing background path still pauses them when away).
 - **Autonomy ceiling** — `SafetyContext` gains `autonomy` (default `.autoAct`, backward-compatible); `SafetySupervisor.evaluate` now applies a ceiling: an *acting* (high-impact) tool under `.recommend`/`.paused` is **held** (`.block`, not an interactive `.confirm` — a disengaged user can't answer, and `requestConfirmation` would suspend the agent loop). `AppState`'s `safetyContextProvider` feeds `ThrottlePolicy.decide(mode:).autonomy` from the live presence mode.
-- **Held-recommendation surfacing** — `NativeToolRouter.onActionHeld` records ceiling-held actions into a `HeldRecommendationStore` (pure, tested, capped); `PresenceMonitor.onReEngage` (fires on idle/away → active) drains it to a single spoken line + HUD notification ("While you were away, I held N suggestions: …").
+- **Held-recommendation surfacing** — `NativeToolRouter.onActionHeld` records ceiling-held actions into a `HeldRecommendationStore` (pure, tested, capped); `PresenceMonitor.onReEngage` (fires on idle/away → active) drains it to a single line ("While you were away, I held N suggestions: …") on the lens and, since 2026-11-26, as a quiet notification — no longer spoken (see the amendment below).
 - **Construction + signals** — `AppState` builds `PresenceMonitor`, wires `connected` (DAT session), `foreground` (scene phase — MLX is foreground-only), `voiceActive` (wake-word listening), and `lastInteraction` (wake-word / transcription callbacks), and drives a 5 s re-evaluation timer (nudged immediately on interaction / scene-phase change).
 - **Tests:** +15 headless (`PresenceLiveIntegrationTests`) for the ceiling, `LoopThrottle`, `HeldRecommendationStore`, and the re-engagement hook. Full suite 667 green, Debug + Release.
 
@@ -27,6 +27,8 @@
 Plan W is **complete** — nothing outstanding.
 
 **Amended 2026-11-13 — the glasses' link is no longer a presence signal.** `away` had meant "glasses disconnected *or* app backgrounded", so someone using the open app without glasses was away: every acting tool they asked for was held ("wasn't run because you've been away from the glasses"), and a phone-only build was away all the time. `PresenceSignals.connected` is gone; `away` is now backgrounded only, and a foreground app is judged by interaction exactly as before (active → present → idle). A typed turn now counts as an interaction (`sendTextMessage` → `noteUserInteraction()`), as a spoken one always did. The held copy no longer names the glasses. A backgrounded app with the glasses connected is still `away`; whether a wearer talking to the glasses with the phone locked should count is a separate question, left as it was. The same day `HeldRecommendationStore.record` started keeping one entry per action, so a scheduled task held every 15 minutes is one suggestion on re-engagement, not a list of the same one.
+
+**Amended 2026-11-26 — the held line is a notification, never speech.** Field report (b770): re-engagement fires on motion and the wake word as well as the open app, so it fired with the phone locked on the table beside the wearer, in meetings, and the line was spoken through the phone speaker. The phone's own mic then heard it back as a request and asked to run the held Shortcut. `HeldRecommendationNotification` now posts it as one passive, silent notification that replaces itself (shown as a banner with the app open, a tap opens the assistant); the lens line is unchanged. `HeldRecommendationNotificationTests` pins the content and that the re-engagement handler never speaks.
 
 ---
 
@@ -111,7 +113,7 @@ held recommendations are spoken: "While you were idle: 2 suggestions."
 3. Apply the multiplier in `LiveCoachService` loop first (most visible battery win) + tests.
 4. Apply to ambient/proactive loops.
 5. Wire `mode == .idle → recommend` into the Plan S supervisor's autonomy ceiling.
-6. Held-recommendation surfacing on re-engagement (TTS + HUD).
+6. Held-recommendation surfacing on re-engagement (notification + HUD; spoken until 2026-11-26).
 
 ---
 

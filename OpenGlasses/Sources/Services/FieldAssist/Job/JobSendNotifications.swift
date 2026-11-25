@@ -74,8 +74,9 @@ enum JobSendNotifications {
 /// Routes a tap on the staged-send notification to the Job tab.
 ///
 /// Deliberately minimal. A tap is routed by `didReceive`. With the app open, `willPresent` shows
-/// one kind of notification and no other: an update from the office, which only ever arrives
-/// while the app is open, because that is when the phone talks to the office. For everything
+/// two kinds of notification and no other: an update from the office, which only ever arrives
+/// while the app is open, because that is when the phone talks to the office; and, silently, the
+/// actions held while the wearer was away (`HeldRecommendationNotification`). For everything
 /// else — timers, alarms, geofences, the digest, the staged-send line — it answers what the
 /// system does when a delegate does not answer at all, so their behaviour is what it was.
 @MainActor
@@ -130,7 +131,10 @@ final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegat
 
     /// How a notification is presented while the app is open. Pure, so the test is a value test.
     nonisolated static func presentation(identifier: String) -> UNNotificationPresentationOptions {
-        JobUpdateNotifications.isUpdate(identifier: identifier) ? [.banner, .list, .sound] : []
+        if JobUpdateNotifications.isUpdate(identifier: identifier) { return [.banner, .list, .sound] }
+        // Held while away: the wearer may be looking at the app when "back" fires. Silent.
+        if identifier == HeldRecommendationNotification.identifier { return [.banner, .list] }
+        return []
     }
 
     nonisolated func userNotificationCenter(

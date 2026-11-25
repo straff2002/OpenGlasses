@@ -119,7 +119,7 @@ final class PresenceMonitor: ObservableObject {
     var motionActive: () -> Bool = { false }
 
     /// Fired when the user re-engages: the committed mode rises to `.active` from a disengaged mode
-    /// (`.idle`/`.away`). AppState uses it to surface any held recommendations (TTS + HUD).
+    /// (`.idle`/`.away`). AppState uses it to surface any held recommendations (notification + HUD).
     var onReEngage: (() -> Void)?
 
     let thresholds: PresenceThresholds
