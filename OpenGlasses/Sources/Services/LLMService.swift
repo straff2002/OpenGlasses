@@ -198,6 +198,10 @@ class LLMService: ObservableObject {
     /// Native tool router — when set, enables built-in tools (weather, timer, etc.)
     var nativeToolRouter: NativeToolRouter?
 
+    /// Plan NH: the daily allowance. AppState sets `AllowanceService.shared`; nil (a test that is
+    /// not about the allowance, a preview) meters nothing and refuses nothing.
+    var allowance: AllowanceService?
+
     /// Plan-then-execute narration hooks (Plan S), wired by AppState to the HUD/TTS. `onAgentNarrate`
     /// gets the plan header; `onAgentStep` gets per-step (index, total, step) progress.
     var onAgentNarrate: ((String) -> Void)?
@@ -1221,6 +1225,17 @@ class LLMService: ObservableObject {
     func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
         // A scheduled run going on its own timer stops for this turn (`sendOffConversation`).
         await yieldOffConversationRun()
+        // Plan NH: the daily allowance, before anything reads the model or sends a byte. An
+        // exhausted turn is answered with the line and reaches no model, local or cloud. First aid
+        // is recognised inside the gate first, so an emergency is never refused, even at zero. A
+        // turn already under way (a cascade's attempts, a hop) is one turn and always finishes.
+        let metersAllowance = allowance != nil && !OffConversationScope.isActive && !TurnRecorder.isOffTurnWork
+        if metersAllowance, case .answer(let line) = allowanceOutcome(utterance: text) {
+            // `.proceedWithNotice` is shown, not said: the Home line turns amber below 3 minutes.
+            return line
+        }
+        if metersAllowance { allowance?.turnBegan(utterance: text) }
+        defer { if metersAllowance { allowance?.turnEnded() } }
         // Capture the choice before prompt preparation can suspend and the picker can change.
         guard let requestedModel = Config.activeModel else {
             throw LLMError.missingAPIKey(String(localized: "No model configured — add one in Settings"))
@@ -1711,6 +1726,15 @@ class LLMService: ObservableObject {
         Self.onDeviceJobRouteAnnounced = true
         pendingJobRouteNotice = nil
         return notice + " " + reply
+    }
+
+    // MARK: - Daily allowance (Plan NH)
+
+    /// The allowance for a turn about to be sent: proceed, proceed with a notice, or answer with
+    /// the line. Beside the spend cap and the same shape; every model counts the same, so it needs
+    /// no model. Internal so the gate can be tested without a configured model.
+    func allowanceOutcome(utterance: String) -> DailyAllowanceOutcome {
+        allowance?.turnOutcome(utterance: utterance) ?? .proceed
     }
 
     // MARK: - Spend caps (Plan GB P5)
@@ -2230,6 +2254,17 @@ class LLMService: ObservableObject {
     func sendMessageCascading(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, backgrounded: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil, onModelSwitch: ((_ from: ModelConfig?, _ to: ModelConfig?, _ failure: ModelFallbackChain.FailureClass, _ error: Error?) async -> Void)? = nil) async throws -> String {
         // Before the chain takes its history snapshot below.
         await yieldOffConversationRun()
+        // Plan NH: the daily allowance, before anything reads the model or sends a byte. An
+        // exhausted turn is answered with the line and reaches no model, local or cloud. First aid
+        // is recognised inside the gate first, so an emergency is never refused, even at zero. A
+        // turn already under way (a cascade's attempts, a hop) is one turn and always finishes.
+        let metersAllowance = allowance != nil && !OffConversationScope.isActive && !TurnRecorder.isOffTurnWork
+        if metersAllowance, case .answer(let line) = allowanceOutcome(utterance: text) {
+            // `.proceedWithNotice` is shown, not said: the Home line turns amber below 3 minutes.
+            return line
+        }
+        if metersAllowance { allowance?.turnBegan(utterance: text) }
+        defer { if metersAllowance { allowance?.turnEnded() } }
 
         let previousSourceID = fieldConversationSourceID
         // Plan KL P0: a gap belongs to the turn that recorded it.

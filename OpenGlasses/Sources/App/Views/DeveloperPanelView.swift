@@ -35,6 +35,8 @@ struct DeveloperPanelView: View {
     /// the GGUF runtime can be switched on: off hides the GGUF section of Local Models and refuses
     /// every GGUF load, and leaves installed GGUF files on disk.
     @AppStorage("ggufModelsEnabled") private var ggufModelsEnabled = false
+    /// Plan NH: count this test build's assistant time as an App Store install would.
+    @AppStorage(Config.meterAsStoreBuildKey) private var meterAsStoreBuild = false
 
     init(appState: AppState) {
         self.appState = appState
@@ -76,6 +78,14 @@ struct DeveloperPanelView: View {
                 }
             }
             #endif
+
+            OGSection(
+                header: "Daily Allowance",
+                footer: "Counts this build's assistant time against the 15 free minutes a day, as an App Store install would, so the limit and the subscription sheet can be tried with a sandbox account. Off: TestFlight and Xcode builds have no daily limit."
+            ) {
+                OGRow("Meter as a store build", isOn: $meterAsStoreBuild, icon: "timer")
+                    .onChange(of: meterAsStoreBuild) { _, _ in AllowanceService.shared.refresh() }
+            }
 
             OGSection(
                 header: "Field Assist",

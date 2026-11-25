@@ -4629,6 +4629,16 @@ struct Config {
         set { UserDefaults.standard.set(newValue, forKey: "spendCapOverrideWindow") }
     }
 
+    // MARK: - Daily allowance (Plan NH)
+
+    /// The preference key behind `meterAsStoreBuild`, for the Developer panel's switch.
+    static let meterAsStoreBuildKey = "meterAsStoreBuild"
+
+    /// Developer setting: meter a TestFlight, Xcode or simulator build as if it were installed from
+    /// the App Store, to try the allowance and the paywall. Off by default: those builds are
+    /// unmetered, because sandbox subscriptions renew daily and stop after six renewals (decision 9).
+    @UserDefaultsBacked("meterAsStoreBuild", default: false) static var meterAsStoreBuild: Bool
+
     // MARK: - Content-Aware Frame Gate (Plan AT)
 
     /// When `true`, `FrameThrottler` consults a perceptual-hash `FrameGate` after

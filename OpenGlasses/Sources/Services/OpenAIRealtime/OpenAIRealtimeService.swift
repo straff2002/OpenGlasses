@@ -26,6 +26,11 @@ class OpenAIRealtimeService: RealtimeJSONSessionService {
             connectionState = .error(MedicalEgressRefusal.userMessage)
             return false
         }
+        // Plan NH: checked here before the shared connect checks it again for every protocol.
+        if let line = LiveAllowanceGate.check() {
+            connectionState = .error(line)
+            return false
+        }
         return await super.connect()
     }
     nonisolated static func sessionUpdate(instructions: String, tools: [[String: Any]]) -> [String: Any] {

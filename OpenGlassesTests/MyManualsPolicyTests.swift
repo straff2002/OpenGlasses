@@ -222,6 +222,40 @@ final class MyManualsStoreKitCatalogTests: XCTestCase {
         let personal = try XCTUnwrap(store.myManualsProducts.first)
         XCTAssertGreaterThan(personal.price, 0)
         let field = try XCTUnwrap(store.products.first { $0.id == StoreKitService.fieldAssistMonthlyId })
-        XCTAssertNotEqual(personal.subscription?.subscriptionGroupID, field.subscription?.subscriptionGroupID)
+        // Plan NH decision 7: one ladder — Standard, then My Manuals, then Field Assist solo — so
+        // moving up or down prorates. Level 1 is the highest in StoreKit.
+        XCTAssertEqual(personal.subscription?.subscriptionGroupID, field.subscription?.subscriptionGroupID)
+        let personalLevel = try XCTUnwrap(personal.subscription?.groupLevel)
+        let fieldLevel = try XCTUnwrap(field.subscription?.groupLevel)
+        XCTAssertLessThan(fieldLevel, personalLevel, "Field Assist sits above My Manuals")
+    }
+
+    /// Plan NH: Standard loads with the catalog, monthly and annual, with no free trial (decision
+    /// 13), at the bottom of the same ladder. Medical Compliance stays a group of its own.
+    func testLocalCatalogLoadsStandardAtTheBottomOfTheLadderWithNoTrial() async throws {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil else {
+            throw XCTSkip("StoreKit integration requires Xcode's app-host test launch; the direct resource runner has no StoreKit app identity.")
+        }
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let session = try SKTestSession(contentsOf: root.appendingPathComponent("OpenGlasses/MedicalCompliance.storekit"))
+        session.disableDialogs = true
+        defer { session.resetToDefaultState() }
+        let store = StoreKitService(startAutomatically: false)
+        await store.loadProducts()
+        XCTAssertNil(store.standardCatalogError)
+        XCTAssertEqual(store.standardProducts.map(\.id),
+                       [StoreKitService.standardMonthlyId, StoreKitService.standardAnnualId])
+        for product in store.standardProducts {
+            XCTAssertGreaterThan(product.price, 0, product.id)
+            XCTAssertNil(product.subscription?.introductoryOffer, "\(product.id): no free trial on Standard")
+        }
+        let standard = try XCTUnwrap(store.standardProducts.first)
+        let personal = try XCTUnwrap(store.myManualsProducts.first)
+        let medical = try XCTUnwrap(store.products.first { $0.id == StoreKitService.medicalMonthlyId })
+        XCTAssertEqual(standard.subscription?.subscriptionGroupID, personal.subscription?.subscriptionGroupID)
+        XCTAssertNotEqual(standard.subscription?.subscriptionGroupID, medical.subscription?.subscriptionGroupID)
+        let standardLevel = try XCTUnwrap(standard.subscription?.groupLevel)
+        let personalLevel = try XCTUnwrap(personal.subscription?.groupLevel)
+        XCTAssertGreaterThan(standardLevel, personalLevel, "Standard is the lowest level")
     }
 }

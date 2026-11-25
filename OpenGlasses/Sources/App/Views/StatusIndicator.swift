@@ -23,6 +23,8 @@ struct StatusIndicator: View {
     /// The open Field Assist job, for the job pill. Observed so pausing, resuming or ending the
     /// job from anywhere — the Job tab, a voice turn, a relaunch — redraws the card.
     @ObservedObject private var fieldSessions = FieldSessionService.shared
+    /// Plan NH: the daily allowance's "n min left today" line.
+    @ObservedObject private var allowance = AllowanceService.shared
 
     /// The status tile, and the glyph inside it. Scaled rather than fixed so the
     /// tile keeps its proportion to the two lines of text beside it at every
@@ -191,6 +193,10 @@ struct StatusIndicator: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
             }
+
+            // Plan NH: once a turn has run today, the free minutes left, amber below three. Never
+            // drawn for a subscriber, an accessibility user or a test build.
+            AllowanceHomeLine(allowance: allowance) { appState.subscriptionSheetPresented = true }
 
             // Tool call / reconnecting
             if isGemini && session.toolCallStatus.isActive {

@@ -363,6 +363,8 @@ enum PrivacyLog {
         case idleWarned, idleEnded
         /// The goodbye finished; the session is stopping because the wearer said so.
         case saidGoodbye
+        /// Plan NH: the daily allowance's one warning was said; the session closed at zero.
+        case allowanceWarned, allowanceEnded
         /// A spoken interpreter session started, or was refused; `detail` on the refusal is why.
         case interpreterStarted, interpreterRefused
         /// The wearer's words kept arriving after the provider said the turn was complete, and were
@@ -1713,6 +1715,10 @@ enum PrivacyLog {
         // Tokens and counts only; never a query or an address.
         case providerSearch
         case spendCap
+        // Plan NH — the daily allowance: a refusal (`refused`, `liveRefused`), a turn's charge
+        // (`turnCharged`, with its seconds), and a Live session's warning and close. Tokens and
+        // seconds only; never what was said.
+        case dailyAllowance
         // Plan GD3 — the field-mode tool profile trimmed the declared tools: counts and a digest.
         case toolProfileApplied
         // Plan IU — how much of the tool set a turn declared in full (`full`/`core`) and why

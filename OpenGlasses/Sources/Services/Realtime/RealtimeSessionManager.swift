@@ -38,6 +38,13 @@ class RealtimeSessionManager: ObservableObject {
     /// own voice (``speakIdleWarning(_:)``).
     var idleWarningSpeaker: ((String) -> Void)?
 
+    /// Plan NH: the daily allowance. AppState sets `AllowanceService.shared`; nil (tests, previews)
+    /// meters nothing. Checked at start, then a one-second meter while connected.
+    var allowance: AllowanceService?
+    /// Whether this manager's session holds the allowance's Live meter. Both managers share one
+    /// service, so a stop here must never end the other manager's meter.
+    private var holdsAllowanceMeter = false
+
     // Shared OpenClaw bridge (injected from AppState)
     var openClawBridge: OpenClawBridge?
 
@@ -275,6 +282,12 @@ class RealtimeSessionManager: ObservableObject {
         }
         do { _ = try model.request(); try MedicalEgressGuard.check(model.route) }
         catch { errorMessage = error.localizedDescription; return }
+        // Plan NH: with today's allowance used, the session does not open; the line is said.
+        if let line = allowance?.liveConnectRefusal() {
+            errorMessage = line
+            speakLocalCue(line)
+            return
+        }
         let interpreter = interpreterRequest ?? selectedInterpreterPair
         interpreterRequest = nil
         if let interpreter, let refusal = InterpreterGate.refusal(
@@ -862,6 +875,49 @@ class RealtimeSessionManager: ObservableObject {
         _ = onLifecycle?(.sessionStarted(.init(audioSessionActive: true,
                                            sessionConnected: providerSession.connectionState == .ready,
                                            microphoneListening: true)))
+        startAllowanceMeter(identity: identity)
+    }
+
+    // MARK: - Daily allowance (Plan NH)
+
+    /// Count every second the session stays connected. At a minute left, one line in the session's
+    /// own voice; at zero, the answer under way finishes, then the session closes (within 60 s) and
+    /// the line is said.
+    private func startAllowanceMeter(identity: Int) {
+        guard let allowance else { return }
+        holdsAllowanceMeter = true
+        allowance.startLiveMeter(.init(
+            isConnected: { [weak self] in
+                guard let self, self.isActive, self.sessionIdentity == identity else { return false }
+                return self.providerSession?.connectionState == .ready
+            },
+            answerInProgress: { [weak self] in
+                guard let self, self.isActive, self.sessionIdentity == identity else { return false }
+                return self.isModelSpeaking || (self.providerSession?.isModelSpeaking ?? false)
+                    || (self.providerSession?.isUserSpeaking ?? false) || self.toolCallStatus.isActive
+            },
+            warn: { [weak self] line in
+                guard let self, self.isActive, self.sessionIdentity == identity else { return }
+                PrivacyLog.realtimeSession(self.logProvider, .allowanceWarned)
+                self.speakAllowanceWarning(line)
+            },
+            close: { [weak self] line in
+                guard let self, self.isActive, self.sessionIdentity == identity else { return }
+                PrivacyLog.realtimeSession(self.logProvider, .allowanceEnded)
+                self.stopSession(reason: .allowanceUsed)
+                self.speakLocalCue(line)
+            }))
+    }
+
+    /// The warning in the session's own voice where the provider has an exact-speech lane, and the
+    /// local cue voice otherwise. Never a model turn: the warning must not start an answer.
+    private func speakAllowanceWarning(_ line: String) {
+        if interpreterRouter == nil, canInject, supportsSuppliedSpeech {
+            idleWarningInTurn = true
+            providerSession.speakText(line)
+        } else {
+            speakLocalCue(line)
+        }
     }
 
     /// End the session and give back everything it holds.
@@ -880,6 +936,10 @@ class RealtimeSessionManager: ObservableObject {
         completeTranscripts = CompleteTranscriptPairing()
         turnResetGeneration = nil
         idleClock.stop()
+        if holdsAllowanceMeter {
+            holdsAllowanceMeter = false
+            allowance?.stopLiveMeter()
+        }
         replyWatch = nil
         ReadingEvidenceBoard.shared.clear()
         PrivacyLog.realtimeSession(logProvider, .sessionStopped, count: submittedFrameCount)

@@ -2331,6 +2331,8 @@ class AppState: ObservableObject, AppStateProtocol {
         jobSendNotificationRouter?.openStagedCard = { [weak self] id in self?.openStagedCard(id) }
         // Plan LE §5: a tap on the check-in's notification opens My Day and runs it if still owed.
         jobSendNotificationRouter?.openCheckIn = { [weak self] dayKey in self?.openCheckInFromNotification(dayKey: dayKey) }
+        // Plan NH: a tap on the allowance's notification opens the subscription sheet.
+        jobSendNotificationRouter?.openSubscription = { [weak self] in self?.subscriptionSheetPresented = true }
         UNUserNotificationCenter.current().delegate = jobSendNotificationRouter
         // Plan LM P2: the app's notification buttons, registered once, beside the one delegate that
         // routes their presses.
@@ -3367,6 +3369,7 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         wireAnswerCard()
         wireLensPage()
+        wireAllowance()
 
         // Let the TTS engine selector know whether we're online, so a configured cloud voice
         // isn't preferred while offline (it'd fail the network call and fall back anyway).
@@ -6169,6 +6172,9 @@ class AppState: ObservableObject, AppStateProtocol {
     /// The picker edits this conversation even if the live thread changes while it is open.
     var manualPickerThreadID: String?
     @Published var showManualPicker = false
+    /// Plan NH: the Standard subscription sheet, opened by a refusal at zero, by the Home line and
+    /// by the allowance notification. Presented from the root, like the manual picker.
+    @Published var subscriptionSheetPresented = false
     /// Non-nil while the manual figure sheet should be presented.
     @Published var manualFigureRequest: ManualFigureRequest?
     /// Counts every time a page is put in front of the technician — including the page already
