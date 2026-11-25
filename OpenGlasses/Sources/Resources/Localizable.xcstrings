@@ -242723,6 +242723,88 @@
         }
       }
     },
+    "GGUF models adds the GGUF downloads to Local Models, including Gemma 4 E2B and Qwen 3.5 4B, and lets them load. Turning it off keeps any you downloaded. Native tool calls lets Gemma 4 E2B (both kinds), Gemma 4 E4B (GGUF) and Qwen 3.5 4B (GGUF) call tools in their own format, look things up more than once in a turn, and use the Field Assist job tools while they are being tested. Other downloaded models are unchanged. Applies from the next question." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يضيف «نماذج GGUF» تنزيلات GGUF إلى «نماذج محلية»، ومنها Gemma 4 E2B وQwen 3.5 4B، ويتيح تحميلها. إيقافه يُبقي أي نماذج نزّلتها. يتيح «استدعاءات الأدوات الأصلية» لـ Gemma 4 E2B (بنوعيه) وGemma 4 E4B (GGUF) وQwen 3.5 4B (GGUF) استدعاء الأدوات بتنسيقها الخاص، والبحث أكثر من مرة في الدورة الواحدة، واستخدام أدوات الوظائف في Field Assist أثناء اختبارها. لا تتغير النماذج الأخرى التي تم تنزيلها. يسري ذلك بدءًا من السؤال التالي."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelos GGUF agrega las descargas GGUF a Modelos locales, incluidos Gemma 4 E2B y Qwen 3.5 4B, y permite cargarlas. Al desactivarlo se conservan las que hayas descargado. Llamadas a herramientas nativas permite que Gemma 4 E2B (ambos tipos), Gemma 4 E4B (GGUF) y Qwen 3.5 4B (GGUF) llamen herramientas en su propio formato, busquen información más de una vez en un turno y usen las herramientas de trabajo de Field Assist mientras se prueban. Los demás modelos descargados no cambian. Se aplica a partir de la siguiente pregunta."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modèles GGUF ajoute les téléchargements GGUF à Modèles locaux, dont Gemma 4 E2B et Qwen 3.5 4B, et permet de les charger. Le désactiver conserve ceux que vous avez téléchargés. Appels d’outils natifs permet à Gemma 4 E2B (les deux types), Gemma 4 E4B (GGUF) et Qwen 3.5 4B (GGUF) d’appeler des outils dans leur propre format, de faire plus d’une recherche par tour et d’utiliser les outils de travail de Field Assist pendant qu’ils sont mis à l’essai. Les autres modèles téléchargés ne changent pas. S’applique à partir de la prochaine question."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A GGUF modellek kapcsoló hozzáadja a GGUF letöltéseket a Helyi modellekhez, köztük a Gemma 4 E2B-t és a Qwen 3.5 4B-t, és engedi betölteni őket. Kikapcsolva a már letöltöttek megmaradnak. A Natív eszközhívások lehetővé teszi, hogy a Gemma 4 E2B (mindkét fajta), a Gemma 4 E4B (GGUF) és a Qwen 3.5 4B (GGUF) a saját formátumában hívjon eszközöket, egy fordulóban többször is keressen, és tesztelés közben használja a Field Assist munkaeszközeit. A többi letöltött modell nem változik. A következő kérdéstől érvényes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelli GGUF aggiunge i download GGUF a Modelli locali, tra cui Gemma 4 E2B e Qwen 3.5 4B, e ne consente il caricamento. Disattivandolo, quelli scaricati restano. Chiamate native agli strumenti consente a Gemma 4 E2B (entrambi i tipi), Gemma 4 E4B (GGUF) e Qwen 3.5 4B (GGUF) di chiamare gli strumenti nel proprio formato, di cercare informazioni più di una volta in un turno e di usare gli strumenti di lavoro di Field Assist mentre sono in prova. Gli altri modelli scaricati restano invariati. Si applica dalla prossima domanda."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「GGUFモデル」をオンにすると、Gemma 4 E2B や Qwen 3.5 4B を含む GGUF のダウンロードが「ローカルモデル」に追加され、読み込めるようになります。オフにしてもダウンロード済みのものは残ります。「ネイティブのツール呼び出し」は、Gemma 4 E2B（両方の形式）、Gemma 4 E4B（GGUF）、Qwen 3.5 4B（GGUF）が独自の形式でツールを呼び出し、1 回のやり取りで複数回調べ、テスト中に Field Assist の作業ツールを使えるようにします。ほかのダウンロード済みモデルは変わりません。次の質問から適用されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GGUF 모델을 켜면 Gemma 4 E2B와 Qwen 3.5 4B를 포함한 GGUF 다운로드가 로컬 모델에 추가되고 불러올 수 있습니다. 꺼도 이미 다운로드한 모델은 남아 있습니다. 네이티브 도구 호출은 Gemma 4 E2B(두 종류 모두), Gemma 4 E4B(GGUF), Qwen 3.5 4B(GGUF)가 자체 형식으로 도구를 호출하고, 한 번의 차례에서 여러 번 정보를 찾아보고, 테스트하는 동안 Field Assist 작업 도구를 사용할 수 있게 합니다. 다른 다운로드한 모델은 바뀌지 않습니다. 다음 질문부터 적용됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GGUF-modellen voegt de GGUF-downloads toe aan Lokale modellen, waaronder Gemma 4 E2B en Qwen 3.5 4B, en laat ze laden. Uitzetten bewaart wat je al hebt gedownload. Native gereedschapsaanroepen laat Gemma 4 E2B (beide soorten), Gemma 4 E4B (GGUF) en Qwen 3.5 4B (GGUF) gereedschappen aanroepen in hun eigen formaat, meer dan eens per beurt iets opzoeken en de opdrachtgereedschappen van Field Assist gebruiken terwijl ze worden getest. Andere gedownloade modellen blijven ongewijzigd. Geldt vanaf de volgende vraag."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelos GGUF adiciona os downloads GGUF a Modelos locais, incluindo o Gemma 4 E2B e o Qwen 3.5 4B, e permite carregá-los. Desativar mantém os que você baixou. Chamadas de ferramentas nativas permite que o Gemma 4 E2B (os dois tipos), o Gemma 4 E4B (GGUF) e o Qwen 3.5 4B (GGUF) chamem ferramentas no próprio formato, pesquisem mais de uma vez em um turno e usem as ferramentas de trabalho do Field Assist enquanto estão em teste. Os outros modelos baixados não mudam. Vale a partir da próxima pergunta."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«Модели GGUF» добавляет загрузки GGUF в «Локальные модели», включая Gemma 4 E2B и Qwen 3.5 4B, и разрешает их загружать. Если выключить, уже загруженные модели останутся. «Собственные вызовы инструментов» позволяет Gemma 4 E2B (обоих видов), Gemma 4 E4B (GGUF) и Qwen 3.5 4B (GGUF) вызывать инструменты в собственном формате, искать сведения больше одного раза за ход и использовать рабочие инструменты Field Assist, пока модели проходят испытания. Другие загруженные модели не меняются. Действует со следующего вопроса."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GGUF ماڈلز، GGUF ڈاؤن لوڈز کو مقامی ماڈلز میں شامل کرتا ہے، جن میں Gemma 4 E2B اور Qwen 3.5 4B بھی ہیں، اور انہیں لوڈ ہونے دیتا ہے۔ اسے بند کرنے سے آپ کے ڈاؤن لوڈ کیے ہوئے ماڈلز رہتے ہیں۔ مقامی ٹول کالز، Gemma 4 E2B (دونوں قسمیں)، Gemma 4 E4B (GGUF) اور Qwen 3.5 4B (GGUF) کو اپنے فارمیٹ میں ٹولز کال کرنے، ایک باری میں ایک سے زیادہ بار معلومات تلاش کرنے، اور جانچ کے دوران Field Assist کے کام کے ٹولز استعمال کرنے دیتا ہے۔ دیگر ڈاؤن لوڈ شدہ ماڈلز میں کوئی تبدیلی نہیں ہوتی۔ اگلے سوال سے لاگو ہوتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“GGUF 模型”会把 GGUF 下载项（包括 Gemma 4 E2B 和 Qwen 3.5 4B）加入“本地模型”，并允许加载它们。关闭后，已下载的模型仍会保留。“原生工具调用”让 Gemma 4 E2B（两种格式）、Gemma 4 E4B（GGUF）和 Qwen 3.5 4B（GGUF）以自己的格式调用工具，在一轮对话中多次查找信息，并在测试期间使用 Field Assist 的工作工具。其他已下载的模型不受影响。从下一个问题起生效。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「GGUF 模型」會把 GGUF 下載項目（包括 Gemma 4 E2B 和 Qwen 3.5 4B）加入「本地模型」，並允許載入它們。關閉後，已下載的模型仍會保留。「原生工具呼叫」讓 Gemma 4 E2B（兩種格式）、Gemma 4 E4B（GGUF）和 Qwen 3.5 4B（GGUF）以自己的格式呼叫工具、在一輪對話中多次查詢資訊，並在測試期間使用 Field Assist 的工作工具。其他已下載的模型不受影響。從下一個問題起生效。"
+          }
+        }
+      }
+    },
     "GGUF models are switched off on this iPhone, so this model can't be loaded. Turn them on in Settings to use it. Its files stay where they are either way." : {
       "localizations" : {
         "ar" : {
