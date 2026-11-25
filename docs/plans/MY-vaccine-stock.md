@@ -8,7 +8,10 @@ medical-mode gate). All 12 decisions are built on the plan's recommendations
 (`VaccineStockPolicy`) and remain the owner's to change. The 9 new test classes and every existing
 stock, org-profile, settings-visibility, catalog and brand guard class pass on the simulator (815
 tests, 60 classes); the full suite (19,508 tests) and the Release build pass. `check-privacy-logging.sh`
-passes. Owed: a simulator check of the scan sheet, the count sheet, the report and the EMR check sheet; the device
+passes. **2026-11-25:** the clinic's own vaccine list imports as it is (§8, P3b): a list with a
+code and a description and no quantities comes in as new lines, a tariff code is the line's number,
+and short forms and brand names become the line's codes, which the EMR check matches as well as the
+number. Owed: a simulator check of the scan sheet, the count sheet, the report and the EMR check sheet; the device
 pass (a real carton scanned, and the reminder seen on a phone); P4 the catalog sync; P5 the pilot; a
 takeover workbook still drops lots (it carries lines and figures only); tapping the count reminder
 opens the app but not the count sheet. The clinic's process details are due the week of
@@ -212,6 +215,18 @@ The app reads it and forgets it:
   `XLSXReader` if the EMR exports only CSV.
 - **The EMR's vaccine names are mapped to lines once.** The mapping is kept as the line's aliases
   in `codes` (an EMR product code) or as a named alias.
+- **The clinic's own list sets most of that mapping up front (P3b, 2026-11-25).** The clinic sent
+  the province's publicly funded list: abbreviation, description, tariff code and brand names, with
+  no quantities. `VanStockSheet` reads a sheet that names a code and a description as a catalogue
+  (lines with no figures; the first count sets the levels). `Tariff`, `Tariff code`, `Billing code`
+  and `Code` headings are the line's number, so the check lines up with the code a dose is claimed
+  under. `Abbreviation` and `Brand names` columns (a note in brackets after a heading is ignored) are
+  split at commas and semicolons, with trademark signs dropped, and kept as the line's `codes`: at
+  most 12 a row, 60 characters each, only ever added on a later import. `ImmunisationLineAliases`
+  matches a line's number as well as its codes, so an EMR column holding the tariff code, the short
+  form or a brand finds the line with no mapping step. Where one tariff code covers brands with
+  different carton sizes, the clinic splits that row into one line per brand (`dosesPerCarton` is
+  per line).
 - **Compare per day × line × lot (`ImmunisationReconciliation`, pure):**
   - **Given here, not in the EMR:** *"3 flu doses on 24 November, lot ABC123, are not in the
     EMR."* These are the likely missed claims.
@@ -294,6 +309,11 @@ The house rhythm puts P0–P3 in one PR, with the device-only edges named as owe
   - A guard test that the reader's output type has no field for anything but date, vaccine and lot.
   - Fixtures are invented rows with invented names in the dropped columns, and the test asserts
     those names appear nowhere in the output.
+- **P3b — the clinic's own list (headless).** ✅ Built 2026-11-25, after the clinic sent its
+  vaccine list (§8): catalogue import with no quantities, tariff headings as the number, short forms
+  and brand names as codes, the EMR check matching the number. One reworded refusal (*"A list with no
+  quantities yet needs both Part number and Description."*) joins P4's keys. Owed: importing the
+  clinic's real list on a phone (P5).
 - **P4 — the catalog sync (its own PR).** Owed. The new English keys translated into the 13 complete
   languages, add-only, as PRs 1128, 1133, 1140 and 1147 did.
 - **P5 — the pilot (owed, a report).** Owed. A real delivery received by scanning, a week of doses given
@@ -375,7 +395,9 @@ The house rhythm puts P0–P3 in one PR, with the device-only edges named as owe
    patient columns emptied would settle §8's mapping.
 3. Who gives the doses, and who records them? Where in the day does an entry get missed?
 4. Which vaccines, carton sizes and multi-dose vials? Is funded stock kept apart from private
-   stock? (Decision 6.)
+   stock? (Decision 6.) *Partly answered 2026-11-24: the clinic sent the province's publicly funded
+   list (39 rows, one suspended). Still owed: which of them the fridge holds, and the carton size of
+   each brand where one tariff code covers several.*
 5. Photos of a few cartons' labels, to confirm the 2D code is there and what it holds.
 6. How are doses claimed, and which waste or cold-chain events must be reported, to whom?
 7. A copy of the current spreadsheet with patient details removed, to import as the opening stock.
