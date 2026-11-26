@@ -11,8 +11,9 @@ tests, 60 classes); the full suite (19,508 tests) and the Release build pass. `c
 passes. **2026-11-25:** the clinic's own vaccine list imports as it is (§8, P3b): a list with a
 code and a description and no quantities comes in as new lines, a tariff code is the line's number,
 and short forms and brand names become the line's codes, which the EMR check matches as well as the
-number. Owed: a simulator check of the scan sheet, the count sheet, the report and the EMR check sheet; the device
-pass (a real carton scanned, and the reminder seen on a phone); P4 the catalog sync; P5 the pilot; a
+number. **2026-11-27, P4:** the catalog sync is done: 118 keys in the 13 complete languages,
+add-only, the EMR named by each language's usual short term. Owed: a simulator check of the scan sheet, the count sheet, the report and the EMR check sheet; the device
+pass (a real carton scanned, and the reminder seen on a phone); P5 the pilot; a
 takeover workbook still drops lots (it carries lines and figures only); tapping the count reminder
 opens the app but not the count sheet. The clinic's process details are due the week of
 2026-11-23, and some decisions may change when they arrive.
@@ -314,8 +315,9 @@ The house rhythm puts P0–P3 in one PR, with the device-only edges named as owe
   and brand names as codes, the EMR check matching the number. One reworded refusal (*"A list with no
   quantities yet needs both Part number and Description."*) joins P4's keys. Owed: importing the
   clinic's real list on a phone (P5).
-- **P4 — the catalog sync (its own PR).** Owed. The new English keys translated into the 13 complete
-  languages, add-only, as PRs 1128, 1133, 1140 and 1147 did.
+- **P4 — the catalog sync (its own PR).** ✅ Done 2026-11-27: 118 keys from the clinic screens,
+  harvested from a build's `.stringsdata`, translated into the 13 complete languages, add-only
+  (+9,731/−0), the stock-system keys in the same files left for their own sync.
 - **P5 — the pilot (owed, a report).** Owed. A real delivery received by scanning, a week of doses given
   and wasted, a weekly count, and two checks against the clinic's own EMR export. Read every spoken
   answer for a stray "van", "part" or "used". Count how many missing EMR entries the check found,
