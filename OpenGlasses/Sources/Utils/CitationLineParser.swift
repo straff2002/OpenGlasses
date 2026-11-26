@@ -16,7 +16,8 @@ struct Citation: Equatable, Hashable, Identifiable {
         /// A core file loaded whole into every prompt ("error_codes.md").
         case coreFile = "core_file"
         /// An approved team learning (Plan FP P2): the crew's finding, never a manual page. Its
-        /// title is the contract §7.1 name, "Team learning · <subject> · <date> · approved by <role>".
+        /// title is the contract §7.1 name, "Team learning · <subject> · <date> · approved by <role>",
+        /// or a company's crew experience, "Crew experience · …" (Plan NF).
         case teamLearning = "team_learning"
     }
 
@@ -209,7 +210,7 @@ enum CitationLineParser {
     }
 
     private static func isStructuredName(_ body: String) -> Bool {
-        body.contains(TeamLearningCitation.prefix) || body.hasPrefix("Photographed manual · ")
+        TeamLearningCitation.firstCitationRange(in: body) != nil || body.hasPrefix("Photographed manual · ")
             || body.hasPrefix("Reviewed photographed manual · ")
     }
 
@@ -253,9 +254,10 @@ enum CitationLineParser {
     /// answer never cited. A group that opens on a page carries the title before it ("Service
     /// Manual, page 20; page 21"), and a second page for one title is a second citation.
     static func citations(inBody body: String) -> [Citation] {
-        // A team learning's name is cited whole: everything from its prefix to the end of the line
-        // is one citation, so a comma in the approver's role cannot split it into a "manual".
-        if let start = body.range(of: TeamLearningCitation.prefix) {
+        // A team learning's name — or a company's crew experience (Plan NF) — is cited whole:
+        // everything from its prefix to the end of the line is one citation, so a comma in the
+        // approver's role cannot split it into a "manual".
+        if let start = TeamLearningCitation.firstCitationRange(in: body) {
             let before = String(body[body.startIndex..<start.lowerBound])
                 .trimmingCharacters(in: CharacterSet(charactersIn: " \t.;,"))
             let name = String(body[start.lowerBound...]).trimmingCharacters(in: CharacterSet(charactersIn: " \t.;"))

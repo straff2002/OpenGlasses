@@ -127,6 +127,8 @@ final class SubjectErasureCoordinator {
         var capturedManualDeliveryErasure: ((String) -> Void)?
         var learningCandidates: LearningCandidateStore?
         var learningEntries: LearningEntryStore?
+        /// Each company vault's crew experience set (Plan NF).
+        var companyExperience: CompanyExperienceStore?
         var goals: GoalStore?
         var activity: ActivityStore?
         /// The My Day cards' kept state and draft edits (Plan KT P1).
@@ -177,6 +179,7 @@ final class SubjectErasureCoordinator {
         .owedMeetingNotes,
         .learningCandidates,
         .learningEntries,
+        .companyExperience,
         .assistingHandovers,
         .activityTrail,
         .goals,
@@ -272,6 +275,8 @@ final class SubjectErasureCoordinator {
                 receipt = eraseLearningCandidates(subject)
             case .learningEntries:
                 receipt = eraseLearningEntries(subject)
+            case .companyExperience:
+                receipt = eraseCompanyExperience(subject)
             case .assistingHandovers:
                 receipt = eraseAssistingHandovers(subject)
             case .activityTrail:
@@ -744,6 +749,17 @@ final class SubjectErasureCoordinator {
         }
         guard case .person = subject else { return .complete(.learningEntries) }
         return .complete(.learningEntries, removed: entries.deleteMatching(subject.searchToken))
+    }
+
+    /// A crew experience entry that names the subject goes (Plan NF). Its retrieval documents are
+    /// in the `learning:` namespaces, which `.ragDocuments` already searches for the same name; the
+    /// set's sequence stays, so the same set is not applied again over the erasure.
+    private func eraseCompanyExperience(_ subject: ErasureSubject) -> ErasureReceipt {
+        guard let experience = stores.companyExperience else {
+            return .unsupported(.companyExperience, "no crew experience store was supplied")
+        }
+        guard case .person = subject else { return .complete(.companyExperience) }
+        return .complete(.companyExperience, removed: experience.deleteMatching(subject.searchToken))
     }
 
     /// Trail rows that name the person (Plan IW P1). A thread or a document is not what a row is

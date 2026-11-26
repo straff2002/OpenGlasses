@@ -2185,6 +2185,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 LearningCandidateStore.shared.removeAll()
                 // …and so were the approved entries and the corpus they answer from (Plan FP P2).
                 LearningEntryStore.shared.removeAll()
+                // …and so was the company's crew experience, delivered with its vaults (Plan NF).
+                CompanyExperienceStore.shared.removeAll()
                 LearningCorpus.clearAll(store: self.documentStore)
                 // Attachments belong to the organisation's jobs, and go with them; so does what
                 // the office said about them.
@@ -2202,6 +2204,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 for id in vaultIds where VaultImporter.installedManifest(id: id) != nil {
                     await VaultImporter.uninstall(id: id, documentStore: self.documentStore)
                 }
+                // Plan NF: each vault's crew experience goes with it.
+                for id in vaultIds { CompanyExperienceStore.shared.remove(vaultId: id) }
                 VaultRegistry.shared.reloadUserManifests()
                 VaultRegistry.shared.resetCache()
             },
@@ -2918,6 +2922,7 @@ class AppState: ObservableObject, AppStateProtocol {
         erasure.capturedManualDeliveryErasure = {CapturedManualOutbox.shared.forget($0)}
         erasure.learningCandidates = LearningCandidateStore.shared
         erasure.learningEntries = LearningEntryStore.shared
+        erasure.companyExperience = CompanyExperienceStore.shared
         // Plan IW P1: goals and the activity trail can name a person; forgetting them reaches both.
         erasure.goals = GoalStore.shared
         erasure.activity = ActivityStore.shared
@@ -3532,6 +3537,7 @@ class AppState: ObservableObject, AppStateProtocol {
             erasureStores.capturedManualDeliveryErasure = {CapturedManualOutbox.shared.forget($0)}
             erasureStores.learningCandidates = LearningCandidateStore.shared
             erasureStores.learningEntries = LearningEntryStore.shared
+            erasureStores.companyExperience = CompanyExperienceStore.shared
             erasureStores.goals = GoalStore.shared
             erasureStores.activity = ActivityStore.shared
             erasureStores.preparedCards = PreparedCardStore.shared
@@ -4046,6 +4052,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // Field Assist vaults retrieve their imported manuals (reference tier) from the shared store.
         FieldSessionService.shared.documentStore = documentStore
         FieldSessionService.shared.learningEntries = LearningEntryStore.shared
+        FieldSessionService.shared.companyExperience = CompanyExperienceStore.shared
         // Team learnings publish into the same store (Plan FP P2/P3): approvals on a reviewer
         // device, and decisions accepted from a bundle on any phone.
         LearningReviewService.shared.documentStore = documentStore

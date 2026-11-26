@@ -87,6 +87,17 @@ final class CompanyVaultService: ObservableObject {
         var now: () -> Date = Date.init
         var staging: () -> VaultLinkStagingStore = { .companyVaults() }
         var vaults: @MainActor () -> CompanyVaultInstalling = { LiveCompanyVaultInstaller.shared }
+        // Plan NF — crew experience sets.
+        /// Each company vault's last applied set.
+        var experience: @MainActor () -> CompanyExperienceStore = { .shared }
+        /// The licence's answer for team learnings: only a team or enterprise licence receives a set.
+        /// A set already held stays in use whatever this says.
+        var experienceCapability: @MainActor () -> FieldAssistCapabilityCheck = {
+            FieldAssistEntitlement.shared.check(.teamLearnings)
+        }
+        /// Put every learning namespace back in line with the phone-reviewed entries and the sets
+        /// (`TeamLearningSources`); refused under HIPAA mode.
+        var publishLearnings: @MainActor () -> Void = { LearningReviewService.shared.republish() }
     }
 
     static let shared = CompanyVaultService()
@@ -291,6 +302,12 @@ final class CompanyVaultService: ObservableObject {
                 state.vaults[vaultId] = nil
                 state.manuals[vaultId] = nil
                 state.downloading[vaultId] = nil
+                // Plan NF: the vault's crew experience leaves with it.
+                if seams.experience().set(for: vaultId) != nil {
+                    seams.experience().remove(vaultId: vaultId)
+                    PassLog.event(.removed, vault: vaultId, operation: "experience")
+                    seams.publishLearnings()
+                }
                 if let publisher = removed?.publisherName {
                     // Plan LV: a published vault leaves because its partner took it off.
                     state.removedPublished.append(.init(name: name, publisher: publisher))
@@ -362,6 +379,7 @@ final class CompanyVaultService: ObservableObject {
             noteDownloading(&state, catalog: catalog)
             save()
         }
+        await applyExperience(catalog: catalog, profileId: profile.profileId, state: state, job: conditions.job)
         cellularOnce = []
         noteDownloading(&state, catalog: catalog)
         if state.waits.isEmpty, state.failures.isEmpty { state.appliedGeneration = catalog.generation }
@@ -413,6 +431,103 @@ final class CompanyVaultService: ObservableObject {
             state.failures[vaultId] = String(localized: "Couldn't add the new manuals to \(name). It tries again when the app opens.")
             PassLog.event(.copyFailed, vault: vaultId, count: staged.count, error: Self.logSummary(error))
         }
+    }
+
+    // MARK: - Crew experience (Plan NF P1)
+
+    /// Why a crew experience set was not applied. Logged by case; never shown, because the last
+    /// good set keeps answering and the next foreground tries again.
+    enum ExperienceFailure: Error, Equatable {
+        case noSecret, malformed, tampered, wrongRevision, unreadable, refusedByCheck
+        case otherCompany, otherVault, wrongSequence, wrongCount
+    }
+
+    /// Every vault row's `experience` pointer, after its vault: a set newer than the one held is
+    /// downloaded on any network, checked against `sealedSha256`, opened with the company secret,
+    /// checked against `revision`, held to the set's own rules and bound to this company and vault,
+    /// then applied whole. Anything that fails keeps the last good set. A pointer that is gone
+    /// removes the vault's set (the company took its experience off).
+    ///
+    /// **Gates.** Only a team or enterprise licence receives a set; a set already held stays in use
+    /// on a lapsed one. A vault the open job uses keeps its set until the job closes, as its manuals
+    /// do. Under HIPAA mode the set is still kept current but nothing is published
+    /// (`publishLearnings` refuses), and retrieval reads no learning namespace.
+    private func applyExperience(catalog: CompanyVaultCatalog.Verified, profileId: String,
+                                 state: CompanyVaultState, job: CompanyVaultPlan.Job) async {
+        let store = seams.experience()
+        var changed = false
+        for (vaultId, problem) in catalog.experienceProblems.sorted(by: { $0.key < $1.key }) {
+            PassLog.event(.fileFailed, vault: vaultId, operation: "experience." + problem)
+        }
+        for vault in catalog.vaults where !vault.isCompanyLayer {
+            let held = store.set(for: vault.vaultId)
+            if case .open(let busy) = job, busy == nil || busy == vault.vaultId {
+                if held?.sequence != vault.experience?.sequence { PassLog.event(.held, vault: vault.vaultId, operation: "experience.job") }
+                continue
+            }
+            guard let pointer = vault.experience else {
+                // A pointer the phone left out is not a removal; one the company took off is.
+                if held != nil, catalog.experienceProblems[vault.vaultId] == nil {
+                    store.remove(vaultId: vault.vaultId)
+                    PassLog.event(.removed, vault: vault.vaultId, operation: "experience")
+                    changed = true
+                }
+                continue
+            }
+            if let held, held.sequence >= pointer.sequence { continue }
+            guard state.vaults[vault.vaultId] != nil else { continue }
+            guard seams.experienceCapability().isGranted else {
+                PassLog.event(.held, vault: vault.vaultId, operation: "experience.licence", version: pointer.sequence)
+                continue
+            }
+            do {
+                let set = try await fetchExperience(pointer, vaultId: vault.vaultId, profileId: profileId)
+                store.apply(.init(profileId: profileId, vaultId: vault.vaultId, sequence: set.sequence,
+                                  revision: pointer.revision, issuedAt: Date(timeIntervalSince1970: TimeInterval(set.issuedAt)),
+                                  appliedAt: seams.now(), entries: CompanyExperienceStore.entries(of: set),
+                                  retractedIDs: set.retracted.map(\.entryID)))
+                PassLog.event(.installed, vault: vault.vaultId, operation: "experience", version: set.sequence,
+                              count: set.entries.count, bytes: pointer.sizeBytes)
+                changed = true
+            } catch {
+                PassLog.event(.fileFailed, vault: vault.vaultId, operation: "experience", version: pointer.sequence,
+                              bytes: pointer.sizeBytes, error: Self.logSummary(error))
+            }
+        }
+        if changed { seams.publishLearnings() }
+    }
+
+    /// One set: download (at most its sealed length) → length → `sealedSha256` → open → `revision`
+    /// → decode → `CrewExperienceSet.check` → bound to this company, vault, sequence and count.
+    private func fetchExperience(_ pointer: CompanyVaultCatalog.Experience, vaultId: String,
+                                 profileId: String) async throws -> CrewExperienceSet {
+        guard let url = CompanyVaultCatalog.downloadURL(pointer.downloadURL) else { throw ExperienceFailure.malformed }
+        guard let secret = seams.companySecret(), secret.count == OrgCredentialSeal.secretLength else {
+            throw ExperienceFailure.noSecret
+        }
+        let staging = seams.staging()
+        let expected = CompanyExperienceSeal.sealedLength(plaintextBytes: pointer.sizeBytes)
+        let staged = try await seams.download(url, expected, staging)
+        defer { staging.remove(staged) }
+        guard let sealed = try? Data(contentsOf: staged.fileURL), sealed.count == expected else { throw ExperienceFailure.malformed }
+        guard VaultPackArchive.sha256Hex(sealed) == pointer.sealedSha256 else { throw ExperienceFailure.tampered }
+        let plain: Data
+        do {
+            plain = try CompanyExperienceSeal.open(sealed, context: .init(profileId: profileId, vaultId: vaultId, experience: pointer),
+                                                   companySecret: secret)
+        } catch CompanyManualSeal.Failure.wrongRevision {
+            throw ExperienceFailure.wrongRevision
+        } catch {
+            throw ExperienceFailure.tampered
+        }
+        guard plain.count == pointer.sizeBytes else { throw ExperienceFailure.malformed }
+        guard let set = try? JSONDecoder().decode(CrewExperienceSet.self, from: plain) else { throw ExperienceFailure.unreadable }
+        do { try CrewExperienceSet.check(set) } catch { throw ExperienceFailure.refusedByCheck }
+        guard set.profileId == profileId else { throw ExperienceFailure.otherCompany }
+        guard set.vaultId == vaultId else { throw ExperienceFailure.otherVault }
+        guard set.sequence == pointer.sequence else { throw ExperienceFailure.wrongSequence }
+        guard set.entries.count == pointer.count else { throw ExperienceFailure.wrongCount }
+        return set
     }
 
     /// Plan LV — a sealed core: the row's length, a length a pack can seal to, `sha256` of the sealed

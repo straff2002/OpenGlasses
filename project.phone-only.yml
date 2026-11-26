@@ -40,6 +40,7 @@ targets:
       - path: Tools/LicenceIssuance/Sources/LicenceIssuance/TradeTemplate.swift
       - path: Tools/LicenceIssuance/Sources/LicenceIssuance/VaultStarter.swift
       - path: Tools/LicenceIssuance/Sources/LicenceIssuance/VaultDrafts.swift
+      - path: Tools/LicenceIssuance/Sources/LicenceIssuance/CrewExperience.swift
       - path: .generated/Localizable.xcstrings
       - path: .generated/InfoPlist.xcstrings
     settings:

@@ -22,6 +22,22 @@ final class CrewExperienceTests: XCTestCase {
 
     static let profileId = "fixture-company"
     static let issuedAt: Int64 = 1_795_564_800 // 2026-11-25T00:00:00Z
+    /// The company-vault fixtures' company secret (`company-vaults-v1/fixture-keys.json`): SHA-256 of
+    /// a public label, with no authority anywhere.
+    static let companySecret = Data(SHA256.hash(data: Data("Avenkin public fixture company secret v1".utf8)))
+    static let setURL = "https://licence.example.test/c/opaque/x/fixture-crew-units-1"
+
+    /// The sealed fixture's nonces, from the chunk index, so it regenerates to the same bytes.
+    static func fixtureNonce(_ index: UInt64) throws -> AES.GCM.Nonce {
+        try AES.GCM.Nonce(data: Data(SHA256.hash(data: Data("Avenkin public fixture crew experience nonce \(index)".utf8))).prefix(12))
+    }
+
+    /// `set-v1.json` as the portal seals it for `fixture-company`, sequence 1.
+    func sealedSet(_ set: Data) throws -> Data {
+        try Contract.ExperienceSeal.seal(set, context: .init(profileId: Self.profileId, vaultId: "fixture-crew-units",
+                                                             sequence: 1, revision: digest(set)),
+                                         companySecret: Self.companySecret, nonce: Self.fixtureNonce)
+    }
 
     func fixture(_ name: String) throws -> Data { try Data(contentsOf: Self.fixtures.appendingPathComponent(name)) }
     func decode<T: Decodable>(_ type: T.Type, _ name: String) throws -> T { try JSONDecoder().decode(T.self, from: fixture(name)) }
@@ -70,8 +86,8 @@ final class CrewExperienceTests: XCTestCase {
 
     func experienceRow(_ set: Data, sequence: Int = 1, count: Int = 4) -> Contract.Experience {
         .init(sequence: sequence, count: count, sizeBytes: set.count, revision: digest(set),
-              sealedSha256: String(repeating: "c", count: 64),
-              downloadURL: "https://licence.example.test/c/opaque/x/fixture-crew-units-1")
+              sealedSha256: (try? digest(sealedSet(set))) ?? String(repeating: "c", count: 64),
+              downloadURL: Self.setURL)
     }
 
     func vaultRow(_ experience: Contract.Experience?, vaultId: String = "fixture-crew-units", extends: String? = nil) -> Contract.Vault {
@@ -169,6 +185,7 @@ final class CrewExperienceTests: XCTestCase {
         try CrewExperienceSet.check(set)
         let setBytes = try CrewExperienceSet.encoder().encode(set)
         try setBytes.write(to: dir.appendingPathComponent("set-v1.json"))
+        try sealedSet(setBytes).write(to: dir.appendingPathComponent("set-v1.sealed"))
         try write(Sheet.report(try parsed("refusals.csv", vault: "vault-with-set.json")), "refusals.expected.json")
         try write(Sheet.report(try parsed("redaction.csv")), "redaction.expected.json")
 
@@ -267,6 +284,77 @@ final class CrewExperienceTests: XCTestCase {
         XCTAssertEqual(set.kind, "avenkin.crew-experience-set")
         XCTAssertEqual(set.entries, try decode([CrewExperienceSet.Entry].self, "clean.entries.json"))
         XCTAssertEqual(try CrewExperienceSet.encoder().encode(set), try fixture("set-v1.json"))
+    }
+
+    // MARK: - The seal (P1)
+
+    func testTheSealedFixtureIsTheSetSealedForTheFixtureCompany() throws {
+        let set = try fixture("set-v1.json")
+        let sealed = try fixture("set-v1.sealed")
+        XCTAssertEqual(try sealedSet(set), sealed, "the golden sealed set regenerates to the same bytes")
+        XCTAssertEqual(sealed.count, Contract.ExperienceSeal.sealedLength(plaintextBytes: set.count))
+        XCTAssertEqual(sealed.prefix(4), Data("OGCX".utf8))
+        let context = Contract.ExperienceSeal.Context(profileId: Self.profileId, vaultId: "fixture-crew-units",
+                                                      sequence: 1, revision: digest(set))
+        XCTAssertEqual(try Contract.ExperienceSeal.open(sealed, context: context, companySecret: Self.companySecret), set)
+        // The catalog fixture points at exactly these bytes.
+        let catalog = try Contract.decoder().decode(Contract.Catalog.self, from: try fixture("catalog-experience-v1.json"))
+        let pointer = try XCTUnwrap(catalog.vaults.first?.experience)
+        XCTAssertEqual(pointer.sealedSha256, digest(sealed))
+        XCTAssertEqual(pointer.revision, digest(set))
+        XCTAssertEqual(pointer.sizeBytes, set.count)
+    }
+
+    func testTheSealBindsCompanyVaultSequenceAndRevision() throws {
+        let set = try fixture("set-v1.json")
+        let sealed = try fixture("set-v1.sealed")
+        let revision = digest(set)
+        let wrong: [Contract.ExperienceSeal.Context] = [
+            .init(profileId: "fixture-other-company", vaultId: "fixture-crew-units", sequence: 1, revision: revision),
+            .init(profileId: Self.profileId, vaultId: "fixture-other-vault", sequence: 1, revision: revision),
+            .init(profileId: Self.profileId, vaultId: "fixture-crew-units", sequence: 2, revision: revision),
+            .init(profileId: Self.profileId, vaultId: "fixture-crew-units", sequence: 1, revision: String(repeating: "d", count: 64)),
+        ]
+        for context in wrong {
+            XCTAssertThrowsError(try Contract.ExperienceSeal.open(sealed, context: context, companySecret: Self.companySecret), "\(context)")
+        }
+        let right = Contract.ExperienceSeal.Context(profileId: Self.profileId, vaultId: "fixture-crew-units", sequence: 1, revision: revision)
+        XCTAssertThrowsError(try Contract.ExperienceSeal.open(sealed, context: right, companySecret: ProfileContract.Credential.newSecret()))
+        var flipped = sealed
+        flipped[flipped.count - 5] ^= 0x01
+        XCTAssertThrowsError(try Contract.ExperienceSeal.open(flipped, context: right, companySecret: Self.companySecret))
+        XCTAssertThrowsError(try Contract.ExperienceSeal.seal(set, context: .init(profileId: Self.profileId, vaultId: "fixture-crew-units",
+                                                                                  sequence: 1, revision: String(repeating: "d", count: 64)),
+                                                              companySecret: Self.companySecret)) {
+            XCTAssertEqual($0 as? Contract.ManualSeal.Problem, .wrongRevision)
+        }
+    }
+
+    func testNeitherAManualNorACoreOpensAsASet() throws {
+        let set = try fixture("set-v1.json")
+        let revision = digest(set)
+        let asManual = try Contract.ManualSeal.seal(set, context: .init(profileId: Self.profileId, vaultId: "fixture-crew-units",
+                                                                        fileName: "1", revision: revision),
+                                                    companySecret: Self.companySecret)
+        XCTAssertThrowsError(try Contract.ExperienceSeal.open(asManual, context: .init(profileId: Self.profileId, vaultId: "fixture-crew-units",
+                                                                                       sequence: 1, revision: revision),
+                                                              companySecret: Self.companySecret))
+        let asSet = try fixture("set-v1.sealed")
+        XCTAssertThrowsError(try Contract.ManualSeal.open(asSet, context: .init(profileId: Self.profileId, vaultId: "fixture-crew-units",
+                                                                                fileName: "1", revision: revision),
+                                                          companySecret: Self.companySecret))
+    }
+
+    func testSealSetChecksTheSetAndWritesThePointer() throws {
+        let set = try decode(CrewExperienceSet.self, "set-v1.json")
+        let made = try Contract.ExperienceSeal.sealSet(set, downloadURL: Self.setURL, companySecret: Self.companySecret,
+                                                       nonce: Self.fixtureNonce)
+        XCTAssertEqual(made.sealed, try fixture("set-v1.sealed"))
+        let catalog = try Contract.decoder().decode(Contract.Catalog.self, from: try fixture("catalog-experience-v1.json"))
+        XCTAssertEqual(made.experience, catalog.vaults.first?.experience)
+        let bad = CrewExperienceSet(profileId: Self.profileId, vaultId: "fixture-crew-units", sequence: 0,
+                                    issuedAt: Self.issuedAt, entries: set.entries)
+        XCTAssertThrowsError(try Contract.ExperienceSeal.sealSet(bad, downloadURL: Self.setURL, companySecret: Self.companySecret))
     }
 
     func testCitationNames() throws {

@@ -2644,6 +2644,9 @@ final class FieldSessionService: ObservableObject {
     /// by `AppState`; nil in headless contexts, where a learning is still retrieved and disclosed
     /// by what its own document carries.
     var learningEntries: LearningEntryStore?
+    /// Plan NF: each company vault's crew experience set, whose documents share the `learning:`
+    /// namespaces with the phone-reviewed entries.
+    var companyExperience: CompanyExperienceStore?
 
     /// The namespaces a vault's retrieval reads: its manuals, then its published team learnings —
     /// unless HIPAA mode is on, where the corpus is not queried at all. Already-published learnings
@@ -2844,6 +2847,7 @@ final class FieldSessionService: ObservableObject {
         let manualNamespaces = searched.filter { $0.source == .manual }.map(\.namespace)
         let learningNamespaces = searched.filter { $0.source == .teamLearning }.map(\.namespace)
         let entries = learningEntries
+        let experience = companyExperience
 
         // Row passages of a pictured table whose checks changed a value, disagree, or withhold it
         // (Plan JN P3) still say what was read: they are not searched, and its values come from
@@ -2863,7 +2867,8 @@ final class FieldSessionService: ObservableObject {
                         .flatMap { $0.printedPage > 0 ? $0.printedPage : nil }
                 }
                 if space.source == .teamLearning {
-                    passage.subjectModelToken = entries?.entry(forDocumentId: raw.documentId).map { $0.subject.modelToken }
+                    passage.subjectModelToken = TeamLearningSources.entry(forDocumentId: raw.documentId, reviewed: entries,
+                                                                          experience: experience).map { $0.subject.modelToken }
                         ?? LearningCorpus.subjectModelToken(fromDocumentText: raw.text)
                 }
                 if labelsEditions, space.source == .manual {
@@ -2965,8 +2970,10 @@ final class FieldSessionService: ObservableObject {
 
     /// The disclosure an outcome calls for, resolved against the approved entries.
     func disclosure(for outcome: RetrievalOutcome) -> TeamLearningDisclosure? {
-        let entries = learningEntries
-        return TeamLearningDisclosure.from(outcome) { entries?.entry(forDocumentId: $0) }
+        let entries = learningEntries, experience = companyExperience
+        return TeamLearningDisclosure.from(outcome) {
+            TeamLearningSources.entry(forDocumentId: $0, reviewed: entries, experience: experience)
+        }
     }
 
     /// Record what a retrieval found, wherever it ran: the answer's evidence for the phone and the
