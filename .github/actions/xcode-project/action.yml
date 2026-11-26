@@ -16,6 +16,12 @@ inputs:
     description: Boot the selected simulator when this job will execute tests.
     required: false
     default: 'true'
+  phone-only:
+    description: >-
+      Generate the phone-only store variant (OPENGLASSES_PHONE_ONLY=1): no glasses SDK, the
+      AVENKIN_PHONE_ONLY compile flag, the filtered metadata from prepare-phone-only-build.py.
+    required: false
+    default: 'false'
 
 outputs:
   simulator-udid:
@@ -101,6 +107,13 @@ runs:
     - name: Skip Watch targets
       shell: bash
       run: printf 'OPENGLASSES_SKIP_WATCH=1\n' > .openglasses-generate.env
+
+    # The same variable the App Store Xcode Cloud workflow sets before ci_post_clone.sh runs, so
+    # the variant is chosen by the generator exactly as it is for the store archive.
+    - name: Select the phone-only variant
+      if: inputs.phone-only == 'true'
+      shell: bash
+      run: printf 'OPENGLASSES_PHONE_ONLY=1\n' >> .openglasses-generate.env
 
     - name: Generate Xcode project
       shell: bash

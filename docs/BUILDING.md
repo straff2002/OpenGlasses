@@ -227,6 +227,14 @@ in whatever the dependency graph does cover. It is a floor, not the SwiftPM revi
 graph it sees is the root manifest's, so treat a clean dependency review as necessary and not
 sufficient.
 
+**The store variant is compiled on every PR.** The App Store build is the phone-only variant
+(`OPENGLASSES_PHONE_ONLY=1`, see [app-store-phone-only-build.md](app-store-phone-only-build.md)),
+and every other job builds the glasses beta. The `phone-only-build` job in the unit workflow
+(check name **Phone-only (store) build**) generates the project with that variable and runs a
+Debug `xcodebuild build` for one named simulator, then checks the app is stamped `phone-only`. It
+runs no tests. A glasses-only type used outside its `#if !AVENKIN_PHONE_ONLY` guard turns it red.
+Before this job, only the store workflow in Xcode Cloud caught that kind of break.
+
 The unit workflow also writes a `provenance.txt` artifact (retained 90 days): commit, runner,
 macOS build, Xcode and SDK versions, the XcodeGen pin, the lockfile digest and the digest of each
 `Vendor/*/SHA256SUMS`. It is what lets a green run still mean something months later.
