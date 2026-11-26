@@ -14,6 +14,8 @@ OPENGLASSES_PHONE_ONLY=1 ./Scripts/generate-xcodeproj.sh
 
 `project.glasses-sdk.yml` is omitted entirely. The final phone overlay sets `AVENKIN_PHONE_ONLY`, derives `.generated/Info.phone-only.plist` from the common metadata, and selects the generated entitlements without Meta Wi-Fi capabilities. It also overrides personal signing overlays. Phone microphone, camera, system headset audio and local/network privacy permissions remain. Meta callbacks, companion query schemes, accessory protocols and Bluetooth background modes are removed. The silent media-button standby implementation and hardware-only Siri intents do not compile into this variant. Saved beta hardware settings cannot re-enable it.
 
+GitHub Actions compiles this variant on every pull request: the `phone-only-build` job in `.github/workflows/tests.yml` (check name **Phone-only (store) build**). It builds and does not archive or sign, so it does not replace the archive check below.
+
 For the beta, regenerate with `OPENGLASSES_PHONE_ONLY=0`. The default remains the glasses beta for contributors. `OPENGLASSES_NO_GLASSES_SDK=1` is a compatibility alias. Do not set both variables to different values.
 
 ## Verify the exact archive

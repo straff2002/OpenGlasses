@@ -100,6 +100,80 @@ jobs:
       - name: Eval harnesses compile
         run: ./Scripts/check-eval-harnesses.sh
 
+  # The App Store build is the phone-only variant (OPENGLASSES_PHONE_ONLY=1, compile flag
+  # AVENKIN_PHONE_ONLY), which only Xcode Cloud's store workflow used to compile. Every other job
+  # here builds the glasses beta, so code that reaches a glasses-only type outside its
+  # `#if !AVENKIN_PHONE_ONLY` guard passed every check while the store build could not compile:
+  # PR 1210 left main in that state for two days, until PR 1237. This compiles the store variant
+  # on every PR the unit gate runs on.
+  #
+  # Build only, Debug, for one named simulator: a generic destination would also build x86_64,
+  # and nothing is run, so no simulator is booted. Xcode Cloud's post-build hook still checks the
+  # signed archive itself (Scripts/check-phone-only-artifact.py --require-signed); this job only
+  # proves the variant compiles, and that what it compiled is stamped phone-only.
+  phone-only-build:
+    name: Phone-only (store) build
+    runs-on: macos-26
+    # Setup (~7 min) + a cold build (~20-28 min on the unit gate), with room for a slow runner.
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Prepare the phone-only Xcode project
+        id: project
+        uses: ./.github/actions/xcode-project
+        with:
+          phone-only: 'true'
+          boot-simulator: 'false'
+
+      - name: Build the phone-only app
+        timeout-minutes: 60
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project OpenGlasses.xcodeproj \
+            -scheme OpenGlasses \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=${{ steps.project.outputs.simulator-udid }}" \
+            -derivedDataPath PhoneOnlyDerivedData \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            -clonedSourcePackagesDirPath .spm-checkouts \
+            -onlyUsePackageVersionsFromResolvedFile \
+            SWIFT_EMIT_LOC_STRINGS=NO \
+            2>&1 | tee xcodebuild-phone-only.log \
+            | grep --line-buffered -E '^Build|error:|\*\* BUILD' \
+            || { tail -100 xcodebuild-phone-only.log; exit 1; }
+
+      # A green build of the wrong variant would prove nothing, so read the stamp
+      # prepare-phone-only-build.py writes into the app's own Info.plist.
+      - name: The built app is the phone-only variant
+        run: |
+          set -euo pipefail
+          found=0
+          for app in PhoneOnlyDerivedData/Build/Products/Debug-iphonesimulator/*.app; do
+            [ -d "$app" ] || continue
+            found=1
+            variant=$(/usr/libexec/PlistBuddy -c 'Print :AvenkinBuildVariant' "$app/Info.plist")
+            echo "$(basename "$app"): $variant"
+            if [ "$variant" != "phone-only" ]; then
+              echo "::error::$(basename "$app") is stamped '$variant', not phone-only."
+              exit 1
+            fi
+          done
+          if [ "$found" != 1 ]; then
+            echo "::error::No app was built."
+            exit 1
+          fi
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: PhoneOnlyBuildLog
+          path: xcodebuild-phone-only.log
+          retention-days: 7
+
   test:
     runs-on: macos-26
     # Setup before the build (~7 min) + the build's 60 + the tests' 50, with a little to spare.
