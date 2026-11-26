@@ -8,7 +8,8 @@ import Foundation
 // the browser; this file reads that one strict CSV dialect, holds every row to the template's rules
 // (each refusal by name, with its sheet row number), and turns the rows that pass into learning
 // entries (`Contracts/team-learning.md` §5, origin `recollection`). The phone receives entries, never
-// a spreadsheet.
+// a spreadsheet. Plan NG P0b: the same set also carries learnings an administrator approved in the
+// portal (origin `spoken`, with their candidate and jobs), and FP's merge rule (`CrewExperienceMerge`).
 //
 // **Foundation only, self-contained with `VaultStarter.swift`** (whose `Model`, `Output`,
 // `normalised` and manifest it reuses). It refers to nothing else in this package, so the app can
@@ -30,8 +31,15 @@ public enum CrewExperienceSheet {
     public static let sealDomain = "openglasses.crew-experience-set.v1"
     /// Every sheet entry's `origin` (team-learning amendment): known before a recorded job confirmed it.
     public static let origin = "recollection"
+    /// The `origin` of a learning a technician filed on a job and an administrator approved in the
+    /// portal (Plan NG P0b; team-learning §12.5). It carries its `candidateID` and the jobs it was
+    /// filed on, and is cited as a team learning, not as crew experience.
+    public static let spokenOrigin = "spoken"
     /// What every crew-experience citation begins with (team-learning §7.1 amendment).
     public static let citationPrefix = "Crew experience · "
+    /// What a `spoken` entry's citation begins with: team-learning §7.1's own prefix, the phone's
+    /// `TeamLearningCitation.prefix`.
+    public static let teamLearningCitationPrefix = "Team learning · "
     /// The sentence an answer that rests on crew experience alone opens with.
     public static let leadIn = "From your company's experience (not the manufacturer's manual):"
     /// The `how_sure` wordings the template offers. Any other words up to the limit are accepted.
@@ -40,6 +48,11 @@ public enum CrewExperienceSheet {
     /// `Crew experience · <model, or equipment type, or topic> · <YYYY-MM-DD UTC> · approved by <role>`.
     public static func citationName(subject: String, approvedAt: Int64, role: String) -> String {
         citationPrefix + "\(subject) · \(utcDate(approvedAt)) · approved by \(role)"
+    }
+
+    /// `Team learning · <subject> · <YYYY-MM-DD UTC> · approved by <role>`: a `spoken` entry's (§7.1).
+    public static func teamLearningCitationName(subject: String, approvedAt: Int64, role: String) -> String {
+        teamLearningCitationPrefix + "\(subject) · \(utcDate(approvedAt)) · approved by \(role)"
     }
 
     /// `YYYY-MM-DD` in UTC for Unix seconds, by arithmetic: no calendar, no locale, no zone.
@@ -636,13 +649,21 @@ public enum CrewExperienceSheet {
                 return nil
             }
             let author = row.addedBy.map { collapsed($0).lowercased() }
+            let id = row.id ?? newID()
+            // A row that is a published entry, edited, stays that entry: a learning approved in the
+            // portal (origin `spoken`) keeps its origin, its candidate and the jobs it was filed on,
+            // and a recollection a job confirmed keeps that job (Plan NG P0b).
+            let previous = held[id]
             let made = CrewExperienceSet.Entry(
-                entryID: row.id ?? newID(), subject: subject, vaultIDs: [parsed.vaultId],
+                entryID: id, subject: subject, vaultIDs: [parsed.vaultId],
                 finding: finding, symptom: symptom, fix: fix, faultCode: row.faultCode,
                 tried: row.checked, outcome: row.howSure,
                 approvedAt: approval.approvedAt, approvedByRole: role,
-                authorIsApprover: author != nil && author == approver)
-            if let previous = held[made.entryID], previous.sameContent(as: made) { return previous }
+                authorIsApprover: author != nil && author == approver,
+                origin: previous?.origin ?? CrewExperienceSheet.origin,
+                candidateID: previous?.candidateID, sourceJobIDs: previous?.sourceJobIDs,
+                confirmedJobCount: previous?.confirmedJobCount)
+            if let previous, previous.sameContent(as: made) { return previous }
             return made
         }
     }
@@ -779,22 +800,42 @@ public struct CrewExperienceSet: Codable, Equatable, Sendable {
         public let approvedByRole: String
         public let authorIsApprover: Bool
         public let contradictsSafetyNote: Bool
+        /// `recollection` (a sheet row) or `spoken` (a learning approved in the portal, Plan NG P0b).
         public let origin: String
+        /// Plan NG P0b, team-learning §5: the candidate a `spoken` entry was approved from
+        /// (32 lowercase hex). Absent on every sheet row. Encoded only when present, so a set
+        /// without it is the bytes it was.
+        public let candidateID: String?
+        /// Plan NG P0b: the jobs it was filed on, as the portal holds them (the per-company job
+        /// hash of team-learning §12, 32 lowercase hex each), never a customer, site or address.
+        /// Absent on a sheet row until a job confirms it (`CrewExperienceMerge`).
+        public let sourceJobIDs: [String]?
+        /// Plan NG P0b: how many jobs it was filed on; absent reads as 0 for a recollection.
+        public let confirmedJobCount: Int?
 
         public init(entryID: String, subject: Subject, vaultIDs: [String], finding: String, symptom: String?,
                     fix: String?, faultCode: String?, tried: String?, outcome: String?, approvedAt: Int64,
                     approvedByRole: String, authorIsApprover: Bool, contradictsSafetyNote: Bool = false,
-                    origin: String = CrewExperienceSheet.origin) {
+                    origin: String = CrewExperienceSheet.origin, candidateID: String? = nil,
+                    sourceJobIDs: [String]? = nil, confirmedJobCount: Int? = nil) {
             self.entryID = entryID; self.subject = subject; self.vaultIDs = vaultIDs; self.finding = finding
             self.symptom = symptom; self.fix = fix; self.faultCode = faultCode; self.tried = tried
             self.outcome = outcome; self.approvedAt = approvedAt; self.approvedByRole = approvedByRole
             self.authorIsApprover = authorIsApprover; self.contradictsSafetyNote = contradictsSafetyNote
-            self.origin = origin
+            self.origin = origin; self.candidateID = candidateID; self.sourceJobIDs = sourceJobIDs
+            self.confirmedJobCount = confirmedJobCount
         }
 
-        /// The team-learning §7.1 citation, amended for crew experience.
+        /// A learning approved in the portal (origin `spoken`), cited as a team learning.
+        public var isSpoken: Bool { origin == CrewExperienceSheet.spokenOrigin }
+
+        /// The team-learning §7.1 citation, amended for crew experience: `Crew experience · …` for a
+        /// recollection, `Team learning · …` for a `spoken` entry.
         public var citationName: String {
-            CrewExperienceSheet.citationName(subject: subject.citationSubject, approvedAt: approvedAt, role: approvedByRole)
+            isSpoken
+                ? CrewExperienceSheet.teamLearningCitationName(subject: subject.citationSubject, approvedAt: approvedAt,
+                                                               role: approvedByRole)
+                : CrewExperienceSheet.citationName(subject: subject.citationSubject, approvedAt: approvedAt, role: approvedByRole)
         }
 
         /// The same words about the same thing, whoever approved them and when.
@@ -860,11 +901,18 @@ public struct CrewExperienceSet: Codable, Equatable, Sendable {
             throw refuse("a set holds at most \(CrewExperienceSheet.Limits.rows) entries")
         }
         var ids = Set<String>()
+        var candidates = Set<String>()
         for entry in set.entries {
             guard CrewExperienceSheet.isEntryID(entry.entryID) else { throw refuse("\(entry.entryID) is not an entry id") }
             guard ids.insert(entry.entryID).inserted else { throw refuse("\(entry.entryID) is in the set twice") }
             guard entry.vaultIDs == [set.vaultId] else { throw refuse("\(entry.entryID) must name exactly the set's vault") }
-            guard entry.origin == CrewExperienceSheet.origin else { throw refuse("\(entry.entryID)'s origin must be \(CrewExperienceSheet.origin)") }
+            guard origins.contains(entry.origin) else {
+                throw refuse("\(entry.entryID)'s origin \(entry.origin) is not one a set carries (\(origins.joined(separator: " or ")))")
+            }
+            if let problem = provenanceProblem(entry) { throw refuse("\(entry.entryID): \(problem)") }
+            if let candidate = entry.candidateID, !candidates.insert(candidate).inserted {
+                throw refuse("\(entry.entryID): candidate \(candidate) is on two entries")
+            }
             guard entry.approvedAt >= 1 else { throw refuse("\(entry.entryID) has no approval time") }
             if let problem = textProblem(entry) { throw refuse("\(entry.entryID): \(problem)") }
         }
@@ -879,6 +927,64 @@ public struct CrewExperienceSet: Codable, Equatable, Sendable {
         let bytes = try encoder().encode(set).count
         guard bytes <= CrewExperienceSheet.Limits.bytes else {
             throw refuse("the set is \(bytes) bytes; at most \(CrewExperienceSheet.Limits.bytes)")
+        }
+    }
+
+    /// The origins a set may carry: a sheet row's `recollection` and (Plan NG P0b) a learning approved
+    /// in the portal, `spoken`. Builds 775–778 refuse a whole set holding a `spoken` entry, so the
+    /// service publishes one only through `mayPublishSpokenEntries(seatBuilds:)`.
+    public static let origins = [CrewExperienceSheet.origin, CrewExperienceSheet.spokenOrigin]
+
+    /// Plan NG P0b: the first app build whose `check` admits a `spoken` entry. Builds 775–778 (NF P1
+    /// to NG P1) refuse the whole set and keep the last good one.
+    public static let spokenEntriesMinAppBuild = 779
+
+    /// Whether any entry is a learning approved in the portal.
+    public var containsSpokenEntries: Bool { entries.contains(where: \.isSpoken) }
+
+    /// Plan NG P0b, the older-phone gate: whether a set holding `spoken` entries may be published to
+    /// a company whose active seats last reported these app builds (`CFBundleVersion`, as a seat
+    /// claim or renewal carries it). Every one must be a whole number at or above
+    /// `spokenEntriesMinAppBuild`; a seat with no build, or one that does not read as a number,
+    /// counts as old. No active seat holds nothing back. A set without `spoken` entries needs no
+    /// gate: `mayPublish(_:seatBuilds:)` says so.
+    public static func mayPublishSpokenEntries(seatBuilds: [String?]) -> Bool {
+        seatBuilds.allSatisfy { build in
+            guard let build = build?.trimmingCharacters(in: .whitespaces), !build.isEmpty,
+                  build.unicodeScalars.allSatisfy({ (48...57).contains($0.value) }), let number = Int(build) else { return false }
+            return number >= spokenEntriesMinAppBuild
+        }
+    }
+
+    /// The gate for a whole set: always for one without `spoken` entries, else as
+    /// `mayPublishSpokenEntries(seatBuilds:)`.
+    public static func mayPublish(_ set: CrewExperienceSet, seatBuilds: [String?]) -> Bool {
+        !set.containsSpokenEntries || mayPublishSpokenEntries(seatBuilds: seatBuilds)
+    }
+
+    /// Plan NG P0b: where an entry came from, and the jobs it was filed on.
+    /// - a `spoken` entry carries its `candidateID` and the jobs; a `recollection` carries no
+    ///   candidate (a sheet row came from none), and its jobs only once a job confirmed it;
+    /// - `sourceJobIDs` and `confirmedJobCount` come together or not at all; the ids are distinct
+    ///   32-lowercase-hex job hashes, at least one, and the count is at least how many there are.
+    static func provenanceProblem(_ entry: Entry) -> String? {
+        switch (entry.isSpoken, entry.candidateID) {
+        case (true, nil): return "a spoken entry carries the candidateID it was approved from"
+        case (true, let id?) where !CrewExperienceSheet.isEntryID(id): return "candidateID \(id) is not 32 lowercase hex"
+        case (false, _?): return "a recollection came from no candidate, so it carries no candidateID"
+        default: break
+        }
+        switch (entry.sourceJobIDs, entry.confirmedJobCount) {
+        case (nil, nil):
+            return entry.isSpoken ? "a spoken entry carries sourceJobIDs and confirmedJobCount" : nil
+        case (let jobs?, let count?):
+            guard !jobs.isEmpty else { return "sourceJobIDs is empty" }
+            guard jobs.allSatisfy(CrewExperienceSheet.isEntryID) else { return "a source job id is not 32 lowercase hex" }
+            guard Set(jobs).count == jobs.count else { return "sourceJobIDs names a job twice" }
+            guard count >= jobs.count else { return "confirmedJobCount \(count) is fewer than its \(jobs.count) source jobs" }
+            return nil
+        default:
+            return "sourceJobIDs and confirmedJobCount come together or not at all"
         }
     }
 
@@ -953,6 +1059,61 @@ extension CrewExperienceSet.Subject: Codable {
             try c.encode(type, forKey: .equipmentType)
             try c.encode(phrase, forKey: .phrase)
         }
+    }
+}
+
+// MARK: - Merge (Plan FP decision 3 of 2026-10-09; Plan NG P0b)
+
+/// FP's merge rule, held here so the phone's `LearningReview.merge` and the portal's "same as" compute
+/// it the same way: a candidate that says what an approved entry already says folds into it — its job
+/// joins `sourceJobIDs` and `confirmedJobCount` rises, no second entry, the citation unchanged. Who may
+/// merge (licence, HIPAA, author is approver, the entry still live) is each side's own gate, not this.
+/// Golden cases: `Contracts/fixtures/crew-experience-v1/learnings/merge-cases.json`.
+public enum CrewExperienceMerge {
+
+    /// What a merge reads and writes: the entry's origin and its jobs.
+    public struct Jobs: Codable, Equatable, Sendable {
+        public var origin: String
+        public var sourceJobIDs: [String]?
+        public var confirmedJobCount: Int?
+
+        public init(origin: String, sourceJobIDs: [String]? = nil, confirmedJobCount: Int? = nil) {
+            self.origin = origin; self.sourceJobIDs = sourceJobIDs; self.confirmedJobCount = confirmedJobCount
+        }
+    }
+
+    /// The count before the merge: the entry's own when it has one; else, for a filed learning,
+    /// at least the one job it was filed on (`max(1, jobs)`); for a recollection, the jobs that
+    /// confirmed it, which is 0 for a sheet row (team-learning §11: absent reads as 0).
+    public static func count(of jobs: Jobs) -> Int {
+        let ids = jobs.sourceJobIDs ?? []
+        if let count = jobs.confirmedJobCount { return count }
+        return jobs.origin == CrewExperienceSheet.origin ? ids.count : max(1, ids.count)
+    }
+
+    /// Fold the job `jobSessionID` into `jobs`. A job already counted adds nothing; a new one is
+    /// appended and the count rises by one. A recollection merged with a job becomes job-confirmed:
+    /// its first job gives it `sourceJobIDs [job]` and a count of 1. The origin never changes.
+    public static func merge(jobSessionID: String, into jobs: Jobs) -> Jobs {
+        var ids = jobs.sourceJobIDs ?? []
+        var count = count(of: jobs)
+        if !ids.contains(jobSessionID) {
+            ids.append(jobSessionID)
+            count += 1
+        }
+        return Jobs(origin: jobs.origin, sourceJobIDs: ids, confirmedJobCount: count)
+    }
+
+    /// The same, on a set entry: everything but the jobs is kept.
+    public static func merge(jobSessionID: String, into entry: CrewExperienceSet.Entry) -> CrewExperienceSet.Entry {
+        let merged = merge(jobSessionID: jobSessionID, into: Jobs(origin: entry.origin, sourceJobIDs: entry.sourceJobIDs,
+                                                                   confirmedJobCount: entry.confirmedJobCount))
+        return CrewExperienceSet.Entry(
+            entryID: entry.entryID, subject: entry.subject, vaultIDs: entry.vaultIDs, finding: entry.finding,
+            symptom: entry.symptom, fix: entry.fix, faultCode: entry.faultCode, tried: entry.tried, outcome: entry.outcome,
+            approvedAt: entry.approvedAt, approvedByRole: entry.approvedByRole, authorIsApprover: entry.authorIsApprover,
+            contradictsSafetyNote: entry.contradictsSafetyNote, origin: entry.origin, candidateID: entry.candidateID,
+            sourceJobIDs: merged.sourceJobIDs, confirmedJobCount: merged.confirmedJobCount)
     }
 }
 

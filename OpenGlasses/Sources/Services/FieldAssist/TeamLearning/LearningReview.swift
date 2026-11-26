@@ -253,7 +253,9 @@ enum LearningReview {
 
     /// Fold a candidate that says what an approved entry already says into that entry: its job
     /// joins `sourceJobIDs` and `confirmedJobCount` rises — no second entry, and the citation does
-    /// not change. A candidate from a job the entry already counts adds nothing to the count.
+    /// not change. A candidate from a job the entry already counts adds nothing to the count. The
+    /// rule itself is the shared core's `CrewExperienceMerge` (Plan NG P0b), so the portal's "same as"
+    /// counts the same way; the gates and the approver checks stay here.
     static func merge(_ candidate: LearningCandidate, into entry: LearningEntry, approver: Approver,
                       context: Context) -> Result<(entry: LearningEntry, state: State), Refusal> {
         if let refusal = gate(context) { return .failure(refusal) }
@@ -272,16 +274,13 @@ enum LearningReview {
         case .failure(let refusal): return .failure(refusal)
         case .success(let value): state = value
         }
+        let jobs = CrewExperienceMerge.merge(
+            jobSessionID: candidate.sessionId,
+            into: CrewExperienceMerge.Jobs(origin: entry.origin.rawValue, sourceJobIDs: entry.sourceJobIDs,
+                                           confirmedJobCount: entry.confirmedJobCount))
         var merged = entry
-        var jobs = entry.sourceJobIDs ?? []
-        let count = entry.confirmedJobCount ?? max(1, jobs.count)
-        if !jobs.contains(candidate.sessionId) {
-            jobs.append(candidate.sessionId)
-            merged.confirmedJobCount = count + 1
-        } else {
-            merged.confirmedJobCount = count
-        }
-        merged.sourceJobIDs = jobs
+        merged.sourceJobIDs = jobs.sourceJobIDs
+        merged.confirmedJobCount = jobs.confirmedJobCount
         return .success((merged, state))
     }
 

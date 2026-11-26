@@ -116877,6 +116877,88 @@
         }
       }
     },
+    "Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI (under Everyday) is off by default: Apple Health numbers are sent to your AI provider only when you turn it on. Cloud dictation is off by default: only when you choose Deepgram or OpenAI as the recognizer does the audio of each question go to that vendor. A seat-checked organisation licence checks this phone's seat with Avenkin's licence service about once a day, sending only the enrolment id, a key made for this phone, the app build, the profile id, the versions of your organisation's vaults on this phone and the version of your organisation's settings it has applied; never a name, device model or location. A phone your organisation manages through device management (MDM) tells that MDM which version of your organisation's settings it has, whether it is enrolled, and the app build; this goes only to your organisation's own MDM, never to Avenkin. Learnings you file are sent to your company's administrator for review when your company's vaults come from Avenkin's portal: Avenkin's licence service carries them with this phone's seat, with the job number, the machine and your name as your team sees it; never a photo, a reading, a customer or a site. Sending a job to an expert sends its details, and the photos you pick with faces blurred, only to the expert you choose, by your own Messages, Mail or share sheet. An invitation asking an expert for their card carries only your organisation's name, yours and where to reply. A job sent to you as an expert stays on this phone only, for the days its organisation set, and never reaches the assistant or its memory; your time reply goes only when you share it. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS), and the glasses SDK's own analytics are opted out and blocked on this phone." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يعمل «تمويه وجوه المارة» بالكامل على الجهاز: يتم اكتشاف الوجوه وتمويهها على هاتفك، والإطار المموَّه هو ما يتلقاه مزوّد الذكاء الاصطناعي أو التسجيل أو البث أو مكالمة الخبير. خيار «مشاركة بيانات الصحة مع الذكاء الاصطناعي» (ضمن «الحياة اليومية») متوقف افتراضيًا: لا تُرسل أرقام Apple Health إلى مزوّد الذكاء الاصطناعي إلا عند تشغيله. الإملاء السحابي متوقف افتراضيًا: لا يصل صوت كل سؤال إلى ذلك المزوّد إلا عند اختيارك Deepgram أو OpenAI كأداة للتعرف على الكلام. يتحقق ترخيص المنظمة المرتبط بالمقاعد من مقعد هذا الهاتف لدى خدمة تراخيص Avenkin مرة واحدة يوميًا تقريبًا، ولا يرسل سوى معرّف التسجيل ومفتاح أُنشئ لهذا الهاتف وإصدار التطبيق ومعرّف الملف الشخصي وإصدارات خزنات مؤسستك الموجودة على هذا الهاتف وإصدار إعدادات مؤسستك الذي طبّقه؛ ولا يرسل أبدًا اسمًا أو طراز جهاز أو موقعًا. ويُبلغ الهاتف الذي تديره مؤسستك عبر إدارة الأجهزة (MDM) نظامَ MDM ذاك بإصدار إعدادات مؤسستك الموجود لديه، وما إذا كان مسجَّلًا، وإصدار التطبيق؛ ولا يذهب ذلك إلا إلى نظام MDM الخاص بمؤسستك، ولا يصل أبدًا إلى Avenkin. يُرسل ما تسجّله من دروس إلى مسؤول شركتك لمراجعته عندما تأتي خزنات شركتك من بوابة Avenkin: تنقله خدمة تراخيص Avenkin مع مقعد هذا الهاتف، مع رقم المهمة والجهاز واسمك كما يعرفه فريقك؛ ولا تنقل أبدًا صورة أو قراءة أو عميلًا أو موقعًا. يؤدي إرسال مهمة إلى خبير إلى إرسال تفاصيلها، والصور التي تختارها بعد تمويه الوجوه، إلى الخبير الذي تختاره فقط، عبر الرسائل أو البريد أو ورقة المشاركة الخاصة بك. ولا تحمل الدعوة التي تطلب من خبير بطاقته سوى اسم منظمتك واسمك ومكان الرد. أما المهمة المرسلة إليك كخبير فتبقى على هذا الهاتف فقط، للأيام التي حددتها منظمتها، ولا تصل أبدًا إلى المساعد أو ذاكرته؛ ولا يُرسل رد وقتك إلا عندما تشاركه. لا يتضمن Avenkin أي تحليلات أو تقارير أعطال خاصة به (قد تشاركها Apple معنا من TestFlight، أو إذا سمحت بذلك في iOS)، كما أن تحليلات حزمة SDK الخاصة بالنظارات معطّلة ومحظورة على هذا الهاتف."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El difuminado de rostros de transeúntes se ejecuta por completo en el dispositivo: los rostros se detectan y se difuminan en tu celular, y el cuadro difuminado es lo que recibe un proveedor de IA, una grabación, una transmisión o una llamada con un experto. Compartir datos de salud con la IA (en Día a día) está desactivado de forma predeterminada: las cifras de Apple Health se envían a tu proveedor de IA solo cuando lo activas. El dictado en la nube está desactivado de forma predeterminada: solo cuando eliges Deepgram u OpenAI como reconocedor, el audio de cada pregunta va a ese proveedor. Una licencia de organización con verificación de puestos verifica el puesto de este celular con el servicio de licencias de Avenkin aproximadamente una vez al día, y solo envía el ID de inscripción, una clave creada para este celular, la compilación de la app, el ID del perfil, las versiones de las bóvedas de tu organización en este celular y la versión de la configuración de tu organización que aplicó; nunca un nombre, el modelo del dispositivo ni la ubicación. Un celular que tu organización administra mediante la administración de dispositivos (MDM) le informa a ese MDM qué versión de la configuración de tu organización tiene, si está inscrito y la compilación de la app; esto solo va al MDM de tu organización, nunca a Avenkin. Los aprendizajes que registras se envían al administrador de tu empresa para que los revise cuando las bóvedas de tu empresa vienen del portal de Avenkin: el servicio de licencias de Avenkin los lleva con el puesto de este celular, junto con el número de trabajo, la máquina y tu nombre como lo ve tu equipo; nunca una foto, una lectura, un cliente ni un sitio. Enviar un trabajo a un experto envía sus detalles, y las fotos que elijas con los rostros difuminados, solo al experto que elijas, por tus propios Mensajes, Mail u hoja para compartir. Una invitación que le pide a un experto su tarjeta solo lleva el nombre de tu organización, el tuyo y a dónde responder. Un trabajo que te envían como experto se queda solo en este celular, durante los días que fijó su organización, y nunca llega al asistente ni a su memoria; tu respuesta de tiempo solo se envía cuando la compartes. Avenkin no tiene analíticas ni reportes de fallos propios (Apple puede compartirnos reportes de fallos desde TestFlight, o si lo permites en iOS), y las analíticas propias del SDK de los lentes están excluidas y bloqueadas en este celular."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le floutage des passants s’exécute entièrement sur l’appareil : les visages sont détectés et floutés sur votre téléphone, et c’est l’image floutée que reçoivent un fournisseur d’IA, un enregistrement, une diffusion ou un appel d’expert. Partager les données de santé avec l’IA (sous Au quotidien) est désactivé par défaut : les données d’Apple Health ne sont envoyées à votre fournisseur d’IA que si vous l’activez. La dictée cloud est désactivée par défaut : l’audio de chaque question n’est transmis à un fournisseur que si vous choisissez Deepgram ou OpenAI comme moteur de reconnaissance. Une licence d’organisation avec vérification des places vérifie la place de ce téléphone auprès du service de licences d’Avenkin environ une fois par jour, en n’envoyant que l’ID d’inscription, une clé créée pour ce téléphone, la version de compilation de l’application, l’ID du profil, les versions des coffres de votre organisation sur ce téléphone et la version des réglages de votre organisation qu’il a appliquée; jamais de nom, de modèle d’appareil ni de position. Un téléphone que votre organisation gère au moyen de la gestion des appareils (MDM) indique à ce MDM quelle version des réglages de votre organisation il a, s’il est inscrit et la version de compilation de l’application; ces données ne vont qu’au MDM de votre organisation, jamais à Avenkin. Les apprentissages que vous consignez sont envoyés à l’administrateur de votre entreprise pour révision lorsque les coffres de votre entreprise proviennent du portail d’Avenkin : le service de licences d’Avenkin les transmet avec la place de ce téléphone, avec le numéro du travail, l’appareil et votre nom tel que votre équipe le voit; jamais de photo, de relevé, de client ni de site. Envoyer un travail à un expert transmet ses détails, et les photos que vous choisissez avec les visages floutés, uniquement à l’expert que vous choisissez, par vos propres Messages, Mail ou feuille de partage. Une invitation demandant sa carte à un expert ne contient que le nom de votre organisation, le vôtre et l’endroit où répondre. Un travail qui vous est envoyé en tant qu’expert reste sur ce téléphone seulement, pendant le nombre de jours fixé par son organisation, et n’atteint jamais l’assistant ni sa mémoire; votre réponse de temps n’est envoyée que lorsque vous la partagez. Avenkin n’a ni outil d’analyse ni rapport de plantage qui lui soit propre (Apple peut nous transmettre des rapports de plantage depuis TestFlight, ou si vous l’autorisez dans iOS), et les outils d’analyse propres au SDK des lunettes sont désactivés et bloqués sur ce téléphone."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A szemlélődők arcának elmosása teljes egészében az eszközön fut: az arcokat a telefonja keresi meg és mossa el, és az elmosott képkockát kapja meg az AI-szolgáltató, a felvétel, a közvetítés vagy a szakértői hívás. Az „Ossza meg az egészségügyi adatokat az AI-val” (a Mindennapok alatt) alapértelmezés szerint ki van kapcsolva: az Apple Health számait csak akkor küldi el az AI-szolgáltatónak, ha bekapcsolja. A felhőalapú diktálás alapértelmezés szerint ki van kapcsolva: csak ha a Deepgramot vagy az OpenAI-t választja felismerőként, akkor kerül az egyes kérdések hangja az adott szolgáltatóhoz. A felhasználói helyeket ellenőrző szervezeti licenc naponta nagyjából egyszer egyezteti ennek a telefonnak a felhasználói helyét az Avenkin licencszolgáltatásával, és csak a beiratkozási azonosítót, egy ehhez a telefonhoz készített kulcsot, az alkalmazás buildszámát, a profilazonosítót, a szervezete ezen a telefonon lévő tárolóinak verzióit és a szervezete általa alkalmazott beállításainak verzióját küldi el; nevet, eszközmodellt vagy tartózkodási helyet soha. Az a telefon, amelyet a szervezete eszközkezeléssel (MDM) kezel, közli ezzel az MDM-mel, hogy a szervezete beállításainak melyik verziója van rajta, be van-e iratkozva, valamint az alkalmazás buildszámát; ez csak a szervezete saját MDM-jéhez jut el, az Avenkinhez soha. Ha a cége tárolói az Avenkin portáljáról érkeznek, a rögzített tanulságai átnézésre a cége adminisztrátorához kerülnek: az Avenkin licencszolgáltatása ennek a telefonnak a felhasználói helyével viszi őket, a munkaszámmal, a géppel és az Ön nevével, ahogy a csapata ismeri; fényképet, mért értéket, ügyfelet vagy helyszínt soha. Ha egy munkát elküld egy szakértőnek, annak részletei és az Ön által kiválasztott, elmosott arcú fotók csak a választott szakértőhöz jutnak el, a saját Üzenetek, Mail vagy megosztási lap útján. Az a meghívó, amely egy szakértőtől a kártyáját kéri, csak a szervezete nevét, az Ön nevét és a válaszcímet tartalmazza. Az Önnek szakértőként küldött munka csak ezen a telefonon marad, a szervezete által megadott napokig, és soha nem jut el az asszisztenshez vagy annak memóriájához; az időelszámolása csak akkor megy el, ha megosztja. Az Avenkinnek nincs saját analitikája vagy hibajelentése (az Apple megoszthat velünk hibajelentéseket a TestFlightból, vagy ha engedélyezi az iOS-ben), a szemüveg SDK-jának saját analitikája pedig ki van kapcsolva és le van tiltva ezen a telefonon."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo sfocamento dei passanti avviene interamente sul dispositivo: i volti vengono rilevati e sfocati sul tuo telefono, e a ricevere il fotogramma sfocato sono un fornitore di IA, una registrazione, una trasmissione o una chiamata con un esperto. Condividi i dati sanitari con l'intelligenza artificiale (in Vita quotidiana) è disattivato per impostazione predefinita: i dati di Apple Health vengono inviati al tuo fornitore di IA solo se lo attivi. La dettatura cloud è disattivata per impostazione predefinita: l'audio di ogni domanda va a quel fornitore solo se scegli Deepgram o OpenAI come riconoscitore. Una licenza dell'organizzazione con controllo delle postazioni verifica la postazione di questo telefono con il servizio licenze di Avenkin circa una volta al giorno, inviando solo l'ID di iscrizione, una chiave creata per questo telefono, la build dell'app, l'ID del profilo, le versioni dei depositi della tua organizzazione su questo telefono e la versione delle impostazioni della tua organizzazione che ha applicato; mai un nome, il modello del dispositivo o la posizione. Un telefono che la tua organizzazione gestisce tramite la gestione dei dispositivi (MDM) comunica a tale MDM quale versione delle impostazioni della tua organizzazione ha, se è registrato e la build dell'app; queste informazioni vanno solo all'MDM della tua organizzazione, mai ad Avenkin. Gli apprendimenti che registri vengono inviati all'amministratore della tua azienda per la revisione quando i depositi della tua azienda arrivano dal portale di Avenkin: il servizio licenze di Avenkin li trasmette con la postazione di questo telefono, insieme al numero del lavoro, alla macchina e al tuo nome come lo vede il tuo team; mai una foto, una lettura, un cliente o un sito. Inviare un lavoro a un esperto invia i suoi dettagli, e le foto che scegli con i volti sfocati, solo all'esperto che scegli, tramite i tuoi Messaggi, Mail o foglio di condivisione. Un invito che chiede a un esperto la sua scheda contiene solo il nome della tua organizzazione, il tuo e dove rispondere. Un lavoro inviato a te come esperto resta solo su questo telefono, per i giorni stabiliti dalla sua organizzazione, e non raggiunge mai l'assistente né la sua memoria; la tua risposta con il tempo parte solo quando la condividi. Avenkin non ha propri strumenti di analisi o di segnalazione degli arresti anomali (Apple può condividere con noi i rapporti sugli arresti anomali da TestFlight, o se lo consenti in iOS), e gli strumenti di analisi propri dell'SDK degli occhiali sono disattivati e bloccati su questo telefono."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傍観者の顔のぼかしは完全にデバイス上で動作します。顔の検出とぼかしはお使いのiPhone上で行われ、AIプロバイダ、録画、配信、専門家との通話に届くのはぼかし済みのフレームです。「健康データをAIと共有」（日常内）は初期設定でオフです。Apple Healthの数値は、オンにしたときだけAIプロバイダに送信されます。クラウド音声入力も初期設定でオフです。認識エンジンとしてDeepgramまたはOpenAIを選んだときだけ、各質問の音声がその事業者に送信されます。座席確認型の組織ライセンスは、1日に1回程度、このiPhoneの座席をAvenkinのライセンスサービスで確認します。送信されるのは登録ID、このiPhone用に作成されたキー、アプリのビルド、プロファイルID、このiPhone上にある組織のボールトのバージョン、このiPhoneに適用済みの組織の設定のバージョンのみで、名前、デバイスのモデル、位置情報は一切送信されません。組織がデバイス管理（MDM）で管理しているiPhoneは、保持している組織の設定のバージョン、登録されているかどうか、アプリのビルドをそのMDMに伝えます。この情報は組織自身のMDMにだけ送られ、Avenkinに送られることはありません。会社のボールトがAvenkinのポータルから提供されている場合、あなたが登録した学習内容は、確認のために会社の管理者に送信されます。Avenkinのライセンスサービスが、このiPhoneの座席とともに、ジョブ番号、機器、チームに表示されるあなたの名前を添えて届けます。写真、測定値、顧客、現場が送られることは一切ありません。ジョブを専門家に送信すると、その詳細と、選んだ写真（顔はぼかし済み）が、あなた自身のメッセージ、メール、または共有シートを通じて、選んだ専門家にだけ送られます。専門家にカードを依頼する招待に含まれるのは、あなたの組織名、あなたの名前、返信先のみです。専門家としてあなたに送られたジョブは、その組織が設定した日数だけこのiPhoneにのみ保存され、アシスタントやそのメモリに渡ることはありません。作業時間の返信は、あなたが共有したときにだけ送られます。Avenkin自体には解析機能やクラッシュレポート機能はありません（TestFlightから、またはiOSで許可した場合は、Appleからクラッシュレポートが共有されることがあります）。また、メガネSDK自身の解析機能はオプトアウトされ、このiPhoneではブロックされています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "방관자 얼굴 흐림 처리는 전적으로 기기 안에서 실행됩니다. 얼굴을 찾아 흐리게 만드는 작업은 휴대폰에서 이루어지며, AI 제공업체, 녹화, 방송, 전문가 통화에는 흐림 처리된 프레임만 전달됩니다. 'AI와 건강 데이터 공유'(일상 항목)는 기본적으로 꺼져 있습니다. Apple Health 수치는 켠 경우에만 AI 제공업체로 전송됩니다. 클라우드 받아쓰기도 기본적으로 꺼져 있습니다. 인식기로 Deepgram 또는 OpenAI를 선택한 경우에만 각 질문의 오디오가 해당 업체로 전송됩니다. 좌석 확인 방식의 조직 라이센스는 하루에 한 번 정도 Avenkin 라이센스 서비스로 이 휴대폰의 좌석을 확인하며, 등록 ID, 이 휴대폰용으로 만든 키, 앱 빌드, 프로필 ID, 이 휴대폰에 있는 조직 볼트의 버전, 이 휴대폰에 적용된 조직 설정의 버전만 전송합니다. 이름, 기기 모델, 위치는 절대 전송하지 않습니다. 조직에서 기기 관리(MDM)로 관리하는 휴대폰은 보유한 조직 설정의 버전, 등록 여부, 앱 빌드를 해당 MDM에 알립니다. 이 정보는 조직 자체의 MDM으로만 전송되며 Avenkin으로는 절대 전송되지 않습니다. 회사의 볼트가 Avenkin 포털에서 제공되는 경우, 내가 등록한 학습 내용은 검토를 위해 회사 관리자에게 전송됩니다. Avenkin 라이센스 서비스가 이 휴대폰의 좌석과 함께 작업 번호, 기기, 팀에 표시되는 내 이름을 전달하며, 사진, 측정값, 고객 또는 현장은 절대 전달하지 않습니다. 작업을 전문가에게 보내면 작업 세부 정보와 직접 고른 사진(얼굴은 흐림 처리됨)이 내 메시지, 메일 또는 공유 시트를 통해 내가 선택한 전문가에게만 전송됩니다. 전문가에게 카드를 요청하는 초대에는 조직 이름, 내 이름, 회신할 곳만 포함됩니다. 전문가로서 받은 작업은 해당 조직이 정한 일수 동안 이 휴대폰에만 보관되며 어시스턴트나 그 메모리에 전달되지 않습니다. 작업 시간 답장은 내가 공유할 때만 전송됩니다. Avenkin에는 자체 분석 기능이나 충돌 보고 기능이 없습니다(TestFlight에서 또는 iOS에서 허용한 경우 Apple이 충돌 보고서를 공유할 수 있습니다). 또한 안경 SDK 자체의 분석 기능은 수신 거부되어 있으며 이 휴대폰에서 차단됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vervagen van gezichten van omstanders werkt volledig op het apparaat: gezichten worden op uw telefoon gevonden en vervaagd, en het vervaagde beeld is wat een AI-provider, opname, uitzending of expertgesprek ontvangt. Gezondheidsgegevens delen met AI (onder Dagelijks) staat standaard uit: Apple Health-cijfers worden alleen naar uw AI-provider gestuurd als u het inschakelt. Clouddictatie staat standaard uit: alleen als u Deepgram of OpenAI als herkenner kiest, gaat de audio van elke vraag naar die leverancier. Een organisatielicentie met plaatscontrole controleert ongeveer eenmaal per dag de plaats van deze telefoon bij de licentieservice van Avenkin en stuurt daarbij alleen de inschrijvings-ID, een sleutel die voor deze telefoon is gemaakt, de app-build, de profiel-ID, de versies van de kluizen van uw organisatie op deze telefoon en de versie van de instellingen van uw organisatie die erop is toegepast; nooit een naam, apparaatmodel of locatie. Een telefoon die uw organisatie via apparaatbeheer (MDM) beheert, laat die MDM weten welke versie van de instellingen van uw organisatie hij heeft, of hij is ingeschreven en wat de app-build is; dit gaat alleen naar de eigen MDM van uw organisatie, nooit naar Avenkin. Lessen die u vastlegt, gaan ter beoordeling naar de beheerder van uw bedrijf wanneer de kluizen van uw bedrijf uit het portaal van Avenkin komen: de licentieservice van Avenkin brengt ze over met de plaats van deze telefoon, met het taaknummer, de machine en uw naam zoals uw team die ziet; nooit een foto, een meetwaarde, een klant of een locatie. Als u een taak naar een expert stuurt, gaan de details ervan, en de foto's die u kiest met vervaagde gezichten, alleen naar de expert die u kiest, via uw eigen Berichten, Mail of deelvenster. Een uitnodiging die een expert om zijn kaart vraagt, bevat alleen de naam van uw organisatie, uw naam en waar naartoe moet worden geantwoord. Een taak die naar u als expert is gestuurd, blijft alleen op deze telefoon, voor het aantal dagen dat de organisatie heeft ingesteld, en bereikt nooit de assistent of zijn geheugen; uw tijdverantwoording gaat alleen als u die deelt. Avenkin heeft geen eigen analyses of crashrapportage (Apple kan crashrapporten met ons delen vanuit TestFlight, of als u dat toestaat in iOS), en de eigen analyses van de SDK van de bril zijn afgemeld en geblokkeerd op deze telefoon."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O desfoque de rostos de transeuntes é executado inteiramente no dispositivo: os rostos são encontrados e desfocados no seu telefone, e o quadro desfocado é o que um provedor de IA, uma gravação, uma transmissão ou uma chamada com especialista recebe. Compartilhe dados de saúde com IA (em Dia a dia) está desativado por padrão: os números do Apple Health são enviados ao seu provedor de IA somente quando você o ativa. O ditado na nuvem está desativado por padrão: somente quando você escolhe Deepgram ou OpenAI como reconhecedor o áudio de cada pergunta vai para esse fornecedor. Uma licença de organização com verificação de assentos verifica o assento deste telefone com o serviço de licenças do Avenkin cerca de uma vez por dia, enviando apenas o ID de inscrição, uma chave criada para este telefone, a compilação do aplicativo, o ID do perfil, as versões dos cofres da sua organização neste telefone e a versão das configurações da sua organização que ele aplicou; nunca um nome, o modelo do dispositivo ou a localização. Um telefone que a sua organização gerencia pelo gerenciamento de dispositivos (MDM) informa a esse MDM qual versão das configurações da sua organização ele tem, se está inscrito e a compilação do aplicativo; isso vai apenas para o MDM da própria organização, nunca para o Avenkin. Os aprendizados que você registra são enviados ao administrador da sua empresa para revisão quando os cofres da sua empresa vêm do portal do Avenkin: o serviço de licenças do Avenkin os leva com o assento deste telefone, com o número do trabalho, a máquina e o seu nome como sua equipe o vê; nunca uma foto, uma leitura, um cliente ou um local. Enviar um trabalho a um especialista envia os detalhes dele, e as fotos que você escolher com os rostos desfocados, apenas para o especialista que você escolher, pelo seu próprio Mensagens, Mail ou menu de compartilhamento. Um convite que pede o cartão de um especialista leva apenas o nome da sua organização, o seu e para onde responder. Um trabalho enviado a você como especialista fica apenas neste telefone, pelos dias que a organização dele definiu, e nunca chega ao assistente nem à memória dele; sua resposta de tempo só é enviada quando você a compartilha. O Avenkin não tem análises nem relatórios de falhas próprios (a Apple pode compartilhar relatórios de falhas conosco pelo TestFlight, ou se você permitir no iOS), e as análises do próprio SDK dos óculos estão desativadas e bloqueadas neste telefone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Размытие лиц посторонних работает полностью на устройстве: лица находятся и размываются на вашем телефоне, а ИИ-провайдер, запись, трансляция или звонок эксперту получают уже размытый кадр. Функция «Делиться данными о здоровье с ИИ» (в разделе «Повседневное») по умолчанию выключена: показатели Apple Health отправляются вашему ИИ-провайдеру, только если вы её включите. Облачная диктовка по умолчанию выключена: аудио каждого вопроса уходит к поставщику, только если вы выбрали Deepgram или OpenAI в качестве распознавателя. Организационная лицензия с проверкой мест примерно раз в день сверяет место этого телефона со службой лицензий Avenkin, передавая только ID регистрации, ключ, созданный для этого телефона, номер сборки приложения, ID профиля, версии хранилищ вашей организации на этом телефоне и версию применённых им настроек вашей организации — и никогда имя, модель устройства или местоположение. Телефон, которым ваша организация управляет через систему управления устройствами (MDM), сообщает этой MDM, какая версия настроек вашей организации на нём действует, зарегистрирован ли он, а также номер сборки приложения; эти сведения получает только MDM вашей организации и никогда — Avenkin. Если хранилища вашей компании поступают с портала Avenkin, записанный вами опыт отправляется на проверку администратору вашей компании: служба лицензий Avenkin передаёт его вместе с местом этого телефона, с номером задания, оборудованием и вашим именем в том виде, в каком его видит ваша команда, — и никогда фото, показание, клиента или объект. При отправке задания эксперту его сведения и выбранные вами фото с размытыми лицами уходят только выбранному эксперту — через ваши «Сообщения», «Почту» или меню «Поделиться». Приглашение, в котором эксперта просят прислать карточку, содержит только название вашей организации, ваше имя и адрес для ответа. Задание, отправленное вам как эксперту, хранится только на этом телефоне столько дней, сколько задала его организация, и никогда не попадает к ассистенту или в его память; ваш ответ о времени уходит, только когда вы им поделитесь. У Avenkin нет собственной аналитики и отчётов о сбоях (Apple может передавать нам отчёты о сбоях из TestFlight или если вы разрешите это в iOS), а собственная аналитика SDK очков отключена и заблокирована на этом телефоне."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“راہگیروں کے چہرے دھندلے کریں” مکمل طور پر آن ڈیوائس چلتا ہے: چہرے آپ کے فون پر ہی تلاش اور دھندلے کیے جاتے ہیں، اور AI فراہم کنندہ، ریکارڈنگ، براڈکاسٹ یا ماہر کال کو دھندلا فریم ہی ملتا ہے۔ “صحت کا ڈیٹا AI کے ساتھ شیئر کریں” (روزمرہ کے تحت) بطورِ ڈیفالٹ بند ہے: Apple Health کے اعداد آپ کے AI فراہم کنندہ کو صرف تب بھیجے جاتے ہیں جب آپ اسے آن کریں۔ کلاؤڈ ڈکٹیشن بطورِ ڈیفالٹ بند ہے: ہر سوال کی آڈیو اس وینڈر کو صرف تب جاتی ہے جب آپ Deepgram یا OpenAI کو ریکگنائزر کے طور پر منتخب کریں۔ نشستوں کی جانچ والا تنظیمی لائسنس دن میں تقریباً ایک بار Avenkin کی لائسنس سروس سے اس فون کی نشست کی جانچ کرتا ہے، اور صرف اندراج ID، اس فون کے لیے بنائی گئی کلید، ایپ بلڈ، پروفائل ID، اس فون پر آپ کی تنظیم کے والٹس کے ورژن اور آپ کی تنظیم کی ان ترتیبات کا ورژن بھیجتا ہے جو اس نے لاگو کی ہیں؛ کبھی کوئی نام، ڈیوائس ماڈل یا مقام نہیں۔ جس فون کا انتظام آپ کی تنظیم ڈیوائس مینجمنٹ (MDM) کے ذریعے کرتی ہے، وہ اس MDM کو بتاتا ہے کہ اس پر آپ کی تنظیم کی ترتیبات کا کون سا ورژن ہے، آیا یہ اندراج شدہ ہے، اور ایپ بلڈ؛ یہ صرف آپ کی تنظیم کے اپنے MDM کو جاتا ہے، کبھی Avenkin کو نہیں۔جب آپ کی کمپنی کے والٹس Avenkin کے پورٹل سے آتے ہیں تو آپ کی درج کی ہوئی سیکھی ہوئی باتیں جائزے کے لیے آپ کی کمپنی کے ایڈمنسٹریٹر کو بھیجی جاتی ہیں: Avenkin کی لائسنس سروس انہیں اس فون کی نشست کے ساتھ، جاب نمبر، مشین اور آپ کے اس نام کے ساتھ لے جاتی ہے جو آپ کی ٹیم دیکھتی ہے؛ کبھی کوئی تصویر، ریڈنگ، کسٹمر یا سائٹ نہیں۔  کسی ماہر کو جاب بھیجنے سے اس کی تفصیلات، اور آپ کی منتخب کردہ تصاویر چہرے دھندلے کر کے، صرف آپ کے منتخب کردہ ماہر کو، آپ کے اپنے Messages، Mail یا شیئر شیٹ کے ذریعے جاتی ہیں۔ کسی ماہر سے اس کا کارڈ مانگنے والی دعوت میں صرف آپ کی تنظیم کا نام، آپ کا نام اور جواب دینے کی جگہ ہوتی ہے۔ بطور ماہر آپ کو بھیجی گئی جاب صرف اس فون پر، اس کی تنظیم کے مقرر کردہ دنوں تک رہتی ہے، اور کبھی اسسٹنٹ یا اس کی میموری تک نہیں پہنچتی؛ آپ کا وقت کا جواب صرف تب جاتا ہے جب آپ اسے شیئر کریں۔ Avenkin کی اپنی کوئی اینالیٹکس یا کریش رپورٹنگ نہیں ہے (Apple ہمارے ساتھ TestFlight سے، یا اگر آپ iOS میں اجازت دیں، کریش رپورٹس شیئر کر سکتا ہے)، اور عینک کے SDK کی اپنی اینالیٹکس سے آپٹ آؤٹ کیا گیا ہے اور اس فون پر مسدود ہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旁观者人脸模糊完全在设备上运行：人脸在你的手机上被识别并模糊，AI 提供商、录制内容、直播或专家通话收到的是模糊后的画面。“与 AI 共享健康数据”（在“日常”下）默认关闭：只有在你开启后，Apple Health 数据才会发送给你的 AI 提供商。云端听写默认关闭：只有当你选择 Deepgram 或 OpenAI 作为识别器时，每个问题的音频才会发送给该供应商。需要核验席位的组织许可大约每天一次向 Avenkin 的许可服务核验这部手机的席位，只发送注册 ID、为这部手机生成的密钥、应用的构建版本号、配置文件 ID、这部手机上你组织的保险库版本，以及它已应用的你组织的设置版本；绝不发送姓名、设备型号或位置。由你的组织通过设备管理（MDM）管理的手机会向该 MDM 报告它所使用的你组织的设置版本、是否已注册以及应用的构建版本号；这些信息只会发送给你组织自己的 MDM，绝不会发送给 Avenkin。当你公司的保险库来自 Avenkin 的门户时，你提交的经验会发送给你公司的管理员审核：Avenkin 的许可服务会随这部手机的席位一并传送，附带作业编号、设备以及你的团队看到的你的名字；绝不传送照片、读数、客户或现场。将作业发送给专家时，其详情以及你挑选的照片（面部已模糊）只会通过你自己的“信息”“邮件”或共享表发送给你选择的专家。向专家索取名片的邀请只包含你组织的名称、你的名字以及回复地址。作为专家收到的作业只保存在这部手机上，保留其组织设定的天数，绝不会进入助手或其记忆；你的时间回复只有在你共享时才会发出。Avenkin 自身没有分析或崩溃报告功能（Apple 可能会通过 TestFlight 向我们分享崩溃报告，或在你于 iOS 中允许时分享），眼镜 SDK 自带的分析功能已被关闭，并在这部手机上被拦截。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旁觀者臉部模糊完全在裝置上執行：臉部會在你的手機上被偵測並模糊，AI 供應商、錄影、直播或專家通話收到的是模糊後的畫面。「與 AI 共享健康資料」（位於「日常」下）預設為關閉：只有在你開啟後，Apple Health 資料才會傳送給你的 AI 供應商。雲端聽寫預設為關閉：只有當你選擇 Deepgram 或 OpenAI 作為辨識器時，每個問題的音訊才會傳送給該供應商。需要核驗席位的組織許可證大約每天一次向 Avenkin 的許可證服務核驗這支手機的席位，只傳送註冊 ID、為這支手機產生的金鑰、應用程式的建置版本號、設定檔 ID、這支手機上你組織的保險庫版本，以及它已套用的你組織的設定版本；絕不傳送姓名、裝置型號或位置。由你的組織透過裝置管理（MDM）管理的手機會向該 MDM 回報它所使用的你組織的設定版本、是否已註冊，以及應用程式的建置版本號；這些資訊只會傳送給你組織自己的 MDM，絕不會傳送給 Avenkin。當你公司的保險庫來自 Avenkin 的入口網站時，你提交的心得會傳送給你公司的管理員審核：Avenkin 的許可證服務會隨這支手機的席位一併傳送，附上工作編號、設備以及你的團隊看到的你的名字；絕不傳送照片、讀數、客戶或現場。將工作傳送給專家時，其詳細資料以及你挑選的照片（臉部已模糊）只會透過你自己的「訊息」、「郵件」或分享面板傳送給你選擇的專家。向專家索取名片的邀請只包含你組織的名稱、你的名字以及回覆地址。作為專家收到的工作只儲存在這支手機上，保留其組織設定的天數，絕不會進入助理或其記憶；你的時間回覆只有在你分享時才會送出。Avenkin 本身沒有分析或當機回報功能（Apple 可能會透過 TestFlight 與我們分享當機報告，或在你於 iOS 中允許時分享），眼鏡 SDK 自帶的分析功能已選擇退出，並在這支手機上被封鎖。"
+          }
+        }
+      }
+    },
     "Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI (under Everyday) is off by default: Apple Health numbers are sent to your AI provider only when you turn it on. Cloud dictation is off by default: only when you choose Deepgram or OpenAI as the recognizer does the audio of each question go to that vendor. A seat-checked organisation licence checks this phone's seat with Avenkin's licence service about once a day, sending only the enrolment id, a key made for this phone, the app build, the profile id, the versions of your organisation's vaults on this phone and the version of your organisation's settings it has applied; never a name, device model or location. A phone your organisation manages through device management (MDM) tells that MDM which version of your organisation's settings it has, whether it is enrolled, and the app build; this goes only to your organisation's own MDM, never to Avenkin. Sending a job to an expert sends its details, and the photos you pick with faces blurred, only to the expert you choose, by your own Messages, Mail or share sheet. An invitation asking an expert for their card carries only your organisation's name, yours and where to reply. A job sent to you as an expert stays on this phone only, for the days its organisation set, and never reaches the assistant or its memory; your time reply goes only when you share it. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS), and the glasses SDK's own analytics are opted out and blocked on this phone." : {
       "localizations" : {
         "ar" : {
@@ -117365,6 +117447,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "旁觀者臉部模糊完全在設備上運行：臉部會在您的手機上被識別並模糊，模糊後的畫面就是 AI 服務提供者、錄製、廣播或專家通話所接收到的內容。與 AI 分享健康資料預設為關閉：Apple 健康資料僅在您開啟時發送給您的 AI 服務提供者。Avenkin 本身沒有分析或崩潰報告（Apple 可能會從 TestFlight 與我們分享崩潰報告，或者如果您在 iOS 允許），眼鏡 SDK 自身的分析功能已在此手機上選擇退出並被阻止。"
+          }
+        }
+      }
+    },
+    "Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred picture is what an AI provider receives. Share Health Data with AI (under Everyday) is off by default: Apple Health numbers are sent to your AI provider only when you turn it on. Cloud dictation is off by default: only when you choose Deepgram or OpenAI as the recognizer does the audio of each question go to that vendor. A seat-checked organisation licence checks this phone's seat with Avenkin's licence service about once a day, sending only the enrolment id, a key made for this phone, the app build, the profile id, the versions of your organisation's vaults on this phone and the version of your organisation's settings it has applied; never a name, device model or location. A phone your organisation manages through device management (MDM) tells that MDM which version of your organisation's settings it has, whether it is enrolled, and the app build; this goes only to your organisation's own MDM, never to Avenkin. Learnings you file are sent to your company's administrator for review when your company's vaults come from Avenkin's portal: Avenkin's licence service carries them with this phone's seat, with the job number, the machine and your name as your team sees it; never a photo, a reading, a customer or a site. Sending a job to an expert sends its details, and the photos you pick with faces blurred, only to the expert you choose, by your own Messages, Mail or share sheet. An invitation asking an expert for their card carries only your organisation's name, yours and where to reply. A job sent to you as an expert stays on this phone only, for the days its organisation set, and never reaches the assistant or its memory; your time reply goes only when you share it. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS)." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يعمل «تمويه وجوه المارة» بالكامل على الجهاز: يتم اكتشاف الوجوه وتمويهها على هاتفك، والصورة المموَّهة هي ما يتلقاه مزوّد الذكاء الاصطناعي. خيار «مشاركة بيانات الصحة مع الذكاء الاصطناعي» (ضمن «الحياة اليومية») متوقف افتراضيًا: لا تُرسل أرقام Apple Health إلى مزوّد الذكاء الاصطناعي إلا عند تشغيله. الإملاء السحابي متوقف افتراضيًا: لا يصل صوت كل سؤال إلى ذلك المزوّد إلا عند اختيارك Deepgram أو OpenAI كأداة للتعرف على الكلام. يتحقق ترخيص المنظمة المرتبط بالمقاعد من مقعد هذا الهاتف لدى خدمة تراخيص Avenkin مرة واحدة يوميًا تقريبًا، ولا يرسل سوى معرّف التسجيل ومفتاح أُنشئ لهذا الهاتف وإصدار التطبيق ومعرّف الملف الشخصي وإصدارات خزنات مؤسستك الموجودة على هذا الهاتف وإصدار إعدادات مؤسستك الذي طبّقه؛ ولا يرسل أبدًا اسمًا أو طراز جهاز أو موقعًا. ويُبلغ الهاتف الذي تديره مؤسستك عبر إدارة الأجهزة (MDM) نظامَ MDM ذاك بإصدار إعدادات مؤسستك الموجود لديه، وما إذا كان مسجَّلًا، وإصدار التطبيق؛ ولا يذهب ذلك إلا إلى نظام MDM الخاص بمؤسستك، ولا يصل أبدًا إلى Avenkin. يُرسل ما تسجّله من دروس إلى مسؤول شركتك لمراجعته عندما تأتي خزنات شركتك من بوابة Avenkin: تنقله خدمة تراخيص Avenkin مع مقعد هذا الهاتف، مع رقم المهمة والجهاز واسمك كما يعرفه فريقك؛ ولا تنقل أبدًا صورة أو قراءة أو عميلًا أو موقعًا. يؤدي إرسال مهمة إلى خبير إلى إرسال تفاصيلها، والصور التي تختارها بعد تمويه الوجوه، إلى الخبير الذي تختاره فقط، عبر الرسائل أو البريد أو ورقة المشاركة الخاصة بك. ولا تحمل الدعوة التي تطلب من خبير بطاقته سوى اسم منظمتك واسمك ومكان الرد. أما المهمة المرسلة إليك كخبير فتبقى على هذا الهاتف فقط، للأيام التي حددتها منظمتها، ولا تصل أبدًا إلى المساعد أو ذاكرته؛ ولا يُرسل رد وقتك إلا عندما تشاركه. لا يتضمن Avenkin أي تحليلات أو تقارير أعطال خاصة به (قد تشاركها Apple معنا من TestFlight، أو إذا سمحت بذلك في iOS)."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El difuminado de rostros de transeúntes se ejecuta por completo en el dispositivo: los rostros se detectan y se difuminan en tu celular, y la imagen difuminada es lo que recibe un proveedor de IA. Compartir datos de salud con la IA (en Día a día) está desactivado de forma predeterminada: las cifras de Apple Health se envían a tu proveedor de IA solo cuando lo activas. El dictado en la nube está desactivado de forma predeterminada: solo cuando eliges Deepgram u OpenAI como reconocedor, el audio de cada pregunta va a ese proveedor. Una licencia de organización con verificación de puestos verifica el puesto de este celular con el servicio de licencias de Avenkin aproximadamente una vez al día, y solo envía el ID de inscripción, una clave creada para este celular, la compilación de la app, el ID del perfil, las versiones de las bóvedas de tu organización en este celular y la versión de la configuración de tu organización que aplicó; nunca un nombre, el modelo del dispositivo ni la ubicación. Un celular que tu organización administra mediante la administración de dispositivos (MDM) le informa a ese MDM qué versión de la configuración de tu organización tiene, si está inscrito y la compilación de la app; esto solo va al MDM de tu organización, nunca a Avenkin. Los aprendizajes que registras se envían al administrador de tu empresa para que los revise cuando las bóvedas de tu empresa vienen del portal de Avenkin: el servicio de licencias de Avenkin los lleva con el puesto de este celular, junto con el número de trabajo, la máquina y tu nombre como lo ve tu equipo; nunca una foto, una lectura, un cliente ni un sitio. Enviar un trabajo a un experto envía sus detalles, y las fotos que elijas con los rostros difuminados, solo al experto que elijas, por tus propios Mensajes, Mail u hoja para compartir. Una invitación que le pide a un experto su tarjeta solo lleva el nombre de tu organización, el tuyo y a dónde responder. Un trabajo que te envían como experto se queda solo en este celular, durante los días que fijó su organización, y nunca llega al asistente ni a su memoria; tu respuesta de tiempo solo se envía cuando la compartes. Avenkin no tiene analíticas ni reportes de fallos propios (Apple puede compartirnos reportes de fallos desde TestFlight, o si lo permites en iOS)."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le floutage des passants s’exécute entièrement sur l’appareil : les visages sont détectés et floutés sur votre téléphone, et c’est l’image floutée que reçoit un fournisseur d’IA. Partager les données de santé avec l’IA (sous Au quotidien) est désactivé par défaut : les données d’Apple Health ne sont envoyées à votre fournisseur d’IA que si vous l’activez. La dictée cloud est désactivée par défaut : l’audio de chaque question n’est transmis à un fournisseur que si vous choisissez Deepgram ou OpenAI comme moteur de reconnaissance. Une licence d’organisation avec vérification des places vérifie la place de ce téléphone auprès du service de licences d’Avenkin environ une fois par jour, en n’envoyant que l’ID d’inscription, une clé créée pour ce téléphone, la version de compilation de l’application, l’ID du profil, les versions des coffres de votre organisation sur ce téléphone et la version des réglages de votre organisation qu’il a appliquée; jamais de nom, de modèle d’appareil ni de position. Un téléphone que votre organisation gère au moyen de la gestion des appareils (MDM) indique à ce MDM quelle version des réglages de votre organisation il a, s’il est inscrit et la version de compilation de l’application; ces données ne vont qu’au MDM de votre organisation, jamais à Avenkin. Les apprentissages que vous consignez sont envoyés à l’administrateur de votre entreprise pour révision lorsque les coffres de votre entreprise proviennent du portail d’Avenkin : le service de licences d’Avenkin les transmet avec la place de ce téléphone, avec le numéro du travail, l’appareil et votre nom tel que votre équipe le voit; jamais de photo, de relevé, de client ni de site. Envoyer un travail à un expert transmet ses détails, et les photos que vous choisissez avec les visages floutés, uniquement à l’expert que vous choisissez, par vos propres Messages, Mail ou feuille de partage. Une invitation demandant sa carte à un expert ne contient que le nom de votre organisation, le vôtre et l’endroit où répondre. Un travail qui vous est envoyé en tant qu’expert reste sur ce téléphone seulement, pendant le nombre de jours fixé par son organisation, et n’atteint jamais l’assistant ni sa mémoire; votre réponse de temps n’est envoyée que lorsque vous la partagez. Avenkin n’a ni outil d’analyse ni rapport de plantage qui lui soit propre (Apple peut nous transmettre des rapports de plantage depuis TestFlight, ou si vous l’autorisez dans iOS)."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A szemlélődők arcának elmosása teljes egészében az eszközön fut: az arcokat a telefonja keresi meg és mossa el, és az elmosott képet kapja meg az AI-szolgáltató. Az „Ossza meg az egészségügyi adatokat az AI-val” (a Mindennapok alatt) alapértelmezés szerint ki van kapcsolva: az Apple Health számait csak akkor küldi el az AI-szolgáltatónak, ha bekapcsolja. A felhőalapú diktálás alapértelmezés szerint ki van kapcsolva: csak ha a Deepgramot vagy az OpenAI-t választja felismerőként, akkor kerül az egyes kérdések hangja az adott szolgáltatóhoz. A felhasználói helyeket ellenőrző szervezeti licenc naponta nagyjából egyszer egyezteti ennek a telefonnak a felhasználói helyét az Avenkin licencszolgáltatásával, és csak a beiratkozási azonosítót, egy ehhez a telefonhoz készített kulcsot, az alkalmazás buildszámát, a profilazonosítót, a szervezete ezen a telefonon lévő tárolóinak verzióit és a szervezete általa alkalmazott beállításainak verzióját küldi el; nevet, eszközmodellt vagy tartózkodási helyet soha. Az a telefon, amelyet a szervezete eszközkezeléssel (MDM) kezel, közli ezzel az MDM-mel, hogy a szervezete beállításainak melyik verziója van rajta, be van-e iratkozva, valamint az alkalmazás buildszámát; ez csak a szervezete saját MDM-jéhez jut el, az Avenkinhez soha. Ha a cége tárolói az Avenkin portáljáról érkeznek, a rögzített tanulságai átnézésre a cége adminisztrátorához kerülnek: az Avenkin licencszolgáltatása ennek a telefonnak a felhasználói helyével viszi őket, a munkaszámmal, a géppel és az Ön nevével, ahogy a csapata ismeri; fényképet, mért értéket, ügyfelet vagy helyszínt soha. Ha egy munkát elküld egy szakértőnek, annak részletei és az Ön által kiválasztott, elmosott arcú fotók csak a választott szakértőhöz jutnak el, a saját Üzenetek, Mail vagy megosztási lap útján. Az a meghívó, amely egy szakértőtől a kártyáját kéri, csak a szervezete nevét, az Ön nevét és a válaszcímet tartalmazza. Az Önnek szakértőként küldött munka csak ezen a telefonon marad, a szervezete által megadott napokig, és soha nem jut el az asszisztenshez vagy annak memóriájához; az időelszámolása csak akkor megy el, ha megosztja. Az Avenkinnek nincs saját analitikája vagy hibajelentése (az Apple megoszthat velünk hibajelentéseket a TestFlightból, vagy ha engedélyezi az iOS-ben)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo sfocamento dei passanti avviene interamente sul dispositivo: i volti vengono rilevati e sfocati sul tuo telefono, e a ricevere l'immagine sfocata è un fornitore di IA. Condividi i dati sanitari con l'intelligenza artificiale (in Vita quotidiana) è disattivato per impostazione predefinita: i dati di Apple Health vengono inviati al tuo fornitore di IA solo se lo attivi. La dettatura cloud è disattivata per impostazione predefinita: l'audio di ogni domanda va a quel fornitore solo se scegli Deepgram o OpenAI come riconoscitore. Una licenza dell'organizzazione con controllo delle postazioni verifica la postazione di questo telefono con il servizio licenze di Avenkin circa una volta al giorno, inviando solo l'ID di iscrizione, una chiave creata per questo telefono, la build dell'app, l'ID del profilo, le versioni dei depositi della tua organizzazione su questo telefono e la versione delle impostazioni della tua organizzazione che ha applicato; mai un nome, il modello del dispositivo o la posizione. Un telefono che la tua organizzazione gestisce tramite la gestione dei dispositivi (MDM) comunica a tale MDM quale versione delle impostazioni della tua organizzazione ha, se è registrato e la build dell'app; queste informazioni vanno solo all'MDM della tua organizzazione, mai ad Avenkin. Gli apprendimenti che registri vengono inviati all'amministratore della tua azienda per la revisione quando i depositi della tua azienda arrivano dal portale di Avenkin: il servizio licenze di Avenkin li trasmette con la postazione di questo telefono, insieme al numero del lavoro, alla macchina e al tuo nome come lo vede il tuo team; mai una foto, una lettura, un cliente o un sito. Inviare un lavoro a un esperto invia i suoi dettagli, e le foto che scegli con i volti sfocati, solo all'esperto che scegli, tramite i tuoi Messaggi, Mail o foglio di condivisione. Un invito che chiede a un esperto la sua scheda contiene solo il nome della tua organizzazione, il tuo e dove rispondere. Un lavoro inviato a te come esperto resta solo su questo telefono, per i giorni stabiliti dalla sua organizzazione, e non raggiunge mai l'assistente né la sua memoria; la tua risposta con il tempo parte solo quando la condividi. Avenkin non ha propri strumenti di analisi o di segnalazione degli arresti anomali (Apple può condividere con noi i rapporti sugli arresti anomali da TestFlight, o se lo consenti in iOS)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傍観者の顔のぼかしは完全にデバイス上で動作します。顔の検出とぼかしはお使いのiPhone上で行われ、AIプロバイダに届くのはぼかし済みの画像です。「健康データをAIと共有」（日常内）は初期設定でオフです。Apple Healthの数値は、オンにしたときだけAIプロバイダに送信されます。クラウド音声入力も初期設定でオフです。認識エンジンとしてDeepgramまたはOpenAIを選んだときだけ、各質問の音声がその事業者に送信されます。座席確認型の組織ライセンスは、1日に1回程度、このiPhoneの座席をAvenkinのライセンスサービスで確認します。送信されるのは登録ID、このiPhone用に作成されたキー、アプリのビルド、プロファイルID、このiPhone上にある組織のボールトのバージョン、このiPhoneに適用済みの組織の設定のバージョンのみで、名前、デバイスのモデル、位置情報は一切送信されません。組織がデバイス管理（MDM）で管理しているiPhoneは、保持している組織の設定のバージョン、登録されているかどうか、アプリのビルドをそのMDMに伝えます。この情報は組織自身のMDMにだけ送られ、Avenkinに送られることはありません。会社のボールトがAvenkinのポータルから提供されている場合、あなたが登録した学習内容は、確認のために会社の管理者に送信されます。Avenkinのライセンスサービスが、このiPhoneの座席とともに、ジョブ番号、機器、チームに表示されるあなたの名前を添えて届けます。写真、測定値、顧客、現場が送られることは一切ありません。ジョブを専門家に送信すると、その詳細と、選んだ写真（顔はぼかし済み）が、あなた自身のメッセージ、メール、または共有シートを通じて、選んだ専門家にだけ送られます。専門家にカードを依頼する招待に含まれるのは、あなたの組織名、あなたの名前、返信先のみです。専門家としてあなたに送られたジョブは、その組織が設定した日数だけこのiPhoneにのみ保存され、アシスタントやそのメモリに渡ることはありません。作業時間の返信は、あなたが共有したときにだけ送られます。Avenkin自体には解析機能やクラッシュレポート機能はありません（TestFlightから、またはiOSで許可した場合は、Appleからクラッシュレポートが共有されることがあります）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "방관자 얼굴 흐림 처리는 전적으로 기기 안에서 실행됩니다. 얼굴을 찾아 흐리게 만드는 작업은 휴대폰에서 이루어지며, AI 제공업체에는 흐림 처리된 사진만 전달됩니다. 'AI와 건강 데이터 공유'(일상 항목)는 기본적으로 꺼져 있습니다. Apple Health 수치는 켠 경우에만 AI 제공업체로 전송됩니다. 클라우드 받아쓰기도 기본적으로 꺼져 있습니다. 인식기로 Deepgram 또는 OpenAI를 선택한 경우에만 각 질문의 오디오가 해당 업체로 전송됩니다. 좌석 확인 방식의 조직 라이센스는 하루에 한 번 정도 Avenkin 라이센스 서비스로 이 휴대폰의 좌석을 확인하며, 등록 ID, 이 휴대폰용으로 만든 키, 앱 빌드, 프로필 ID, 이 휴대폰에 있는 조직 볼트의 버전, 이 휴대폰에 적용된 조직 설정의 버전만 전송합니다. 이름, 기기 모델, 위치는 절대 전송하지 않습니다. 조직에서 기기 관리(MDM)로 관리하는 휴대폰은 보유한 조직 설정의 버전, 등록 여부, 앱 빌드를 해당 MDM에 알립니다. 이 정보는 조직 자체의 MDM으로만 전송되며 Avenkin으로는 절대 전송되지 않습니다. 회사의 볼트가 Avenkin 포털에서 제공되는 경우, 내가 등록한 학습 내용은 검토를 위해 회사 관리자에게 전송됩니다. Avenkin 라이센스 서비스가 이 휴대폰의 좌석과 함께 작업 번호, 기기, 팀에 표시되는 내 이름을 전달하며, 사진, 측정값, 고객 또는 현장은 절대 전달하지 않습니다. 작업을 전문가에게 보내면 작업 세부 정보와 직접 고른 사진(얼굴은 흐림 처리됨)이 내 메시지, 메일 또는 공유 시트를 통해 내가 선택한 전문가에게만 전송됩니다. 전문가에게 카드를 요청하는 초대에는 조직 이름, 내 이름, 회신할 곳만 포함됩니다. 전문가로서 받은 작업은 해당 조직이 정한 일수 동안 이 휴대폰에만 보관되며 어시스턴트나 그 메모리에 전달되지 않습니다. 작업 시간 답장은 내가 공유할 때만 전송됩니다. Avenkin에는 자체 분석 기능이나 충돌 보고 기능이 없습니다(TestFlight에서 또는 iOS에서 허용한 경우 Apple이 충돌 보고서를 공유할 수 있습니다)."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vervagen van gezichten van omstanders werkt volledig op het apparaat: gezichten worden op uw telefoon gevonden en vervaagd, en de vervaagde afbeelding is wat een AI-provider ontvangt. Gezondheidsgegevens delen met AI (onder Dagelijks) staat standaard uit: Apple Health-cijfers worden alleen naar uw AI-provider gestuurd als u het inschakelt. Clouddictatie staat standaard uit: alleen als u Deepgram of OpenAI als herkenner kiest, gaat de audio van elke vraag naar die leverancier. Een organisatielicentie met plaatscontrole controleert ongeveer eenmaal per dag de plaats van deze telefoon bij de licentieservice van Avenkin en stuurt daarbij alleen de inschrijvings-ID, een sleutel die voor deze telefoon is gemaakt, de app-build, de profiel-ID, de versies van de kluizen van uw organisatie op deze telefoon en de versie van de instellingen van uw organisatie die erop is toegepast; nooit een naam, apparaatmodel of locatie. Een telefoon die uw organisatie via apparaatbeheer (MDM) beheert, laat die MDM weten welke versie van de instellingen van uw organisatie hij heeft, of hij is ingeschreven en wat de app-build is; dit gaat alleen naar de eigen MDM van uw organisatie, nooit naar Avenkin. Lessen die u vastlegt, gaan ter beoordeling naar de beheerder van uw bedrijf wanneer de kluizen van uw bedrijf uit het portaal van Avenkin komen: de licentieservice van Avenkin brengt ze over met de plaats van deze telefoon, met het taaknummer, de machine en uw naam zoals uw team die ziet; nooit een foto, een meetwaarde, een klant of een locatie. Als u een taak naar een expert stuurt, gaan de details ervan, en de foto's die u kiest met vervaagde gezichten, alleen naar de expert die u kiest, via uw eigen Berichten, Mail of deelvenster. Een uitnodiging die een expert om zijn kaart vraagt, bevat alleen de naam van uw organisatie, uw naam en waar naartoe moet worden geantwoord. Een taak die naar u als expert is gestuurd, blijft alleen op deze telefoon, voor het aantal dagen dat de organisatie heeft ingesteld, en bereikt nooit de assistent of zijn geheugen; uw tijdverantwoording gaat alleen als u die deelt. Avenkin heeft geen eigen analyses of crashrapportage (Apple kan crashrapporten met ons delen vanuit TestFlight, of als u dat toestaat in iOS)."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O desfoque de rostos de transeuntes é executado inteiramente no dispositivo: os rostos são encontrados e desfocados no seu telefone, e a imagem desfocada é o que um provedor de IA recebe. Compartilhe dados de saúde com IA (em Dia a dia) está desativado por padrão: os números do Apple Health são enviados ao seu provedor de IA somente quando você o ativa. O ditado na nuvem está desativado por padrão: somente quando você escolhe Deepgram ou OpenAI como reconhecedor o áudio de cada pergunta vai para esse fornecedor. Uma licença de organização com verificação de assentos verifica o assento deste telefone com o serviço de licenças do Avenkin cerca de uma vez por dia, enviando apenas o ID de inscrição, uma chave criada para este telefone, a compilação do aplicativo, o ID do perfil, as versões dos cofres da sua organização neste telefone e a versão das configurações da sua organização que ele aplicou; nunca um nome, o modelo do dispositivo ou a localização. Um telefone que a sua organização gerencia pelo gerenciamento de dispositivos (MDM) informa a esse MDM qual versão das configurações da sua organização ele tem, se está inscrito e a compilação do aplicativo; isso vai apenas para o MDM da própria organização, nunca para o Avenkin. Os aprendizados que você registra são enviados ao administrador da sua empresa para revisão quando os cofres da sua empresa vêm do portal do Avenkin: o serviço de licenças do Avenkin os leva com o assento deste telefone, com o número do trabalho, a máquina e o seu nome como sua equipe o vê; nunca uma foto, uma leitura, um cliente ou um local. Enviar um trabalho a um especialista envia os detalhes dele, e as fotos que você escolher com os rostos desfocados, apenas para o especialista que você escolher, pelo seu próprio Mensagens, Mail ou menu de compartilhamento. Um convite que pede o cartão de um especialista leva apenas o nome da sua organização, o seu e para onde responder. Um trabalho enviado a você como especialista fica apenas neste telefone, pelos dias que a organização dele definiu, e nunca chega ao assistente nem à memória dele; sua resposta de tempo só é enviada quando você a compartilha. O Avenkin não tem análises nem relatórios de falhas próprios (a Apple pode compartilhar relatórios de falhas conosco pelo TestFlight, ou se você permitir no iOS)."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Размытие лиц посторонних работает полностью на устройстве: лица находятся и размываются на вашем телефоне, а ИИ-провайдер получает уже размытое изображение. Функция «Делиться данными о здоровье с ИИ» (в разделе «Повседневное») по умолчанию выключена: показатели Apple Health отправляются вашему ИИ-провайдеру, только если вы её включите. Облачная диктовка по умолчанию выключена: аудио каждого вопроса уходит к поставщику, только если вы выбрали Deepgram или OpenAI в качестве распознавателя. Организационная лицензия с проверкой мест примерно раз в день сверяет место этого телефона со службой лицензий Avenkin, передавая только ID регистрации, ключ, созданный для этого телефона, номер сборки приложения, ID профиля, версии хранилищ вашей организации на этом телефоне и версию применённых им настроек вашей организации — и никогда имя, модель устройства или местоположение. Телефон, которым ваша организация управляет через систему управления устройствами (MDM), сообщает этой MDM, какая версия настроек вашей организации на нём действует, зарегистрирован ли он, а также номер сборки приложения; эти сведения получает только MDM вашей организации и никогда — Avenkin. Если хранилища вашей компании поступают с портала Avenkin, записанный вами опыт отправляется на проверку администратору вашей компании: служба лицензий Avenkin передаёт его вместе с местом этого телефона, с номером задания, оборудованием и вашим именем в том виде, в каком его видит ваша команда, — и никогда фото, показание, клиента или объект. При отправке задания эксперту его сведения и выбранные вами фото с размытыми лицами уходят только выбранному эксперту — через ваши «Сообщения», «Почту» или меню «Поделиться». Приглашение, в котором эксперта просят прислать карточку, содержит только название вашей организации, ваше имя и адрес для ответа. Задание, отправленное вам как эксперту, хранится только на этом телефоне столько дней, сколько задала его организация, и никогда не попадает к ассистенту или в его память; ваш ответ о времени уходит, только когда вы им поделитесь. У Avenkin нет собственной аналитики и отчётов о сбоях (Apple может передавать нам отчёты о сбоях из TestFlight или если вы разрешите это в iOS)."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“راہگیروں کے چہرے دھندلے کریں” مکمل طور پر آن ڈیوائس چلتا ہے: چہرے آپ کے فون پر ہی تلاش اور دھندلے کیے جاتے ہیں، اور AI فراہم کنندہ کو دھندلی تصویر ہی ملتی ہے۔ “صحت کا ڈیٹا AI کے ساتھ شیئر کریں” (روزمرہ کے تحت) بطورِ ڈیفالٹ بند ہے: Apple Health کے اعداد آپ کے AI فراہم کنندہ کو صرف تب بھیجے جاتے ہیں جب آپ اسے آن کریں۔ کلاؤڈ ڈکٹیشن بطورِ ڈیفالٹ بند ہے: ہر سوال کی آڈیو اس وینڈر کو صرف تب جاتی ہے جب آپ Deepgram یا OpenAI کو ریکگنائزر کے طور پر منتخب کریں۔ نشستوں کی جانچ والا تنظیمی لائسنس دن میں تقریباً ایک بار Avenkin کی لائسنس سروس سے اس فون کی نشست کی جانچ کرتا ہے، اور صرف اندراج ID، اس فون کے لیے بنائی گئی کلید، ایپ بلڈ، پروفائل ID، اس فون پر آپ کی تنظیم کے والٹس کے ورژن اور آپ کی تنظیم کی ان ترتیبات کا ورژن بھیجتا ہے جو اس نے لاگو کی ہیں؛ کبھی کوئی نام، ڈیوائس ماڈل یا مقام نہیں۔ جس فون کا انتظام آپ کی تنظیم ڈیوائس مینجمنٹ (MDM) کے ذریعے کرتی ہے، وہ اس MDM کو بتاتا ہے کہ اس پر آپ کی تنظیم کی ترتیبات کا کون سا ورژن ہے، آیا یہ اندراج شدہ ہے، اور ایپ بلڈ؛ یہ صرف آپ کی تنظیم کے اپنے MDM کو جاتا ہے، کبھی Avenkin کو نہیں۔جب آپ کی کمپنی کے والٹس Avenkin کے پورٹل سے آتے ہیں تو آپ کی درج کی ہوئی سیکھی ہوئی باتیں جائزے کے لیے آپ کی کمپنی کے ایڈمنسٹریٹر کو بھیجی جاتی ہیں: Avenkin کی لائسنس سروس انہیں اس فون کی نشست کے ساتھ، جاب نمبر، مشین اور آپ کے اس نام کے ساتھ لے جاتی ہے جو آپ کی ٹیم دیکھتی ہے؛ کبھی کوئی تصویر، ریڈنگ، کسٹمر یا سائٹ نہیں۔  کسی ماہر کو جاب بھیجنے سے اس کی تفصیلات، اور آپ کی منتخب کردہ تصاویر چہرے دھندلے کر کے، صرف آپ کے منتخب کردہ ماہر کو، آپ کے اپنے Messages، Mail یا شیئر شیٹ کے ذریعے جاتی ہیں۔ کسی ماہر سے اس کا کارڈ مانگنے والی دعوت میں صرف آپ کی تنظیم کا نام، آپ کا نام اور جواب دینے کی جگہ ہوتی ہے۔ بطور ماہر آپ کو بھیجی گئی جاب صرف اس فون پر، اس کی تنظیم کے مقرر کردہ دنوں تک رہتی ہے، اور کبھی اسسٹنٹ یا اس کی میموری تک نہیں پہنچتی؛ آپ کا وقت کا جواب صرف تب جاتا ہے جب آپ اسے شیئر کریں۔ Avenkin کی اپنی کوئی اینالیٹکس یا کریش رپورٹنگ نہیں ہے (Apple ہمارے ساتھ TestFlight سے، یا اگر آپ iOS میں اجازت دیں، کریش رپورٹس شیئر کر سکتا ہے)۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旁观者人脸模糊完全在设备上运行：人脸在你的手机上被识别并模糊，AI 提供商收到的是模糊后的图片。“与 AI 共享健康数据”（在“日常”下）默认关闭：只有在你开启后，Apple Health 数据才会发送给你的 AI 提供商。云端听写默认关闭：只有当你选择 Deepgram 或 OpenAI 作为识别器时，每个问题的音频才会发送给该供应商。需要核验席位的组织许可大约每天一次向 Avenkin 的许可服务核验这部手机的席位，只发送注册 ID、为这部手机生成的密钥、应用的构建版本号、配置文件 ID、这部手机上你组织的保险库版本，以及它已应用的你组织的设置版本；绝不发送姓名、设备型号或位置。由你的组织通过设备管理（MDM）管理的手机会向该 MDM 报告它所使用的你组织的设置版本、是否已注册以及应用的构建版本号；这些信息只会发送给你组织自己的 MDM，绝不会发送给 Avenkin。当你公司的保险库来自 Avenkin 的门户时，你提交的经验会发送给你公司的管理员审核：Avenkin 的许可服务会随这部手机的席位一并传送，附带作业编号、设备以及你的团队看到的你的名字；绝不传送照片、读数、客户或现场。将作业发送给专家时，其详情以及你挑选的照片（面部已模糊）只会通过你自己的“信息”“邮件”或共享表发送给你选择的专家。向专家索取名片的邀请只包含你组织的名称、你的名字以及回复地址。作为专家收到的作业只保存在这部手机上，保留其组织设定的天数，绝不会进入助手或其记忆；你的时间回复只有在你共享时才会发出。Avenkin 自身没有分析或崩溃报告功能（Apple 可能会通过 TestFlight 向我们分享崩溃报告，或在你于 iOS 中允许时分享）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旁觀者臉部模糊完全在裝置上執行：臉部會在你的手機上被偵測並模糊，AI 供應商收到的是模糊後的圖片。「與 AI 共享健康資料」（位於「日常」下）預設為關閉：只有在你開啟後，Apple Health 資料才會傳送給你的 AI 供應商。雲端聽寫預設為關閉：只有當你選擇 Deepgram 或 OpenAI 作為辨識器時，每個問題的音訊才會傳送給該供應商。需要核驗席位的組織許可證大約每天一次向 Avenkin 的許可證服務核驗這支手機的席位，只傳送註冊 ID、為這支手機產生的金鑰、應用程式的建置版本號、設定檔 ID、這支手機上你組織的保險庫版本，以及它已套用的你組織的設定版本；絕不傳送姓名、裝置型號或位置。由你的組織透過裝置管理（MDM）管理的手機會向該 MDM 回報它所使用的你組織的設定版本、是否已註冊，以及應用程式的建置版本號；這些資訊只會傳送給你組織自己的 MDM，絕不會傳送給 Avenkin。當你公司的保險庫來自 Avenkin 的入口網站時，你提交的心得會傳送給你公司的管理員審核：Avenkin 的許可證服務會隨這支手機的席位一併傳送，附上工作編號、設備以及你的團隊看到的你的名字；絕不傳送照片、讀數、客戶或現場。將工作傳送給專家時，其詳細資料以及你挑選的照片（臉部已模糊）只會透過你自己的「訊息」、「郵件」或分享面板傳送給你選擇的專家。向專家索取名片的邀請只包含你組織的名稱、你的名字以及回覆地址。作為專家收到的工作只儲存在這支手機上，保留其組織設定的天數，絕不會進入助理或其記憶；你的時間回覆只有在你分享時才會送出。Avenkin 本身沒有分析或當機回報功能（Apple 可能會透過 TestFlight 與我們分享當機報告，或在你於 iOS 中允許時分享）。"
           }
         }
       }
@@ -566017,6 +566181,88 @@
         }
       }
     },
+    "Team learning for review" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ما تعلّمه الفريق للمراجعة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aprendizaje del equipo para revisión"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apprentissage de l’équipe à réviser"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Csapattanulság átnézésre"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apprendimento del team da rivedere"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認待ちのチームの学習"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "검토할 팀 학습 내용"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teamles ter beoordeling"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aprendizado da equipe para revisão"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Опыт команды на проверку"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جائزے کے لیے ٹیم کی سیکھی ہوئی بات"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待审核的团队经验"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待審核的團隊心得"
+          }
+        }
+      }
+    },
     "Team learnings" : {
       "localizations" : {
         "ar" : {
@@ -701570,6 +701816,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "傳給辦公室的報告是否包含轉錄內容"
+          }
+        }
+      }
+    },
+    "Whether team learnings go to your company's administrator in the portal" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ما إذا كان ما تعلّمه الفريق يُرسل إلى مسؤول شركتك في البوابة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si los aprendizajes del equipo van al administrador de tu empresa en el portal"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si les apprentissages de l’équipe vont à l’administrateur de votre entreprise dans le portail"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A csapat tanulságai a cége adminisztrátorához kerülnek-e a portálon"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se gli apprendimenti del team vanno all'amministratore della tua azienda nel portale"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チームの学習をポータルで会社の管理者に送るかどうか"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "팀 학습 내용을 포털에서 회사 관리자에게 보낼지 여부"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Of teamlessen naar de beheerder van uw bedrijf in het portaal gaan"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se os aprendizados da equipe vão para o administrador da sua empresa no portal"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправляется ли опыт команды администратору вашей компании на портале"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آیا ٹیم کی سیکھی ہوئی باتیں پورٹل میں آپ کی کمپنی کے ایڈمنسٹریٹر کو جاتی ہیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "团队经验是否发送给门户中你公司的管理员"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "團隊心得是否傳送給入口網站中你公司的管理員"
           }
         }
       }

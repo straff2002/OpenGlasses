@@ -17,7 +17,8 @@ Invented brands, models, codes and people only.
 writer, the experience-only vault and the catalog field with its checks (P0); the seal
 (`CompanyVaultContract.ExperienceSeal`, with `sealSet` writing the vault row's pointer), and the phone
 fetching, opening, checking and applying a set (`CompanyExperienceSeal`, `CompanyExperienceStore`, the
-company vault pass; P1). Nothing serves a set yet: the portal's screens and storage are the service's (S1).
+company vault pass; P1). Learnings approved in the portal, FP's merge rule and the older-phone gate
+(§11, Plan NG P0b). Nothing serves a set yet: the portal's screens and storage are the service's (S1).
 
 ## 1. Roles
 
@@ -187,7 +188,9 @@ sheet order:
 
 There is no second reviewer in v1 (decision 7). A row whose id is in the current set and whose
 content is unchanged **keeps the current entry exactly**, approval included, so re-publishing an
-unedited sheet changes nothing.
+unedited sheet changes nothing. Amended (§11): a row whose id is in the current set and whose content
+changed keeps that entry's `origin`, `candidateID`, `sourceJobIDs` and `confirmedJobCount`, so a
+learning approved in the portal and edited in the sheet is still that learning.
 
 **Download current sheet** (`CrewExperienceSheet.csv(entries:)`) writes every entry back as a row with
 its id, CRLF line ends, `notes` holding the finding and `added_by` and `date` empty. Uploaded again
@@ -213,7 +216,7 @@ replaced, applied whole (§6 there).
 
 `CrewExperienceSet.check` is what both sides hold a set to: the kind and version, safe identifiers, at
 most 5,000 entries, ids unique and 32 lowercase hex, every entry's vault the set's, origin
-`recollection`, the text rules of team-learning §7.4 with the limits of §2, a retracted id not also
+`recollection` (amended §11: or `spoken`, with the provenance rules there), the text rules of team-learning §7.4 with the limits of §2, a retracted id not also
 published, and at most **2 MiB** encoded (`CrewExperienceSet.encoder()`: sorted keys, unescaped
 slashes — the bytes `revision` is computed over).
 
@@ -313,6 +316,48 @@ administrator reading every row; `added_by` and `date` never published; entries 
 and never in a customer-facing document. On the phone (P1): team or enterprise licence only, kept on a
 lapsed licence, withheld under HIPAA, part of the subject-erasure walk, never outranking a safety note.
 
+## 11. Amendment — learnings approved in the portal (2026-11-27, Plan NG P0b; additive to v1)
+
+Plan [NG](../docs/plans/NG-team-learnings-reviewed-in-the-portal.md). A company without an office reviews
+its crew's candidates in the portal (team-learning §12), and what the administrator approves is
+published in this set, beside the sheet's rows. Nothing above changes for a set without them: every
+field here is optional, encoded only when present, so `set-v1.json` and every set published before
+this amendment are the bytes they were.
+
+- **Origin `spoken`** (`CrewExperienceSheet.spokenOrigin`), beside `recollection`
+  (`CrewExperienceSet.origins`). Any other origin, `report` and `reportReview` included, is refused
+  whole by name: *"<entryID>'s origin <origin> is not one a set carries (recollection or spoken)"*.
+- **Entry fields** (team-learning §5's own): `candidateID?` (the candidate it was approved from,
+  32 lowercase hex), `sourceJobIDs?` (the jobs it was filed on, as the portal holds them: the
+  per-company job hash of team-learning §12, 32 lowercase hex each) and `confirmedJobCount?`. Absent
+  on every sheet row.
+- **Provenance rules** in `CrewExperienceSet.check`, each refused in its words
+  (`fixtures/crew-experience-v1/learnings/negative-sets.json`): a `spoken` entry carries its
+  `candidateID`, `sourceJobIDs` and `confirmedJobCount`; a `recollection` carries no `candidateID`,
+  and its jobs only once a job confirmed it; `sourceJobIDs` and `confirmedJobCount` come together or
+  not at all; the ids are at least one, distinct, 32 lowercase hex; the count is at least how many
+  ids there are; no candidate is on two entries.
+- **Citation.** A `spoken` entry is cited `Team learning · <subject> · <YYYY-MM-DD> · approved by
+  <role>` (`CrewExperienceSheet.teamLearningCitationName`, `Entry.citationName`), as team-learning
+  §7.1, and the phone reads it as `.spoken`: a team learning, with FP's lead-in, not crew experience's.
+- **Merge** (FP decision 3 of 2026-10-09), in the core so the portal's *same as* and the phone's
+  review count alike: `CrewExperienceMerge.merge(jobSessionID:into:)`, on `CrewExperienceMerge.Jobs`
+  or on an `Entry`. A job already counted adds nothing; a new one is appended and the count rises by
+  one. The count before a merge is the entry's own; absent, it is `max(1, jobs)` for a filed learning
+  and the number of jobs for a recollection (0 for a sheet row). So a sheet row merged with a job
+  becomes job-confirmed, `sourceJobIDs [job]` and a count of 1, and stays a `recollection`. The
+  origin and the citation never change. Who may merge is each side's own gate. Golden cases:
+  `learnings/merge-cases.json`.
+- **Older phones.** Builds 775–778 refuse a whole set holding a `spoken` entry and keep the last good
+  one. `CrewExperienceSet.spokenEntriesMinAppBuild` is 779, the first build that reads them. The
+  service publishes such a set only when `CrewExperienceSet.mayPublish(_:seatBuilds:)` (for a set
+  with `spoken` entries, `mayPublishSpokenEntries(seatBuilds:)`) holds for the builds the company's
+  held seats last reported: every one a whole number at or above 779; a seat with no build, or one
+  that is not a number, counts as old; no held seat holds nothing back.
+  `SeatPolicy.mayPublishCrewExperience(_:seats:profileId:now:)` applies it over the seat ledger
+  (held seats only). Until it holds, the learning waits in the portal. Golden cases:
+  `learnings/publish-gate-cases.json`.
+
 ## Fixtures
 
 `fixtures/crew-experience-v1/`. Hand-written inputs: `vault.json` (the sheet's vault: spellings and
@@ -336,3 +381,10 @@ secret and nonces derived from the chunk index, so it regenerates to the same by
 `catalog-experience-v1.json` (an unsigned catalog payload whose row carries `experience` for
 `set-v1.sealed`); `negative-catalogs.json` and `negative-advances.json` (each refusal
 of §7 with its words).
+
+`learnings/` (§11): `merge-cases.json` and `publish-gate-cases.json`, hand-written; written by
+`REGENERATE_CREW_EXPERIENCE_FIXTURES=1 swift test --package-path Tools/LicenceIssuance --filter
+CrewExperienceLearningTests/testRegenerateFixtures`: `set-with-spoken-v1.json` (`set-v1.json`'s entries
+with the first confirmed on a job, and one learning approved in the portal; sequence 2) and
+`negative-sets.json` (each provenance refusal of §11 with its words). Read by the core's
+`CrewExperienceLearningTests` and the app's `CrewExperienceLearningSetTests`.

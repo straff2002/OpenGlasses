@@ -1,0 +1,198 @@
+[
+  {
+    "after": {
+      "confirmedJobCount": 2,
+      "origin": "spoken",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+      ]
+    },
+    "before": {
+      "confirmedJobCount": 1,
+      "origin": "spoken",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+      ]
+    },
+    "jobSessionID": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2",
+    "name": "a filed learning merged with a second job"
+  },
+  {
+    "after": {
+      "confirmedJobCount": 2,
+      "origin": "spoken",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+      ]
+    },
+    "before": {
+      "confirmedJobCount": 2,
+      "origin": "spoken",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+      ]
+    },
+    "jobSessionID": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+    "name": "a job already counted adds nothing"
+  },
+  {
+    "after": {
+      "confirmedJobCount": 2,
+      "origin": "spoken",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+      ]
+    },
+    "before": {
+      "origin": "spoken",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+      ]
+    },
+    "jobSessionID": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2",
+    "name": "no count reads as at least the one job it was filed on"
+  },
+  {
+    "after": {
+      "confirmedJobCount": 2,
+      "origin": "spoken",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+      ]
+    },
+    "before": {
+      "origin": "spoken"
+    },
+    "jobSessionID": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+    "name": "no jobs and no count: a learning was filed on one job"
+  },
+  {
+    "after": {
+      "confirmedJobCount": 4,
+      "origin": "spoken",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+      ]
+    },
+    "before": {
+      "confirmedJobCount": 3,
+      "origin": "spoken",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+      ]
+    },
+    "jobSessionID": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2",
+    "name": "a count above its jobs rises from the count"
+  },
+  {
+    "after": {
+      "confirmedJobCount": 3,
+      "origin": "spoken",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+      ]
+    },
+    "before": {
+      "confirmedJobCount": 3,
+      "origin": "spoken",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+      ]
+    },
+    "jobSessionID": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+    "name": "a count above its jobs, the same job again"
+  },
+  {
+    "after": {
+      "confirmedJobCount": 2,
+      "origin": "report",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+      ]
+    },
+    "before": {
+      "origin": "report"
+    },
+    "jobSessionID": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+    "name": "an office report's learning follows the same rule"
+  },
+  {
+    "after": {
+      "confirmedJobCount": 1,
+      "origin": "recollection",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+      ]
+    },
+    "before": {
+      "origin": "recollection"
+    },
+    "jobSessionID": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+    "name": "a sheet row merged with a job becomes job-confirmed"
+  },
+  {
+    "after": {
+      "confirmedJobCount": 2,
+      "origin": "recollection",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+      ]
+    },
+    "before": {
+      "confirmedJobCount": 1,
+      "origin": "recollection",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+      ]
+    },
+    "jobSessionID": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2",
+    "name": "a job-confirmed recollection merged with a second job"
+  },
+  {
+    "after": {
+      "confirmedJobCount": 1,
+      "origin": "recollection",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+      ]
+    },
+    "before": {
+      "confirmedJobCount": 1,
+      "origin": "recollection",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+      ]
+    },
+    "jobSessionID": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+    "name": "a job-confirmed recollection, the same job again"
+  },
+  {
+    "after": {
+      "confirmedJobCount": 4,
+      "origin": "spoken",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2",
+        "ccccccccccccccccccccccccccccccc3",
+        "ddddddddddddddddddddddddddddddd4"
+      ]
+    },
+    "before": {
+      "confirmedJobCount": 3,
+      "origin": "spoken",
+      "sourceJobIDs": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2",
+        "ccccccccccccccccccccccccccccccc3"
+      ]
+    },
+    "jobSessionID": "ddddddddddddddddddddddddddddddd4",
+    "name": "three jobs, a fourth"
+  }
+]

@@ -1,6 +1,6 @@
 # Plan NG — Team Learnings Reviewed in the Portal (what a technician files on the job reaches the company's administrator, not a reviewer phone)
 
-**Status:** 🚧 P0 and P1 built 2026-11-26, PR pending. **P0:** `Contracts/team-learning.md` §12 (the
+**Status:** 🚧 P0 and P1 merged 2026-11-27 (PR 1249, build 778); P2 catalog built 2026-11-27, PR pending. **P0:** `Contracts/team-learning.md` §12 (the
 portal binding `profileId` + `seatID`, the job session id sent only as a per-company hash, the two seat
 actions `/seats/learning-candidate` and `/seats/learning-status` with their requests, replies, paging and
 every refusal by name, and the route rule), golden fixtures in `Contracts/fixtures/team-learning-portal-v1/`,
@@ -11,7 +11,7 @@ value, on unless false) in the profile contract. **P1:** `DeviceSeatServer.sendL
 `teamLearningPortal` queue item (id and revision only), `sent` only on `received`, the status fetch after a
 foreground with its paging, the job's status line (refusals named via `send_refusal`), the route choice
 (`TeamLearningRoute`), and the new egress disclosed (route `teamLearningPortal`, manifest, both Privacy
-footers). Not built: S1 (the portal), P2 (catalog), P3 (device pass). Drafted 2026-11-25. All 10
+footers). **P2:** the four new strings (the sync label, the profile switch, both Privacy footers) in all 13 languages, add-only. **P0b** built 2026-11-27, PR pending ([below](#p0b--the-core-holds-what-the-portal-publishes-headless-found-2026-11-27-starting-s1)). Not built: S1 (the portal), P3 (device pass). Drafted 2026-11-25. All 10
 [decisions](#decisions-for-greig) taken as recommended the same day.
 **Track:** Field Assist — company knowledge. The licence portal, device seats, the team-learning corpus.
 **Builds on:** Plan [FP](FP-team-learnings.md) P1–P3 (the candidate filed on the job, its statuses, the merge
@@ -129,6 +129,38 @@ the job's status line, and the route choice from the profile. Privacy manifest a
 new egress, with `TelemetryOptOutGuardTests` and `DeviceSeatTests` extended to name it. Tests: a refused
 send stays queued, a duplicate revision is idempotent, HIPAA sends nothing, a lapsed licence stops sending and
 keeps what was published.
+
+### P0b — The core holds what the portal publishes (headless; found 2026-11-27 starting S1)
+
+S1 cannot approve or merge without restating rules the core lacks. Shipped phones run
+`CrewExperienceSet.check` on every set and refuse the whole set when any entry's `origin` is not
+`recollection`, and `CrewExperienceSet.Entry` has no `candidateID`, `sourceJobIDs` or `confirmedJobCount`.
+FP's merge rule lives only in the app (`LearningReview.merge`).
+
+- `CrewExperienceSet.check` admits `origin: spoken` beside `recollection`; `Contracts/crew-experience.md`
+  says so. The entry gains the three optional fields, absent on every sheet row.
+- The merge rule moves into the core (a job already counted adds nothing; a recollection merged with a job
+  becomes job-confirmed), with fixtures; `LearningReview.merge` calls it, and so will the service.
+- `CompanyExperienceStore` reads a `spoken` entry as `.spoken`, so it is cited as a team learning, not as
+  crew experience.
+- **Older phones.** Builds 775–778 refuse a set holding a `spoken` entry, so the service publishes one only
+  once every active seat in the company reports an app build at or above the P0b build (seat renewals carry
+  the build). Until then an approved learning waits in the portal and the queue says why.
+- **Exit tests:** the check admits both origins and still refuses any other; old sets decode unchanged; the
+  merge rule's fixtures agree between the app and the core; a spoken entry is cited as a team learning.
+
+**Built 2026-11-27, PR pending.** Crew experience contract §11 and team-learning §12.5. Core:
+`CrewExperienceSheet.spokenOrigin`, `CrewExperienceSet.origins`, the entry's `candidateID?`/`sourceJobIDs?`/
+`confirmedJobCount?` (encoded only when present: `set-v1.json` and the sealed fixture unchanged), the
+provenance rules in `check` (a `spoken` entry carries its candidate and jobs; a recollection no candidate;
+job ids are the 32-hex join keys; count ≥ jobs; one entry per candidate), `Entry.citationName` as
+`Team learning · …` for a `spoken` entry, `CrewExperienceMerge.merge(jobSessionID:into:)`, and the gate
+`CrewExperienceSet.spokenEntriesMinAppBuild` (779) with `mayPublishSpokenEntries(seatBuilds:)`,
+`mayPublish(_:seatBuilds:)` and `SeatPolicy.mayPublishCrewExperience(_:seats:profileId:now:)`. A sheet row
+whose id is a published entry keeps its origin, candidate and jobs when edited. Phone: `LearningReview.merge`
+calls the core, `CompanyExperienceStore` maps `spoken` to `.spoken` with its fields. Golden fixtures in
+`Contracts/fixtures/crew-experience-v1/learnings/`. One reading of FP's rule: a recollection's count before a
+merge is its jobs (0 for a sheet row), not FP's `max(1, jobs)`, so its first job makes it 1 (contract §11 there).
 
 ### S1 — The portal (private service repository)
 

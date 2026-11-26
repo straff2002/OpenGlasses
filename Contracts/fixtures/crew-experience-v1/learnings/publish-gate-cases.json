@@ -1,0 +1,67 @@
+[
+  {
+    "mayPublishSpokenEntries": true,
+    "name": "every seat on the first build that reads spoken entries",
+    "seatBuilds": [
+      "779",
+      "780"
+    ]
+  },
+  {
+    "mayPublishSpokenEntries": false,
+    "name": "one seat on build 778",
+    "seatBuilds": [
+      "779",
+      "778"
+    ]
+  },
+  {
+    "mayPublishSpokenEntries": false,
+    "name": "the first build that holds crew experience sets",
+    "seatBuilds": [
+      "775"
+    ]
+  },
+  {
+    "mayPublishSpokenEntries": false,
+    "name": "a seat that has not reported a build",
+    "seatBuilds": [
+      "781",
+      null
+    ]
+  },
+  {
+    "mayPublishSpokenEntries": false,
+    "name": "an empty build",
+    "seatBuilds": [
+      "781",
+      ""
+    ]
+  },
+  {
+    "mayPublishSpokenEntries": false,
+    "name": "a build that is not a number",
+    "seatBuilds": [
+      "779a"
+    ]
+  },
+  {
+    "mayPublishSpokenEntries": false,
+    "name": "a dotted build",
+    "seatBuilds": [
+      "779.1"
+    ]
+  },
+  {
+    "mayPublishSpokenEntries": true,
+    "name": "spaces around the number",
+    "seatBuilds": [
+      " 779 "
+    ]
+  },
+  {
+    "mayPublishSpokenEntries": true,
+    "name": "no active seats",
+    "seatBuilds": []
+  }
+]
