@@ -874,22 +874,6 @@ final class LensPageSessionTests: XCTestCase {
         XCTAssertTrue(sizes.contains("576×"), sizes)
         XCTAssertTrue(sizes.hasSuffix("; factor 1"), sizes)
     }
-}
-
-/// A one-step task, for the page view pushed over a task card.
-@MainActor
-private final class StubTaskSource: HUDTaskSource {
-    let title = "Invented check"
-    var current: HUDStep? = HUDStep(index: 0, total: 1, title: "Check the invented fuse")
-    var next: HUDStep? { nil }
-    var choices: [HUDChoice] { [] }
-    let subject = PassthroughSubject<Void, Never>()
-    var changes: AnyPublisher<Void, Never> { subject.eraseToAnyPublisher() }
-    private(set) var steps = 0
-    func complete() async { steps += 1 }
-    func skip() async { steps += 1 }
-    func back() async { steps += 1 }
-    func choose(_ id: String) async {}
 
     // MARK: - A stray first press (build 770)
 
@@ -952,5 +936,21 @@ private final class StubTaskSource: HUDTaskSource {
         await drain(rig)
         XCTAssertEqual(rig.session.shownState?.view, .reading)
     }
+}
+
+/// A one-step task, for the page view pushed over a task card.
+@MainActor
+private final class StubTaskSource: HUDTaskSource {
+    let title = "Invented check"
+    var current: HUDStep? = HUDStep(index: 0, total: 1, title: "Check the invented fuse")
+    var next: HUDStep? { nil }
+    var choices: [HUDChoice] { [] }
+    let subject = PassthroughSubject<Void, Never>()
+    var changes: AnyPublisher<Void, Never> { subject.eraseToAnyPublisher() }
+    private(set) var steps = 0
+    func complete() async { steps += 1 }
+    func skip() async { steps += 1 }
+    func back() async { steps += 1 }
+    func choose(_ id: String) async {}
 }
 #endif
