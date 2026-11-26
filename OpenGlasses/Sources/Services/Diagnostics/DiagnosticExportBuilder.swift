@@ -57,6 +57,9 @@ enum DiagnosticExportBuilder {
                       environment: DiagnosticExportEnvironment,
                       previousEntries: [DiagnosticRing.Entry] = [],
                       capacity: Int = DiagnosticRing.defaultCapacity,
+                      crashNotes: [CrashNote] = [],
+                      lastScreens: [LastScreens] = [],
+                      currentRun: String? = nil,
                       now: Date = Date(),
                       timeZone: TimeZone = .current) -> DiagnosticExportDocument {
         let stamp = timestampFormatter(timeZone: timeZone)
@@ -79,10 +82,48 @@ enum DiagnosticExportBuilder {
         body += eventLines.isEmpty
             ? "(no events recorded yet)"
             : eventLines.joined(separator: "\n")
-        if !previousEntries.isEmpty {
-            body += "\n\nPrevious run (may be a different app build; exit reason unknown)\n"
-            body += previousEntries.map { "\(generated.string(from: $0.timestamp))  \($0.line)" }
+        // Plan MB: each earlier run under its own heading. A run a crash note matches says it
+        // ended in a crash, with the crash and the screens it last opened; any other run keeps
+        // "exit reason unknown" — no note is not proof of a clean exit.
+        let runs = CrashRunMatcher.runs(history: previousEntries, lastScreens: lastScreens,
+                                        excluding: currentRun)
+        var crashByRun: [String: CrashNote] = [:]
+        var unidentified: [CrashNote] = []
+        for note in crashNotes.sorted(by: { $0.at < $1.at }) {
+            if case .run(let run) = CrashRunMatcher.match(note, runs: runs), crashByRun[run.id] == nil {
+                crashByRun[run.id] = note
+            } else {
+                unidentified.append(note)
+            }
+        }
+        let time: (Date) -> String = { stamp.string(from: $0) }
+        for group in Self.runGroups(previousEntries) {
+            if let run = group.run, let note = crashByRun[run],
+               let span = runs.first(where: { $0.id == run }) {
+                body += "\n\nPrevious run (may be a different app build; "
+                    + CrashReportSection.endedInCrash(note, run: span, time: time).lowercasedFirst + ")\n"
+                body += CrashReportSection.detail(note, screens: lastScreens.last { $0.run == run },
+                                                  time: time).joined(separator: "\n") + "\n"
+            } else {
+                body += "\n\nPrevious run (may be a different app build; exit reason unknown)\n"
+            }
+            body += group.entries.map { "\(generated.string(from: $0.timestamp))  \($0.line)" }
                 .joined(separator: "\n")
+        }
+        // A matched run whose events the ring no longer holds still gets its crash printed.
+        let printedRuns = Set(Self.runGroups(previousEntries).compactMap { $0.run })
+        for (run, note) in crashByRun where !printedRuns.contains(run) {
+            if let span = runs.first(where: { $0.id == run }) {
+                body += "\n\nPrevious run (its events are no longer kept; "
+                    + CrashReportSection.endedInCrash(note, run: span, time: time).lowercasedFirst + ")\n"
+                body += CrashReportSection.detail(note, screens: lastScreens.last { $0.run == run },
+                                                  time: time).joined(separator: "\n")
+            }
+        }
+        for note in unidentified {
+            body += "\n\n\(CrashReportSection.unidentifiedHeading)\n"
+            body += "Dated \(generated.string(from: note.at)) — \(note.summary)\n"
+            body += CrashReportSection.detail(note, screens: nil, time: time).joined(separator: "\n")
         }
         body += "\n"
 
@@ -91,6 +132,20 @@ enum DiagnosticExportBuilder {
                                         body: LogRedaction.redact(body),
                                         eventCount: entries.count + previousEntries.count,
                                         ringWasFull: entries.count >= capacity)
+    }
+
+    /// Earlier runs' entries in runs, in order. Entries written before runs were told apart
+    /// (`run == nil`) read as one run.
+    static func runGroups(_ entries: [DiagnosticRing.Entry]) -> [(run: String?, entries: [DiagnosticRing.Entry])] {
+        var groups: [(run: String?, entries: [DiagnosticRing.Entry])] = []
+        for entry in entries {
+            if let last = groups.last, last.run == entry.run {
+                groups[groups.count - 1].entries.append(entry)
+            } else {
+                groups.append((entry.run, [entry]))
+            }
+        }
+        return groups
     }
 
     /// The name offered to the share sheet. A date, and nothing about the session.
@@ -119,4 +174,9 @@ enum DiagnosticExportBuilder {
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss ZZZZZ"
         return formatter
     }
+}
+
+private extension String {
+    /// "Ended in a crash…" → "ended in a crash…", for the middle of a heading.
+    var lowercasedFirst: String { prefix(1).lowercased() + dropFirst() }
 }

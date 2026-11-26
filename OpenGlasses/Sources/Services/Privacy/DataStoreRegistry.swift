@@ -147,6 +147,7 @@ enum SensitiveStore: String, CaseIterable {
     case remoteInvokeAudit
     case debugEventLog
     case diagnosticBreadcrumbs
+    case crashNotes
     case turnTraces
     case pilotReports
     case activityTrail
@@ -1402,6 +1403,22 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "DiagnosticRing",
                           ownerPaths: ["OpenGlasses/Sources/Services/Diagnostics/DiagnosticRing.swift"],
                           location: "Application Support/Diagnostics/last-session.json")
+
+        case .crashNotes:
+            // Plan MB: what the system said about a crash (exception type, signal, the crashed
+            // thread's binary offsets, an exception's format string with numeric arguments only),
+            // and the screens each recent run last opened (file-name tokens). Nothing anybody said,
+            // and nothing that names anybody; it leaves only inside a report the wearer sends.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("at most \(CrashNoteStore.maxNotes) crash notes and "
+                                             + "\(DiagnosticRing.retentionDays) days; the last screens of "
+                                             + "\(LastScreensStore.maxRuns) runs; cleared with the diagnostic ring"),
+                          deleteAll: .api("CrashNoteStore.shared.clear()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "CrashNoteStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Diagnostics/CrashNoteStore.swift"],
+                          location: "Application Support/Diagnostics/crash-notes.json and last-screens.json")
 
         case .spotlightIndex:
             return Record(store: self, dataClass: .derivedIndex, subjectLinkage: .wearer,

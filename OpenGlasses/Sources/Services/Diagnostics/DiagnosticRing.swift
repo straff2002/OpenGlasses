@@ -75,7 +75,12 @@ final class DiagnosticRing: @unchecked Sendable {
 
     static let shared = DiagnosticRing(persistenceURL: FileManager.default.urls(
         for: .applicationSupportDirectory, in: .userDomainMask).first?
-        .appendingPathComponent("Diagnostics/last-session.json"))
+        .appendingPathComponent("Diagnostics/last-session.json"),
+        alsoClear: { CrashNoteStore.shared.clear(); LastScreensStore.shared.clear() })
+
+    /// What else goes when the ring is cleared: the crash notes and last screens that describe the
+    /// same runs (Plan MB). Empty for a ring made in a test.
+    private let alsoClear: () -> Void
 
     private let persistence: DiagnosticBreadcrumbStore?
 
@@ -108,7 +113,9 @@ final class DiagnosticRing: @unchecked Sendable {
          launchLimit: Int = DiagnosticRing.defaultLaunchLimit,
          clock: @escaping () -> Date = Date.init,
          runID: String = String(UUID().uuidString.prefix(8)).lowercased(),
-         persistenceURL: URL? = nil) {
+         persistenceURL: URL? = nil,
+         alsoClear: @escaping () -> Void = {}) {
+        self.alsoClear = alsoClear
         self.capacity = max(1, capacity)
         self.maxAge = maxAge
         self.launchLimit = max(0, min(launchLimit, self.capacity / 10))
@@ -253,6 +260,7 @@ final class DiagnosticRing: @unchecked Sendable {
         historyProblem = nil
         persistLocked()
         lock.unlock()
+        alsoClear()
     }
 
     /// Protected data is readable again. A launch before the phone's first unlock could not read

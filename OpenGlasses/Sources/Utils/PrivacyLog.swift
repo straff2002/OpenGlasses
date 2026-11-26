@@ -2603,6 +2603,12 @@ enum PrivacyLog {
         case operationSettledLate, chatReadbackUnconfigured, powerPosture
         case quickDisconnect
         case screenAppeared, screenDisappeared, tabSelected, listUpdated, memoryWarning
+        /// A list's data repeats a row id (`RowIdentity`). `detail` is the screen's file token and
+        /// `count` how many rows repeat; never the ids.
+        case listRowsRepeated
+        /// Crash notes the system delivered (`CrashNote`): `count` new ones kept. Nothing of the
+        /// crash itself; the note stays on the phone.
+        case crashNoteReceived
         /// Plan KR P5: a Direct turn's background time — `detail` is "began", "ended", "expired"
         /// or "replyWaiting" (the reply finished unspoken while the app was away).
         case turnBackgroundTime
