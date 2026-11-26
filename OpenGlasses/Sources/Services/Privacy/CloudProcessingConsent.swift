@@ -69,11 +69,15 @@ struct CloudProcessingTerms: Hashable, Sendable {
 }
 
 enum CloudProcessingRefusal: Error, LocalizedError {
-    case invalidDestination, permissionRequired, withdrawn, unavailable
+    /// `permissionRequired` is a question nobody could answer (the phone locked, the app in the
+    /// background); `declined` is one the person answered Not now, which is remembered until the
+    /// app restarts, so asking again in the same breath is refused the same way.
+    case invalidDestination, permissionRequired, declined, withdrawn, unavailable
     var errorDescription: String? {
         switch self {
         case .invalidDestination: return String(localized: "The service address isn't valid.")
         case .permissionRequired: return String(localized: "Avenkin needs your permission to use this service. You can allow it in Devices & Privacy > Cloud AI Sharing.")
+        case .declined: return String(localized: "You chose Not now for this service. You can allow it in Devices & Privacy > Cloud AI Sharing.")
         case .withdrawn: return String(localized: "Sharing permission for this service is off. You can review it in Devices & Privacy > Cloud AI Sharing.")
         case .unavailable: return String(localized: "Sharing permissions are unavailable. No content was sent.")
         }
@@ -197,13 +201,28 @@ final class CloudProcessingConsent: ObservableObject {
         return lease(for: terms)
     }
 
+    /// Whether `authorize` would refuse this address right now without showing a question: the
+    /// person withdrew it or chose Not now, or nobody is there to ask. The model cascade reads it
+    /// before it hops (support report, build 737: a turn fell over from a rate-limited Gemini to a
+    /// self-hosted model the wearer had answered Not now for, said it was switching, and ended on
+    /// the permission line). An approved address, or one a person on screen could still be asked
+    /// about, is not refused here.
+    func refusesWithoutAsking(url: URL, scope: CloudProcessingScope) -> Bool {
+        guard store.storageAvailable, let terms = try? CloudProcessingTerms(url: url, scope: scope) else { return true }
+        let current = outcome(terms)
+        if current.allowsProcessing { return false }
+        if case .withdrawn = current { return true }
+        if declined.contains(terms) { return true }
+        return !(presenterAvailable && foreground())
+    }
+
     func authorize(url: URL, scope: CloudProcessingScope, reviewAgain: Bool = false) async throws -> CloudProcessingLease {
         guard store.storageAvailable else { throw CloudProcessingRefusal.unavailable }
         let terms = try CloudProcessingTerms(url: url, scope: scope)
         if !reviewAgain, outcome(terms).allowsProcessing { return lease(for: terms) }
         if !reviewAgain {
             if case .withdrawn = outcome(terms) { throw CloudProcessingRefusal.withdrawn }
-            if declined.contains(terms) { throw CloudProcessingRefusal.permissionRequired }
+            if declined.contains(terms) { throw CloudProcessingRefusal.declined }
         }
         guard presenterAvailable, foreground() else {
             // Nobody can answer now, so the question waits for the next time someone can.
@@ -249,7 +268,7 @@ final class CloudProcessingConsent: ObservableObject {
         for reply in next.replies.values {
             if !store.storageAvailable { reply.resume(throwing: CloudProcessingRefusal.unavailable) }
             else if allow { reply.resume() }
-            else { reply.resume(throwing: CloudProcessingRefusal.permissionRequired) }
+            else { reply.resume(throwing: CloudProcessingRefusal.declined) }
         }
     }
 
@@ -445,12 +464,26 @@ final class CloudProcessingSocketAuthorization: @unchecked Sendable {
 }
 
 extension URLSession {
+    /// The gate both helpers pass. A conversation request refused here was already logged as
+    /// `requestSent` by its caller, so the refusal is logged too: the build 737 report showed a
+    /// 109 KB request "sent" to a model that never received it.
+    @MainActor
+    fileprivate static func authorizeRecording(url: URL, scope: CloudProcessingScope,
+                                               consent: CloudProcessingConsent?) async throws -> CloudProcessingLease {
+        do {
+            return try await (consent ?? .shared).authorize(url: url, scope: scope)
+        } catch let refusal as CloudProcessingRefusal {
+            if scope == .conversation { PrivacyLog.model(.requestWithheld, error: SafeErrorSummary(refusal)) }
+            throw refusal
+        }
+    }
+
     @MainActor
     func consentedData(for request: URLRequest, scope: CloudProcessingScope,
                        consent: CloudProcessingConsent? = nil,
                        allowSameOriginRedirects: Bool = true) async throws -> (Data, URLResponse) {
         guard let url = request.url else { throw CloudProcessingRefusal.invalidDestination }
-        let lease = try await (consent ?? .shared).authorize(url: url, scope: scope)
+        let lease = try await Self.authorizeRecording(url: url, scope: scope, consent: consent)
         guard lease.isValid else { throw CloudProcessingRefusal.withdrawn }
         let transfer = Task {
             try Task.checkCancellation()
@@ -470,7 +503,7 @@ extension URLSession {
     func consentedBytes(for request: URLRequest, scope: CloudProcessingScope,
                         consent: CloudProcessingConsent? = nil) async throws -> (URLSession.AsyncBytes, URLResponse) {
         guard let url = request.url else { throw CloudProcessingRefusal.invalidDestination }
-        let lease = try await (consent ?? .shared).authorize(url: url, scope: scope)
+        let lease = try await Self.authorizeRecording(url: url, scope: scope, consent: consent)
         guard lease.isValid else { throw CloudProcessingRefusal.withdrawn }
         let transfer = Task {
             try Task.checkCancellation()

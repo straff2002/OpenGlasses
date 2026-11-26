@@ -4735,11 +4735,11 @@ class AppState: ObservableObject, AppStateProtocol {
             if modelBeforeFieldSession == nil { modelBeforeFieldSession = Config.activeModelId }
             Config.setActiveModelId(modelId)
             llmService.refreshActiveModel()
-            PrivacyLog.app(.fieldSessionStarted, model: PrivacyToken(modelId))
+            PrivacyLog.app(.fieldSessionStarted, model: PrivacyToken(modelName: modelId))
         } else if let prev = modelBeforeFieldSession {
             Config.setActiveModelId(prev)
             llmService.refreshActiveModel()
-            PrivacyLog.app(.fieldSessionEnded, model: PrivacyToken(prev))
+            PrivacyLog.app(.fieldSessionEnded, model: PrivacyToken(modelName: prev))
             modelBeforeFieldSession = nil
         }
     }
@@ -9688,12 +9688,12 @@ class AppState: ObservableObject, AppStateProtocol {
                 Config.setActiveModelId(id)
                 llmService.refreshActiveModel()
             }
-            PrivacyLog.model(.agentSelected, model: PrivacyToken(id), detail: PrivacyToken("cloud"))
+            PrivacyLog.model(.agentSelected, model: PrivacyToken(modelName: id), detail: PrivacyToken("cloud"))
         case .switchModel(let id):
             originalModelId = Config.activeModelId
             Config.setActiveModelId(id)
             llmService.refreshActiveModel()
-            PrivacyLog.model(.agentSelected, model: PrivacyToken(id),
+            PrivacyLog.model(.agentSelected, model: PrivacyToken(modelName: id),
                              detail: PrivacyToken(classification.modelTier.rawValue))
             // BK P2c: narrate the auto-routing switch too, so the principle holds everywhere a model
             // changes under the user (not just on failure). Started, not awaited: the request below

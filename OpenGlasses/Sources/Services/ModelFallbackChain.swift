@@ -93,6 +93,9 @@ enum ModelFallbackChain {
                 // Per-candidate: a missing/expired credential (incl. refreshed-OAuth failure,
                 // which surfaces here) kills only this provider — another may still work.
                 return .terminalForCandidate
+            case .onDeviceUnavailable:
+                // This phone cannot run that model now; a cloud model still may.
+                return .terminalForCandidate
             case .invalidConfiguration:
                 return .terminalForTurn
             case .invalidResponse, .streamInterrupted:
@@ -185,6 +188,38 @@ enum ModelFallbackChain {
             if failure == .needsBiggerWindow && candidate.contextTokens <= currentWindow { return false }
             return true
         }
+    }
+
+    // MARK: - Fallbacks that cannot take the turn
+
+    /// Why a saved fallback is left out of a turn's chain before it starts.
+    enum Unusable: String, Equatable {
+        /// Its address would be refused without anyone being asked: withdrawn, answered Not now,
+        /// or nobody there to answer (`CloudProcessingConsent.refusesWithoutAsking`).
+        case sharingNotAllowed
+        /// An on-device model this phone cannot run now (Apple Intelligence not supported, off,
+        /// or still downloading).
+        case unavailableOnDevice
+    }
+
+    /// The chain without the fallbacks that cannot take this turn. The lead stays whatever is
+    /// said about it, so a lead that is refused or unavailable still says why itself.
+    ///
+    /// A refusal is terminal for the turn (`classify`), and the switch notice is said before the
+    /// attempt; so a fallback the wearer declined used to be announced, then end the turn on the
+    /// permission line, with no answer from anything (support report, build 737).
+    static func droppingUnusableFallbacks(_ candidates: [Candidate], lead: String,
+                                          unusable: (Candidate) -> Unusable?) -> (kept: [Candidate], skipped: [(Candidate, Unusable)]) {
+        var kept: [Candidate] = []
+        var skipped: [(Candidate, Unusable)] = []
+        for candidate in candidates {
+            if candidate.id != lead, let reason = unusable(candidate) {
+                skipped.append((candidate, reason))
+            } else {
+                kept.append(candidate)
+            }
+        }
+        return (kept, skipped)
     }
 
     // MARK: - Candidate list from Config

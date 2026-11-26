@@ -276,7 +276,7 @@ final class LocalLLMService: ObservableObject {
         do {
             try await task.value
         } catch is CancellationError {
-            PrivacyLog.localModel(.downloadCancelled, model: PrivacyToken(modelId))
+            PrivacyLog.localModel(.downloadCancelled, model: PrivacyToken(modelName: modelId))
             setPreparation(.cancelled, generation: generation)
             throw CancellationError()
         } catch {
@@ -288,7 +288,7 @@ final class LocalLLMService: ObservableObject {
         // The transfer returned. That — not reaching an estimated byte count — is what ends the
         // download phase.
         setPreparation(.ready, generation: generation)
-        PrivacyLog.localModel(.downloaded, model: PrivacyToken(modelId))
+        PrivacyLog.localModel(.downloaded, model: PrivacyToken(modelName: modelId))
     }
 
     /// A failure as an already-user-ready sentence for `.failed`. It says what happened, never
@@ -405,7 +405,7 @@ final class LocalLLMService: ObservableObject {
             loadedModelId = modelId
             isModelLoaded = true
             setPreparation(.ready, generation: generation)
-            PrivacyLog.localModel(.loaded, model: PrivacyToken(modelId), vision: usedVision)
+            PrivacyLog.localModel(.loaded, model: PrivacyToken(modelName: modelId), vision: usedVision)
             return
         }
 
@@ -455,7 +455,7 @@ final class LocalLLMService: ObservableObject {
                 // mapping is still a perfectly good text model: demote for this run and load
                 // through the text factory. Image turns then get the honest refusal instead
                 // of a broken load.
-                PrivacyLog.localModel(.visionDemoted, model: PrivacyToken(modelId),
+                PrivacyLog.localModel(.visionDemoted, model: PrivacyToken(modelName: modelId),
                                       error: SafeErrorSummary(error))
                 visionDemotedModelIds.insert(modelId)
                 prepared = try await load(with: LLMModelFactory.shared)
@@ -486,7 +486,7 @@ final class LocalLLMService: ObservableObject {
         loadedModelId = modelId
         isModelLoaded = true
         setPreparation(.ready, generation: generation)
-        PrivacyLog.localModel(.loaded, model: PrivacyToken(modelId), vision: loadedViaVLMFactory)
+        PrivacyLog.localModel(.loaded, model: PrivacyToken(modelName: modelId), vision: loadedViaVLMFactory)
     }
 
     /// Unload model from memory.
@@ -579,7 +579,7 @@ final class LocalLLMService: ObservableObject {
             // model DURING the turn, and the VLM→text demotion happens after the guard already
             // passed. Refuse honestly — silently answering text-only about an image the model
             // never saw is the exact hallucination the vision guard exists to prevent.
-            PrivacyLog.localModel(.imageRefused, model: PrivacyToken(loadedModelId ?? "unknown"))
+            PrivacyLog.localModel(.imageRefused, model: PrivacyToken(modelName: loadedModelId ?? "unknown"))
             return MLXTurnOutput(text: Self.visionWeightsUnavailableMessage, toolCalls: [])
         }
 
@@ -780,7 +780,7 @@ final class LocalLLMService: ObservableObject {
         let tokenIDs = Self.tokenBatch(tokens, isVisionModel: loadedViaVLMFactory)
         // Emitted before the prefill so it survives a fatal MLX crash in the unified log,
         // confirming what shape reaches the model.
-        PrivacyLog.localModel(.tokenShape, model: PrivacyToken(loadedModelId ?? "unknown"),
+        PrivacyLog.localModel(.tokenShape, model: PrivacyToken(modelName: loadedModelId ?? "unknown"),
                               tokens: tokens.count,
                               shape: PrivacyToken(tokenIDs.shape.map(String.init).joined(separator: "x")))
 
@@ -913,7 +913,7 @@ final class LocalLLMService: ObservableObject {
     private func noteToolFormat(_ format: String?) {
         guard toolFormatLoggedFor != loadedModelId else { return }
         toolFormatLoggedFor = loadedModelId
-        PrivacyLog.localModel(.toolFormat, model: PrivacyToken(loadedModelId ?? "unknown"),
+        PrivacyLog.localModel(.toolFormat, model: PrivacyToken(modelName: loadedModelId ?? "unknown"),
                               detail: PrivacyToken(format ?? "none"))
     }
 
@@ -971,7 +971,7 @@ final class LocalLLMService: ObservableObject {
             let plan = LocalModelBudget.multimodalTurnPlan(
                 for: loadedModelId, marketingRAMGB: Self.marketingRAMGB, availableBytes: headroom)
             PrivacyLog.localModel(.generationStarted,
-                                  model: PrivacyToken(loadedModelId ?? "unknown"),
+                                  model: PrivacyToken(modelName: loadedModelId ?? "unknown"),
                                   footprintMegabytes: Int(MemoryHeadroom.appFootprintBytes() / 1_048_576),
                                   headroomMegabytes: Int(headroom / 1_048_576),
                                   kilobytes: photo.count / 1024,
@@ -994,7 +994,7 @@ final class LocalLLMService: ObservableObject {
             imageLongEdge = 0
             photoPromptBudget = nil
             PrivacyLog.localModel(.generationStarted,
-                                  model: PrivacyToken(loadedModelId ?? "unknown"),
+                                  model: PrivacyToken(modelName: loadedModelId ?? "unknown"),
                                   detail: PrivacyToken("textOnly"))
         }
 
@@ -1188,7 +1188,7 @@ final class LocalLLMService: ObservableObject {
         guard !visionPlan.refusesImage else { throw LocalLLMError.insufficientMemoryForPhoto }
         let visionLongEdge = visionPlan.imageLongEdge
         PrivacyLog.localModel(.generationStarted,
-                              model: PrivacyToken(loadedModelId ?? "unknown"),
+                              model: PrivacyToken(modelName: loadedModelId ?? "unknown"),
                               count: visionLongEdge, kilobytes: imageData.count / 1024,
                               detail: PrivacyToken("visionTurn"))
         // `UserInput` (and the `CIImage` inside it) isn't `Sendable`, so it's built *inside* the
@@ -1426,7 +1426,7 @@ final class LocalLLMService: ObservableObject {
         let path = modelPath(modelId)
         if FileManager.default.fileExists(atPath: path.path) {
             try FileManager.default.removeItem(at: path)
-            PrivacyLog.localModel(.deleted, model: PrivacyToken(modelId))
+            PrivacyLog.localModel(.deleted, model: PrivacyToken(modelName: modelId))
         }
     }
 

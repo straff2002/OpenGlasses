@@ -1699,6 +1699,12 @@ enum PrivacyLog {
         // The chain started on the model that answered the last turn, not the lead it hopped
         // away from (`ModelCascadeMemory`): the configuration it started on, fingerprinted.
         case cascadeLeadDeferred
+        // A fallback left out of the chain before the turn, because it could not take it: its
+        // configuration fingerprinted, why as `reason` (`ModelFallbackChain.Unusable`).
+        case cascadeCandidateSkipped
+        // A model request stopped at the sharing gate after `requestSent` was logged for it:
+        // nothing left the phone. The refusal as `error`.
+        case requestWithheld
         // A request had no answer in time: sent a second time, or given up on so the chain moves.
         case firstReplyHedged, firstReplyGaveUp
         case apiError, streamError, streamRetry, requestFailed
@@ -2668,6 +2674,23 @@ struct PrivacyToken: Equatable, CustomStringConvertible {
                 char.isASCII && (char.isLetter || char.isNumber || char == "_" || char == "." || char == "-")
             }
         description = allowed ? raw : Self.placeholder
+    }
+
+    /// A model id as a provider names it. Ollama tags carry a colon (`qwen3-vl:4b`) and router
+    /// ids a slash (`meta-llama/llama-3.3-70b`), so the plain filter logged every one of them as
+    /// `unnamed` (support report, build 737). This admits those two characters and nothing else
+    /// more, and still drops a value shaped like an address or a sign-in (`://`, `@`, a leading
+    /// slash) or one with two colons, the shape of `user:secret:` pairs and times.
+    init(modelName raw: String) {
+        let extended = !raw.isEmpty
+            && raw.count <= Self.maxLength
+            && !raw.hasPrefix("/") && !raw.contains("://") && !raw.contains("@")
+            && raw.filter({ $0 == ":" }).count <= 1
+            && raw.allSatisfy { char in
+                char.isASCII && (char.isLetter || char.isNumber || char == "_" || char == "."
+                                 || char == "-" || char == ":" || char == "/")
+            }
+        description = extended ? raw : Self.placeholder
     }
 
     /// The case name of an enum value, with any associated payload left behind.

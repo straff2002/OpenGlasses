@@ -144,13 +144,13 @@ struct ProviderRejection: Equatable, Sendable {
         // A failure reported inside a stream that opened with 200 was reached and answered; what
         // came back was not a reply.
         return SafeErrorSummary(category: status == 200 ? .badServerResponse : base.category,
-                                detail: errorType.map(PrivacyToken.init) ?? base.detail,
+                                detail: errorType.map { PrivacyToken($0) } ?? base.detail,
                                 code: status)
     }
 
     var reasonToken: PrivacyToken { PrivacyToken(reason.rawValue) }
 
-    var requestToken: PrivacyToken? { requestID.map(PrivacyToken.init) }
+    var requestToken: PrivacyToken? { requestID.map { PrivacyToken($0) } }
 
     // MARK: - The message, read once
 

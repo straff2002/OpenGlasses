@@ -58,6 +58,11 @@ enum ToolExposureReason: String, Equatable, Sendable {
     case contextShare
     /// Automatic with no known context window for the model: today's full list is kept.
     case `default`
+    /// Automatic with no known context window on a custom endpoint: on demand. Almost any window
+    /// the full set fits in under a tenth is larger than the self-hosted models these endpoints
+    /// usually serve, and an Ollama server trims an overlong prompt without saying so (support
+    /// report, build 737: 107 tools, ~23k tokens, offered to a 4B model).
+    case unknownWindow
     /// The on-device path, which has always carried its own reduced list (`localSafeTools`) and
     /// is outside the setting.
     case onDevice
@@ -109,9 +114,12 @@ enum ToolExposurePolicy {
     ///   - contextWindow: the model's window in tokens, nil when not known.
     ///   - core: the core set for this turn (`ToolExposureCore.names`), not yet intersected.
     ///   - remembered: tools this conversation already used or looked up.
+    ///   - onDemandWhenWindowUnknown: Automatic goes on demand rather than full when the window
+    ///     is not known (a custom endpoint, `ToolExposureReason.unknownWindow`).
     static func decide(mode: ToolDefinitionsMode, available: [String], fullSetBytes: Int,
                        contextWindow: Int?, core: Set<String>,
-                       remembered: Set<String>) -> ToolExposureDecision {
+                       remembered: Set<String>,
+                       onDemandWhenWindowUnknown: Bool = false) -> ToolExposureDecision {
         let availableSet = Set(available)
         let tokens = estimatedTokens(bytes: fullSetBytes)
         let exposure: ToolExposure
@@ -125,6 +133,8 @@ enum ToolExposurePolicy {
             if let window = contextWindow {
                 exposure = crowds(fullSetTokens: tokens, contextWindow: window) ? .core : .full
                 reason = .contextShare
+            } else if onDemandWhenWindowUnknown {
+                (exposure, reason) = (.core, .unknownWindow)
             } else {
                 (exposure, reason) = (.full, .default)
             }
