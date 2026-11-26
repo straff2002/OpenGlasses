@@ -166178,6 +166178,170 @@
         }
       }
     },
+    "Crew experience · %lld fixes · updated %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "خبرة الطاقم · عدد الإصلاحات: %lld · آخر تحديث %@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Experiencia del equipo · %lld soluciones · actualizada el %@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expérience de l’équipe · %lld correctifs · mise à jour le %@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Csapattapasztalat · %lld javítás · frissítve: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esperienza della squadra · %lld soluzioni · aggiornata il %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チームの経験 · 修理 %lld 件 · %@ 更新"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "팀 경험 · 해결 방법 %lld개 · %@ 업데이트"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ervaring van de ploeg · %lld oplossingen · bijgewerkt %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Experiência da equipe · %lld soluções · atualizada em %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Опыт бригады · исправлений: %lld · обновлено %@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "عملے کا تجربہ · %lld حل · %@ کو اپ ڈیٹ ہوا"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "团队经验 · %lld 个解决方法 · %@ 更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "團隊經驗 · %lld 個解決方法 · %@ 更新"
+          }
+        }
+      }
+    },
+    "Crew experience · 1 fix · updated %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "خبرة الطاقم · إصلاح واحد · آخر تحديث %@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Experiencia del equipo · 1 solución · actualizada el %@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expérience de l’équipe · 1 correctif · mise à jour le %@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Csapattapasztalat · 1 javítás · frissítve: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esperienza della squadra · 1 soluzione · aggiornata il %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チームの経験 · 修理 1 件 · %@ 更新"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "팀 경험 · 해결 방법 1개 · %@ 업데이트"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ervaring van de ploeg · 1 oplossing · bijgewerkt %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Experiência da equipe · 1 solução · atualizada em %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Опыт бригады · 1 исправление · обновлено %@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "عملے کا تجربہ · 1 حل · %@ کو اپ ڈیٹ ہوا"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "团队经验 · 1 个解决方法 · %@ 更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "團隊經驗 · 1 個解決方法 · %@ 更新"
+          }
+        }
+      }
+    },
     "critical" : {
       "localizations" : {
         "ar" : {
