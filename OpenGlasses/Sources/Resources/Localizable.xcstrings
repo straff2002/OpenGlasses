@@ -710232,6 +710232,88 @@
         }
       }
     },
+    "You chose Not now for this service. You can allow it in Devices & Privacy > Cloud AI Sharing." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لقد اخترت «ليس الآن» لهذه الخدمة. يمكنك السماح بذلك في الأجهزة والخصوصية > مشاركة الذكاء الاصطناعي السحابي."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elegiste “Ahora no” para este servicio. Puedes permitirlo en Dispositivos y privacidad > Compartir con IA en la nube."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous avez choisi « Pas maintenant » pour ce service. Vous pouvez l’autoriser dans Appareils et vie privée > Partage avec l’IA cloud."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ennél a szolgáltatásnál a „Most nem” lehetőséget választotta. Ezt itt engedélyezheti: Eszközök és adatvédelem > Megosztás felhős AI-val."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hai scelto «Non ora» per questo servizio. Puoi consentirlo in Dispositivi e privacy > Condivisione con IA cloud."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このサービスで「今はしない」を選択しました。デバイスとプライバシー > クラウドAIとの共有で許可できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 서비스에 대해 '지금은 아님'을 선택했습니다. 장치 및 개인정보 보호 > 클라우드 AI 공유에서 허용할 수 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "U hebt voor deze dienst “Niet nu” gekozen. U kunt dit toestaan in Apparaten en privacy > Delen met cloud-AI."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você escolheu “Agora não” para este serviço. Você pode permitir em Dispositivos e privacidade > Compartilhamento com IA na nuvem."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вы выбрали «Не сейчас» для этого сервиса. Разрешить его можно в разделе «Устройства и конфиденциальность > Передача данных облачному ИИ»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ نے اس سروس کے لیے “ابھی نہیں” منتخب کیا۔ آپ اسے ڈیوائسز اور رازداری > کلاؤڈ AI شیئرنگ میں اجازت دے سکتے ہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你已为此服务选择了“以后”。你可以在“设备与隐私”>“云端 AI 共享”中允许。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你已為此服務選擇了「現在不要」。你可以在「裝置與隱私」>「雲端 AI 分享」中允許。"
+          }
+        }
+      }
+    },
     "you had withdrawn your consent" : {
       "comment" : "Activity screen: refusal reason.",
       "localizations" : {
