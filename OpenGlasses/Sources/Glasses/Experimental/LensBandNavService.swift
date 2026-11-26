@@ -6,8 +6,9 @@ import Foundation
 
 /// Listens to the Neural Band while the manual page view is on the lens, and hands each input to
 /// the page view (`LensPageSession.handleBand`), which acts only on left and right
-/// (`LensBandNavMap`): a close-up's halves, and the page before or after at fit width. The decision
-/// is the page view's, in ordinary code; this only opens and closes the channel.
+/// (`LensBandNavMap`): a close-up's halves, the page before or after at fit width, a spoken zoom
+/// half a crop, and the pages of the whole page and of reading mode. The decision is the page
+/// view's, in ordinary code; this only opens and closes the channel.
 ///
 /// - **Only while it can matter.** The channel is opened when the page view itself is on the lens,
 ///   a pair's link is connected, the Inputs probe is not running and the wearer's switch lets the

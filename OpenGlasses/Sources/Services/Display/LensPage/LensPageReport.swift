@@ -114,7 +114,10 @@ struct LensPageStats: Equatable {
         /// Plan MU §7 (flagged builds only): band swipes acted on, each a send, and which kind.
         var bandSwipes = 0
         var bandHalves = 0
+        /// Staged pages turned: at fit width, and (as they open) from the whole page or reading mode.
         var bandPages = 0
+        /// Reading mode's text pages turned.
+        var bandTexts = 0
         /// Plan NB §1: swipes that moved a zoomed view half a crop left or right (also moves).
         var bandPans = 0
         /// Left or right with nothing to do in the view, or at an edge.
@@ -198,7 +201,7 @@ enum LensPageReport {
             if entry.bandUsed {
                 // Plan MU §7: only a flagged (TestFlight-only) build hears the band.
                 lines.append("    Band: swipes acted on \(entry.bandSwipes) (halves \(entry.bandHalves),"
-                             + " pages \(entry.bandPages), pans \(entry.bandPans)), nothing to do \(entry.bandNothingToDo),"
+                             + " pages \(entry.bandPages), text pages \(entry.bandTexts), pans \(entry.bandPans)), nothing to do \(entry.bandNothingToDo),"
                              + " dropped in a burst \(entry.bandDropped), other inputs \(entry.bandOther);"
                              + " listening \(entry.bandListening), failed \(entry.bandFailures)")
             }

@@ -463,12 +463,9 @@ final class LensPageSession: ObservableObject {
             return
         case .showHere:
             return
-        case .nextText:
-            guard shown.isReading, shown.readingIndex + 1 < shown.readingPages.count else { return }
-            next.readingIndex += 1; event = .readPage
-        case .previousText:
-            guard shown.isReading, shown.readingIndex > 0 else { return }
-            next.readingIndex -= 1; event = .readPage
+        case .nextText, .previousText:
+            guard let turned = Self.turnedText(shown, forward: action == .nextText) else { return }
+            next = turned; event = .readPage
         case .showPicture:
             guard shown.isReading else { return }
             next = Self.pictureState(shown)
@@ -594,11 +591,24 @@ final class LensPageSession: ObservableObject {
         return true
     }
 
+    /// Reading mode's next (or previous) text page from `shown`, as **Next ›** and **‹ Back** turn
+    /// it; nil out of reading mode or with no text page that way.
+    static func turnedText(_ shown: HUDPageViewState, forward: Bool) -> HUDPageViewState? {
+        guard shown.isReading else { return nil }
+        let target = shown.readingIndex + (forward ? 1 : -1)
+        guard shown.readingPages.indices.contains(target) else { return nil }
+        var next = shown
+        next.readingIndex = target
+        return next
+    }
+
     /// Plan MU §7 (P6): one input from the band, heard only in a flagged (TestFlight-only) build,
-    /// whose Inputs wiring calls this. Left and right move a close-up between its halves, and fit
-    /// width to the page before or after (`LensBandNavMap`), one send each; up and down stay the
-    /// lens's own scroll and nothing else is mapped. One send at a time (`LensBandNavGate`): a burst
-    /// is dropped, never queued. A swipe is counted on its own, not as a press.
+    /// whose Inputs wiring calls this. Left and right move a close-up between its halves, fit width
+    /// to the page before or after, a spoken zoom half a crop, reading mode a text page, and the
+    /// whole page (and reading mode past its ends) to the staged page before or after as it opens
+    /// (`LensBandNavMap`), one send each; up and down stay the lens's own scroll and nothing else is
+    /// mapped. One send at a time (`LensBandNavGate`): a burst is dropped, never queued. A swipe is
+    /// counted on its own, not as a press.
     @discardableResult
     func handleBand(_ input: GlassesInputKind) -> LensBandOutcome {
         guard isViewOnLens, let shown = shownState else { return .notOnLens }
@@ -646,6 +656,22 @@ final class LensPageSession: ObservableObject {
             }
             stats.update(backend()) { $0.bandSwipes += 1; $0.bandPans += 1 }
             draw(next, event: .moved, issuedAgainst: revision, band: true)
+        case .nextText, .previousText:
+            // Reading mode, as Next › and ‹ Back turn it; the map has already checked the ends.
+            guard var next = Self.turnedText(shown, forward: action == .nextText) else {
+                bandGate.finished()
+                stats.update(backend()) { $0.bandNothingToDo += 1 }
+                return .nothingToDo
+            }
+            next.isFirstFrame = false
+            next = next.framed()
+            stats.update(backend()) { $0.bandSwipes += 1; $0.bandTexts += 1 }
+            draw(next, event: .readPage, issuedAgainst: revision, band: true)
+        case .previousPageAsOpened, .nextPageAsOpened:
+            // The whole page, or reading mode past its ends: the staged page as it opens, as
+            // Next page › opens it.
+            stats.update(backend()) { $0.bandSwipes += 1; $0.bandPages += 1 }
+            goToPage(pageIndex + (action == .nextPageAsOpened ? 1 : -1), issuedAgainst: revision, band: true)
         }
         return .sent(action)
     }
