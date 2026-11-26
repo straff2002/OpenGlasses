@@ -384,6 +384,7 @@ struct GoogleCalendarHelpSheet: View {
                     Text("Your Google events then appear in My Day like any other calendar. You sign in with Google in Settings, never in this app.")
                 }
             }
+            .diagnosticScreen()
             .navigationTitle("Add Google Calendar")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

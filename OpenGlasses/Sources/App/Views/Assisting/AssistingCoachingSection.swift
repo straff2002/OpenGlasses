@@ -184,6 +184,7 @@ struct CoachingStepEditor: View {
                 }
             }
         }
+        .diagnosticScreen()
         .navigationTitle("Coaching step")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

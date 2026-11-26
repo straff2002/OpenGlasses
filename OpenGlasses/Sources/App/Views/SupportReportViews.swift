@@ -17,12 +17,19 @@ struct SupportPromptBanner: View {
                 .foregroundStyle(OGTheme.warnLabel)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("That didn't work")
-                    .font(.subheadline.weight(.semibold))
-                Text(verbatim: "\(prompt.at.formatted(date: .omitted, time: .shortened)) — \(prompt.reason).")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                if prompt.crashNoteID != nil {
+                    // After a crash (Plan MB): the reason is the whole offer, already worded.
+                    Text(verbatim: prompt.reason)
+                        .font(.subheadline.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("That didn't work")
+                        .font(.subheadline.weight(.semibold))
+                    Text(verbatim: "\(prompt.at.formatted(date: .omitted, time: .shortened)) — \(prompt.reason).")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 4)
             Button("Send to support", action: onSend)
@@ -163,7 +170,7 @@ struct SupportReportSheet: View {
                     replyCoverage(threadId: threadId)
                 }
 
-                if isDay {
+                if isDay && !request.options.technicalOnly {
                     OGSection(footer: "Chats and questions from this day that weren't part of a job. Turn off to send jobs only.") {
                         Toggle("Include conversations outside jobs", isOn: $request.options.otherConversations)
                             .padding(.horizontal, 16)
@@ -212,7 +219,11 @@ struct SupportReportSheet: View {
     private func content(_ document: JobTranscriptExport.Document) -> some View {
         OGNotice(text: maskingSummary(document), systemImage: "eye.slash")
 
-        OGNotice(text: "Includes company, technician name and ID, licence details and enrolment when configured.", systemImage: "person.text.rectangle")
+        if request.options.technicalOnly {
+            OGNotice(text: "Only the technical record goes: where the app closed, the screens last open, the app's events and this phone. No conversations, jobs or names.", systemImage: "wrench.and.screwdriver")
+        } else {
+            OGNotice(text: "Includes company, technician name and ID, licence details and enrolment when configured.", systemImage: "person.text.rectangle")
+        }
         OGSection(header: "What's in it") {
             Text(verbatim: summary(document))
                 .font(.callout)

@@ -141,7 +141,10 @@ struct DiagnosticExportView: View {
             entries: DiagnosticRing.shared.entries,
             environment: .current,
             previousEntries: DiagnosticRing.shared.previousEntries,
-            capacity: DiagnosticRing.shared.capacity
+            capacity: DiagnosticRing.shared.capacity,
+            crashNotes: CrashNoteStore.shared.notes,
+            lastScreens: LastScreensStore.shared.all,
+            currentRun: DiagnosticRing.shared.runID
         )
         document = built
         previewLines = built.body.components(separatedBy: "\n")

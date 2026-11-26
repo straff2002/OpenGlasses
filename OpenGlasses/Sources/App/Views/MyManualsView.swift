@@ -118,6 +118,7 @@ struct MyManualsView: View {
                 }
             }
         }
+        .diagnosticScreen()
         .navigationTitle("My Manuals")
         .task { if store.myManualsProducts.isEmpty { await store.loadProducts() } }
         // A plan that has just started, or a model missing since launch (Plan JY P1). A no-op when
@@ -187,7 +188,8 @@ struct MyManualsView: View {
                         Button("Restore purchases") { Task { await store.restorePurchases() } }.disabled(store.isRestoring)
                         if let notice = store.purchaseError ?? store.restoreMessage { Text(notice).font(.caption) }
                     }
-                }.navigationTitle("Upload manual")
+                }
+                .diagnosticScreen().navigationTitle("Upload manual")
                     .toolbar { ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { upload.discard(); pendingUpload = nil }
                     } }
@@ -357,6 +359,7 @@ private struct MyManualsPurchaseView: View {
                     Text(MyManualsPaywallCopy.disclosure).font(.footnote)
                 }
             }
+            .diagnosticScreen()
             .navigationTitle("My Manuals plans")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
             .task { if store.myManualsProducts.isEmpty { await store.loadProducts() } }

@@ -45,6 +45,7 @@ struct ExpertCardImportSheet: View {
                     } footer: {
                         Text("Check these against your own records. They aren't stored on the list.")
                     }
+                    .uniqueRowsCheck(card.licences)
                 }
 
                 Section {

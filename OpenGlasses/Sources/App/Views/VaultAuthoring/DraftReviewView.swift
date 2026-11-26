@@ -359,6 +359,7 @@ private struct DraftRowEditor: View {
                 TextField("Page", text: $page)
                     .keyboardType(.numbersAndPunctuation)
             }
+            .diagnosticScreen()
             .navigationTitle("Edit row")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

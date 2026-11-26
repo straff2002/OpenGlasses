@@ -76,6 +76,7 @@ struct ManualPickerView: View {
                 }
                 if let notice { Text(notice).foregroundStyle(.secondary) }
             }
+            .diagnosticScreen()
             .navigationTitle("My Manuals")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

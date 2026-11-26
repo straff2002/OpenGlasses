@@ -102,6 +102,7 @@ struct PhotographedManualsView: View {
             }
             if manuals.isEmpty && unfinished.isEmpty {Text("No photographed manuals on this phone.")}
         }
+        .diagnosticScreen()
         .navigationTitle("Photographed manuals")
         .task {reload()}
         .onChange(of:captures.revision) {_,_ in reload()}

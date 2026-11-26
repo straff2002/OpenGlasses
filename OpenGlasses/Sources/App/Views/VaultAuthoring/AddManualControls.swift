@@ -167,6 +167,7 @@ struct AddManualDetailsSheet: View {
                 if adding { Section { ProgressView("Checking…") } }
                 if let errorMessage { Section { OGStatusLabel(errorMessage, kind: .error) } }
             }
+            .diagnosticScreen()
             .navigationTitle("Add manual")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

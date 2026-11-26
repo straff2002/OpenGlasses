@@ -57,6 +57,7 @@ struct WritingStyleSettingsView: View {
                 }
             }
         }
+        .diagnosticScreen()
         .navigationTitle("Your style")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -105,6 +106,7 @@ struct DraftCloudConsentSheet: View {
                     }
                 }
             }
+            .diagnosticScreen()
             .navigationTitle("Use \(target.providerName) to write drafts?")
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .bottom) {

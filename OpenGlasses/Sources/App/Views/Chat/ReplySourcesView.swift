@@ -51,6 +51,7 @@ struct WebSourcesButton: View {
                         }
                     }
                 }
+                .diagnosticScreen()
                 .navigationTitle("Sources")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {

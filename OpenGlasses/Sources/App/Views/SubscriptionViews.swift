@@ -108,6 +108,7 @@ struct StandardSubscriptionSheet: View {
             Form {
                 StandardPaywallSection(store: store) { dismiss() }
             }
+            .diagnosticScreen()
             .navigationTitle("Standard")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
             .task { if store.standardProducts.isEmpty { await store.loadProducts() } }
@@ -160,6 +161,7 @@ struct SubscriptionSettingsView: View {
                 Text("Each includes no daily limit.")
             }
         }
+        .diagnosticScreen()
         .navigationTitle("Subscription")
         .onAppear { allowance.refresh() }
         .task { if store.standardProducts.isEmpty { await store.loadProducts() } }

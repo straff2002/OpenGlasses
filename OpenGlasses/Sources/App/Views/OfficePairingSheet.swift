@@ -108,6 +108,7 @@ struct OfficePairingSheet: View {
                     Text("Use the LAN address shown in Avenkin Office. The phone checks its saved approval again, pins the office certificate and opens no shared folders. Keep this screen open for the test.")
                 }
             }
+            .diagnosticScreen()
             .navigationTitle("Pair Avenkin Office")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }

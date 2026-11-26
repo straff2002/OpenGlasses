@@ -52,6 +52,7 @@ struct NewVaultSheet: View {
                     Section { OGStatusLabel(errorMessage, kind: .error) }
                 }
             }
+            .diagnosticScreen()
             .navigationTitle(moving ? Text("Move into a vault") : Text("New Vault"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

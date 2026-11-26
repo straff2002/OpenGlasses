@@ -252,6 +252,9 @@ struct OpenGlassesApp: App {
         // the OS log already receives — so this collects nothing new; only exporting it needs
         // consent, and that is a preview the wearer reads in full.
         DiagnosticRing.shared.attach()
+        // Plan MB: this run's last-screens record, beside the ring's, so a crash cannot lose where
+        // the person was. Reads the earlier runs' records first.
+        LastScreensStore.shared.begin(run: DiagnosticRing.shared.runID, build: AppBuildIdentity.current.build)
         // Read how this launch found the disk before anything below writes to it. Both migrations
         // that follow write defaults keys this reads, and the question it answers — "did this
         // install's preferences survive, or only its Keychain?" — is only answerable now.
@@ -525,6 +528,7 @@ struct OpenGlassesApp: App {
                     appState.cameraService.notePresence(protectedDataAvailable: true)   // Plan HJ P1
                     // The app event log's earlier runs, if a locked launch could not read them.
                     DiagnosticRing.shared.protectedDataDidBecomeAvailable()
+                    LastScreensStore.shared.protectedDataDidBecomeAvailable()
                     // Retry a migration that deferred while locked, then sweep abandoned exports.
                     FHIRConfigurationStore.shared.migrateIfNeeded()
                     appState.medicalExportService.leases.scavenge()
@@ -828,6 +832,8 @@ struct OpenGlassesApp: App {
                 appState.takePendingLiveHintsCommand(trigger: "active")
                 // Plan KR P5: a reply that finished unheard while the app was away is mentioned.
                 appState.sayReplyWaitingIfAny()
+                // Plan MB: a crash note that arrived while another offer was up.
+                appState.offerCrashReportIfDue()
                 // Plan FF P1/PR3: opening the app counts whether it was launched or merely
                 // brought back — but it runs the same gate, so a session the wearer stopped stays
                 // stopped and a repeated activation does not stack a second start on the first.

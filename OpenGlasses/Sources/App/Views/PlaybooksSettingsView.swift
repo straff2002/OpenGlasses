@@ -670,6 +670,7 @@ struct VariablePickerSheet: View {
                     .foregroundStyle(Color(.label))
                 }
             }
+            .uniqueRowsCheck(variables.map(\.name))
             .navigationTitle("Insert Variable")
             .navigationBarTitleDisplayMode(.inline)
             .ogFormStyle()

@@ -81,6 +81,7 @@ struct NameplateModelSheet: View {
                 }
                 if let errorMessage { Section { OGStatusLabel(errorMessage, kind: .error) } }
             }
+            .diagnosticScreen()
             .navigationTitle("Add this model")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

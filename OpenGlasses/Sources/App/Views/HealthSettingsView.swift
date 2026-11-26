@@ -65,6 +65,7 @@ struct HealthSettingsView: View {
                 #endif
             }
         }
+        .diagnosticScreen()
         .navigationTitle("Health")
         .task { await refreshState() }
     }
