@@ -153,7 +153,7 @@ final class CrashNoteTests: XCTestCase {
     /// iOS 27's `CrashDiagnostic` carries the Objective-C reason as a nested struct; decoded from
     /// the same crash it makes the same note.
     func testTheIOS27ShapeMakesTheSameNote() throws {
-        #if canImport(MetricKit)
+        #if canImport(MetricKit) && compiler(>=6.4)
         guard #available(iOS 27.0, *) else { throw XCTSkip("CrashDiagnostic needs iOS 27") }
         let json = """
         {"callStackTree":{"callStackPerThread":true,"binaryInfo":[
@@ -176,7 +176,7 @@ final class CrashNoteTests: XCTestCase {
                                window: DateInterval(start: legacy.windowStart, end: legacy.windowEnd))
         XCTAssertEqual(modern, legacy)
         #else
-        throw XCTSkip("MetricKit is not available")
+        throw XCTSkip("CrashDiagnostic needs the iOS 27 SDK")
         #endif
     }
 

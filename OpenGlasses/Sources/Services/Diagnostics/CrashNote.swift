@@ -342,7 +342,9 @@ extension CrashNote {
 
 // MARK: - iOS 27: the CrashDiagnostic struct
 
-#if canImport(MetricKit)
+// The type is in the iOS 27 SDK only (Xcode 27, Swift 6.4); a 26.x toolchain builds without it and
+// reads every crash through `MXDiagnosticPayload`'s JSON, which iOS 27 still delivers.
+#if canImport(MetricKit) && compiler(>=6.4)
 @available(iOS 27.0, macOS 27.0, *)
 extension CrashNote {
 

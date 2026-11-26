@@ -36,6 +36,8 @@ final class CrashDiagnosticsSubscriber: NSObject, @unchecked Sendable {
         MXMetricManager.shared.add(self)
         // Payloads the system delivered while the app was not subscribed.
         receive(MXMetricManager.shared.pastDiagnosticPayloads, store: store)
+        // The newer API is in the iOS 27 SDK only (Xcode 27, Swift 6.4); see `CrashNote(crash:…)`.
+        #if compiler(>=6.4)
         if #available(iOS 27.0, *) {
             let manager = MetricManager()
             reportTask = Task.detached(priority: .utility) { [weak self] in
@@ -50,6 +52,7 @@ final class CrashDiagnosticsSubscriber: NSObject, @unchecked Sendable {
                 }
             }
         }
+        #endif
         #endif
     }
 
