@@ -20,7 +20,15 @@ view's three-button row with follow-ups on Actions; Keep answers up (Until close
 minutes), "show that again" for the conversation's life, "hide that" and "put it away" as Close.
 Not done: P8's device checks, P6's included (and the fit check's one reading in P0). **All 10 decisions
 taken 2026-11-21:** 1–8 and 10 as recommended (7 is the owner's own suggestion); 9 declined, so §8's
-request to Meta is not filed.
+request to Meta is not filed. **2026-11-26, from a build 770 report on a Ray-Ban Display:** "show
+me the page" was seen opening on the passage's words, and on a table page on its rows, as if the
+first pinch landed on **Read it** or **Rows** rather than the picture (focus on the picture,
+`focusesFirstBlock`, was measured on the simulated Display only; the Display API neither sets nor
+reports focus). `LensOpeningPress` now sends a lens press on either button on a page's opening
+frame to the close-up, unless the wearer moved focus on that frame (a band input); the phone
+preview's taps and the spoken "read it" and "rows" are kept. Every press (`lensPagePressed`) and
+every frame's view (`lensPageShown`) is now in the app's log, which outlives a crash; the report
+counts "first presses taken to the close-up". P8 checks where the lens's focus lands on open.
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay`; DAT 1.1.0, adopted on
 `chore/dat-1-1-0`, adds nothing to the Display). Every picture sent to the lens, the reading view
 (Plan MG §2), the answer card's lifetime (Plan KP §3, MG decision 4) and the page view (Plan KV,

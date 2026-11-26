@@ -167,7 +167,12 @@ final class LensPageSession: ObservableObject {
     /// wrist gestures, which listen only while a view they can change is up.
     @Published private(set) var shownView: HUDPageViewState.View?
     /// The screen last handed to the lens: what a band press acts on.
-    private(set) var shownScreen: HUDScreen?
+    private(set) var shownScreen: HUDScreen? {
+        didSet { focusMovedOnFrame = false }
+    }
+    /// The wearer moved focus on the frame the lens holds (a band input; flagged builds only), so
+    /// a press on it is the button they chose (`LensOpeningPress`).
+    private var focusMovedOnFrame = false
     private var route: Route = .requested
     @Published private(set) var stats = LensPageStats()
 
@@ -352,6 +357,7 @@ final class LensPageSession: ObservableObject {
             self.shownState = state
             self.shownScreen = screen
             self.viewPresses = 0
+            Self.logShown(state, band: false)
             self.stats.update(self.backend()) { entry in
                 entry.viewsOpened += 1
                 if state.isReading { entry.readingViews += 1 }
@@ -386,13 +392,27 @@ final class LensPageSession: ObservableObject {
     ///
     /// Plan NB §3: a press that ends a pinch-and-twist (or pinch-and-move) is dropped and counted
     /// (`ClutchPressGuard`): Meta presses the focused button with the pinch's `select`.
+    ///
+    /// Build 770: a stray first press from the lens on **Rows** or **Read it** opens the close-up
+    /// (`LensOpeningPress`); `fromLens` is false for the phone preview's. Each press is logged with
+    /// the view it was made on, so a report shows how the wearer got where they did.
     @discardableResult
-    func press(itemID id: String) -> Bool {
-        guard held != nil, let shown = shownScreen else { return false }
+    func press(itemID pressed: String, fromLens: Bool = true) -> Bool {
+        guard let held, let shown = shownScreen else { return false }
         if held == .view, pressGuard.swallows(at: clock()) {
             stats.update(backend()) { $0.twistPressesSwallowed += 1 }
             return false
         }
+        var id = pressed
+        if held == .view, let state = shownState {
+            id = LensOpeningPress.target(of: pressed, on: state, screen: shown, fromLens: fromLens,
+                                         focusMoved: focusMovedOnFrame)
+            if id != pressed { stats.update(backend()) { $0.openingPressesTaken += 1 } }
+        }
+        PrivacyLog.device(.hud, .lensPagePressed, state: PrivacyToken(LensOpeningPress.token(for: pressed)),
+                          command: PrivacyToken(fromLens ? "lens" : "phone"),
+                          reason: id != pressed ? PrivacyToken("openingPress") : nil,
+                          detail: PrivacyToken(held == .cue ? "cue" : shownState?.view.token ?? "none"))
         if let item = shown.items.first(where: { $0.id == id }) {
             item.action()
             return true
@@ -612,6 +632,8 @@ final class LensPageSession: ObservableObject {
     @discardableResult
     func handleBand(_ input: GlassesInputKind) -> LensBandOutcome {
         guard isViewOnLens, let shown = shownState else { return .notOnLens }
+        // Meta moves the lens's focus with the band's directions, so a press after one is chosen.
+        if case .nav = input { focusMovedOnFrame = true }
         guard let nav = LensBandNav(input) else {
             stats.update(backend()) { $0.bandOther += 1 }
             return .notMapped
@@ -936,6 +958,7 @@ final class LensPageSession: ObservableObject {
             if band { self.bandPendingKey = screen.renderKey }
             self.shownState = next
             self.shownScreen = screen
+            Self.logShown(next, band: band)
             self.noteSent(screen)
             self.stats.update(self.backend()) { entry in
                 switch event {
@@ -1039,6 +1062,7 @@ final class LensPageSession: ObservableObject {
             self.pageIndex = target
             self.shownState = state
             self.shownScreen = screen
+            Self.logShown(state, band: band)
             self.stats.update(self.backend()) { entry in
                 if forward { entry.nextPages += 1 }
                 if atFitWidth { entry.fitWidths += 1 }
@@ -1216,6 +1240,13 @@ final class LensPageSession: ObservableObject {
         await Task.detached(priority: .userInitiated) {
             LensPageSlicer.slice(image, plannedSize: plannedSize, pieces: pieces)
         }.value
+    }
+
+    /// Each frame of the view handed to the lens, by its view (build 770: the report could not say
+    /// which view a wearer had reached). `detail` is `band` for a frame a band swipe drew.
+    private static func logShown(_ state: HUDPageViewState, band: Bool) {
+        PrivacyLog.device(.hud, .lensPageShown, state: PrivacyToken(state.view.token),
+                          detail: band ? PrivacyToken("band") : nil)
     }
 
     private func renderFailed(_ page: Page) {

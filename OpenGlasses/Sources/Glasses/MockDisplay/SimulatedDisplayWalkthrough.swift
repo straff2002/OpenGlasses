@@ -88,9 +88,13 @@ struct SimulatedDisplayWalkthrough {
         await pressPage(HUDPageScreenBuilder.ItemID.back, "page1-back")
         await pressPage(HUDPageScreenBuilder.ItemID.close, "page1-close")
         // A cited passage on the text page: the whole page, the passage highlighted and its first
-        // sentence under it; Read it pages its words, and Page goes back to the picture.
+        // sentence under it. A first press from the lens on Read it reads the page closely
+        // (`LensOpeningPress`, build 770); after Back, Read it pages its words, and Page goes back
+        // to the picture.
         await stage(SimulatedDisplayTestManual.staged(page: 4, cited: true), words: "how do I clear a latched fault")
         await capture("page4-whole")
+        await pressPage(HUDPageScreenBuilder.ItemID.readIt, "page4-first-press-close-up")
+        await pressPage(HUDPageScreenBuilder.ItemID.back, "page4-first-press-back")
         await pressPage(HUDPageScreenBuilder.ItemID.readIt, "page4-read-it")
         await pressPage(HUDPageScreenBuilder.ItemID.nextText, "page4-reading-next")
         await pressPage(HUDPageScreenBuilder.ItemID.showPicture, "page4-picture")
@@ -99,6 +103,8 @@ struct SimulatedDisplayWalkthrough {
         // Two cited passages on the page: both outlined, numbered.
         await stage(SimulatedDisplayTestManual.staged(page: 4, citedTwice: true), words: "how do I clear a latched fault")
         await capture("page4-two-passages")
+        await pressPage(HUDPageScreenBuilder.ItemID.readIt, "page4-two-first-press-close-up")
+        await pressPage(HUDPageScreenBuilder.ItemID.back, "page4-two-first-press-back")
         await pressPage(HUDPageScreenBuilder.ItemID.readIt, "page4-two-read-it")
         while offered(HUDPageScreenBuilder.ItemID.nextText) {
             await pressPage(HUDPageScreenBuilder.ItemID.nextText, "page4-two-next-\(lensPage.shownState?.readingIndex ?? 0)")

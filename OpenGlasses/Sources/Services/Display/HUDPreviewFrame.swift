@@ -33,6 +33,6 @@ extension HUDRouter {
     @discardableResult
     func pressFromPreview(_ id: String) -> Bool {
         guard isPresentingPage, let pageView else { return false }
-        return pageView.press(itemID: id)
+        return pageView.press(itemID: id, fromLens: false)
     }
 }
