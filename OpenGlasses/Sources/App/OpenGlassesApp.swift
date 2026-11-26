@@ -2796,7 +2796,7 @@ class AppState: ObservableObject, AppStateProtocol {
         },
         isUntrustedTool: { [weak self] name in
             PromptInjectionPolicy.isUntrustedOutput(
-                toolName: name, isKnownNativeTool: self?.nativeToolRegistry.tool(named: name) != nil)
+                toolName: name, isKnownNativeTool: self?.nativeToolRegistry.isKnownNativeTool(named: name) == true)
         })
 
     /// The guided job flow (Plan FO P1): one conversation per job, the job-number question the app

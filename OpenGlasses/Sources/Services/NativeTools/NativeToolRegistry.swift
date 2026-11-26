@@ -456,6 +456,21 @@ final class NativeToolRegistry {
         return tools[name]
     }
 
+    /// Whether the named tool is one this app ships and offers now: the `isKnownNativeTool` every
+    /// trust decision passes to `PromptInjectionPolicy.isUntrustedOutput`. A tool the wearer
+    /// defined (`NativeTool.isUserDefined`, a custom Shortcut or link) is registered here but is not
+    /// ours: what it returns is outside text, framed like an MCP server's. One rule, so a custom
+    /// tool needs no name list to be caught. `tool(named:)` stays the lookup for running a tool.
+    func isKnownNativeTool(named name: String) -> Bool {
+        Self.isKnownNative(tool(named: name))
+    }
+
+    /// The rule itself, over a tool already looked up. Pure, for tests.
+    static func isKnownNative(_ tool: (any NativeTool)?) -> Bool {
+        guard let tool else { return false }
+        return !tool.isUserDefined
+    }
+
     /// All registered tools (including disabled) — for the Tools settings UI.
     var allTools: [any NativeTool] {
         Array(tools.values)

@@ -148,7 +148,7 @@ struct ShortcutTemplatesView: View {
                         .font(.caption).foregroundStyle(.secondary)
                     Text("3. Build each Shortcut in the Shortcuts app, with the same name and the steps shown")
                         .font(.caption).foregroundStyle(.secondary)
-                    Text("4. Switch the task on in Scheduled Tasks; the agent then runs the Shortcut on schedule and summarizes results")
+                    Text("4. Switch the task on in Scheduled Tasks. While Avenkin is open, the agent runs the Shortcut on schedule, and its results arrive as a silent notification unless you turn on Speak Result")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -202,7 +202,7 @@ struct ShortcutTemplate: Identifiable {
     var taskId: String = ""         // ID for the scheduled task
     var taskPrompt: String = ""     // The prompt the agent runs
     var intervalMinutes: Int = 0
-    var speakResult: Bool = false
+    var speakResult: Bool = AgentScheduler.ScheduledTask.speakResultDefault
     var setup: Setup = .scheduledTask
     var selected: Bool = false
 
@@ -250,14 +250,13 @@ struct ShortcutTemplate: Identifiable {
             name: "Check Messages",
             icon: "message",
             category: String(localized: "Communication"),
-            description: String(localized: "Checks for recent unread iMessages and summarizes them."),
-            shortcutSteps: String(localized: "1. Find Messages (Unread)\n2. Get Sender + Content preview\n3. Output as text list"),
+            description: String(localized: "Checks for recent unread iMessages and summarizes them, while Avenkin is open."),
+            shortcutSteps: String(localized: "Make a Shortcut named Check Messages:\n1. Find Message (Messages): unread messages, where the action offers that filter\n2. Get the sender and text of each message found\n3. Stop and Output the list as text"),
             agentBehavior: String(localized: "Summarizes who messaged you and what about. Groups by sender if multiple messages from the same person."),
             scheduleDescription: String(localized: "Every 10 minutes"),
             taskId: "shortcut-message-check",
             taskPrompt: "Run the Siri Shortcut 'Check Messages' to get recent unread messages. Briefly summarize who messaged and what about. Group messages by sender. If no unread messages, there's nothing to report.",
-            intervalMinutes: 10,
-            speakResult: true
+            intervalMinutes: 10
         ),
 
         // MARK: Productivity
@@ -272,8 +271,7 @@ struct ShortcutTemplate: Identifiable {
             scheduleDescription: String(localized: "Once daily (morning)"),
             taskId: "shortcut-daily-agenda",
             taskPrompt: "Run the Siri Shortcut 'Daily Agenda' for today's schedule. Present it as a natural morning briefing: events in order, any reminders due, and weather. Note any scheduling conflicts or unusually long gaps.",
-            intervalMinutes: 0,
-            speakResult: true
+            intervalMinutes: 0
         ),
         ShortcutTemplate(
             id: "focus-timer",
@@ -282,12 +280,11 @@ struct ShortcutTemplate: Identifiable {
             category: String(localized: "Productivity"),
             description: String(localized: "Starts a focus/pomodoro timer and silences notifications."),
             shortcutSteps: String(localized: "1. Set Focus Mode (Do Not Disturb)\n2. Start Timer (25 min)\n3. When done: Turn off DND\n4. Output 'Focus session complete'"),
-            agentBehavior: String(localized: "Announces when the focus session starts and ends. Can suggest a break after completion."),
+            agentBehavior: String(localized: "Tells you when the focus session starts and ends. Can suggest a break after completion."),
             scheduleDescription: String(localized: "On demand only"),
             taskId: "shortcut-focus-timer",
             taskPrompt: "Run the Siri Shortcut 'Focus Session' to start a 25-minute focus timer. Announce that the focus session has started and you'll let them know when it's done.",
-            intervalMinutes: 0,
-            speakResult: true
+            intervalMinutes: 0
         ),
 
         // MARK: Health
@@ -302,8 +299,7 @@ struct ShortcutTemplate: Identifiable {
             scheduleDescription: String(localized: "Every 2 hours"),
             taskId: "shortcut-health-summary",
             taskPrompt: "Run the Siri Shortcut 'Health Summary' to get today's health data. Present steps, calories, and exercise minutes naturally. Compare to any goals you know about from memory. Only report if there's something noteworthy (close to goal, unusually low, etc.).",
-            intervalMinutes: 120,
-            speakResult: true
+            intervalMinutes: 120
         ),
 
         // MARK: Smart Home
@@ -318,8 +314,7 @@ struct ShortcutTemplate: Identifiable {
             scheduleDescription: String(localized: "Every 30 minutes"),
             taskId: "shortcut-home-status",
             taskPrompt: "Run the Siri Shortcut 'Home Status' to check smart home state. Only report if something needs attention — doors left open, lights on when they shouldn't be, unusual sensor readings. If everything looks normal, there's nothing to report.",
-            intervalMinutes: 30,
-            speakResult: true
+            intervalMinutes: 30
         ),
 
         // MARK: News & Information
@@ -334,8 +329,7 @@ struct ShortcutTemplate: Identifiable {
             scheduleDescription: String(localized: "Every 2 hours"),
             taskId: "shortcut-news-briefing",
             taskPrompt: "Run the Siri Shortcut 'News Briefing' for top headlines. Summarize the most important 2-3 stories in spoken format. Skip topics the user isn't interested in (check memory). If nothing noteworthy, there's nothing to report.",
-            intervalMinutes: 120,
-            speakResult: true
+            intervalMinutes: 120
         ),
 
         // MARK: Travel
@@ -350,8 +344,7 @@ struct ShortcutTemplate: Identifiable {
             scheduleDescription: String(localized: "Weekday mornings"),
             taskId: "shortcut-commute-check",
             taskPrompt: "Run the Siri Shortcut 'Commute Check' for current travel time. Only report if travel time is significantly longer than usual or there are notable delays. If the commute looks normal, there's nothing to report.",
-            intervalMinutes: 0,
-            speakResult: true
+            intervalMinutes: 0
         ),
     ]
 }

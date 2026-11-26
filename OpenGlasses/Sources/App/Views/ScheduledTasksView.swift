@@ -260,7 +260,7 @@ struct ScheduledTaskDetailView: View {
     @State private var name: String = ""
     @State private var prompt: String = ""
     @State private var intervalMinutes: Int = 15
-    @State private var speakResult: Bool = true
+    @State private var speakResult: Bool = AgentScheduler.ScheduledTask.speakResultDefault
     @State private var hasChanges = false
 
     var body: some View {
@@ -336,7 +336,7 @@ struct ScheduledTaskDetailView: View {
             } header: {
                 Text("Options")
             } footer: {
-                Text("When enabled, the result is spoken via TTS. When off, the task runs silently in the background.")
+                Text("When on, the result is spoken aloud. When off, it arrives as a silent notification.")
             }
 
             // Actions
@@ -456,7 +456,7 @@ private struct AddTaskSheet: View {
     @State private var name = ""
     @State private var prompt = ""
     @State private var intervalMinutes = 30
-    @State private var speakResult = true
+    @State private var speakResult = AgentScheduler.ScheduledTask.speakResultDefault
 
     var body: some View {
         NavigationStack {
@@ -487,7 +487,7 @@ private struct AddTaskSheet: View {
                 Section {
                     Toggle("Speak Result", isOn: $speakResult)
                 } footer: {
-                    Text("Speak the result aloud via TTS, or run silently in the background.")
+                    Text("When on, the result is spoken aloud. When off, it arrives as a silent notification.")
                 }
             }
             .navigationTitle("New Task")

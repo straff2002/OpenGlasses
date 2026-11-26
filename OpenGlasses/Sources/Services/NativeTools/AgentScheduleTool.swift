@@ -53,7 +53,7 @@ struct AgentScheduleTool: NativeTool {
             ],
             "speak_result": [
                 "type": "boolean",
-                "description": "Whether to speak the result to the user (for create). Default true."
+                "description": "Whether to speak the result to the user (for create). Default false: the result arrives as a silent notification. Set true only when the user asks to hear it."
             ],
             "persona_id": [
                 "type": "string",
@@ -152,7 +152,7 @@ struct AgentScheduleTool: NativeTool {
         guard let interval = Self.intervalMinutes(from: args["interval_minutes"]) else {
             return "Provide a non-negative number of minutes for interval_minutes, or 0 for once daily."
         }
-        let speak = args["speak_result"] as? Bool ?? true
+        let speak = args["speak_result"] as? Bool ?? AgentScheduler.ScheduledTask.speakResultDefault
         let personaId = args["persona_id"] as? String
         let modelId = args["model_id"] as? String
 
