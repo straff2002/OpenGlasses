@@ -368,6 +368,22 @@ One route per company, in this order (`SeatLearningRoute.choose`, pinned by `rou
 A phone never sends a candidate by two routes: on the portal route the FP bundle is not queued for the
 organisation's endpoint, and on the other routes nothing goes to the portal.
 
-What is built (NG P0, P1): the shapes, checks, paging and route rule in the shared core; the phone's
-seat actions, queue item, status fetch, job status line and route choice. Not built: the portal's
-endpoints, queue page and merge into the crew-experience set (S1).
+### 12.5 Publishing an approved learning (2026-11-27, NG P0b)
+
+What the administrator approves is published in the vault's crew-experience set (crew experience
+contract §11), beside the sheet's rows, as an entry with `origin: spoken`, its `candidateID` and the jobs
+it was filed on: `sourceJobIDs` are the §12.1 `jobSessionID` join keys, never a session id, and
+`confirmedJobCount` counts them. It is cited `Team learning · …` (§7.1), not `Crew experience · …`, and the
+phone reads it as a team learning (FP's lead-in). *Same as* folds a candidate into a published entry by
+FP's merge rule, held in the shared core as `CrewExperienceMerge.merge(jobSessionID:into:)` (the
+phone's `LearningReview.merge` calls it): a job already counted adds nothing; a sheet row merged with a
+job becomes job-confirmed and stays a `recollection`. Builds 775–778 refuse a set holding a `spoken`
+entry, so the service publishes one only once every seat held on the company reports build
+`CrewExperienceSet.spokenEntriesMinAppBuild` (779) or later (`CrewExperienceSet.mayPublish(_:seatBuilds:)`,
+`SeatPolicy.mayPublishCrewExperience`); until then the learning waits in the portal.
+
+What is built (NG P0, P1, P0b): the shapes, checks, paging and route rule in the shared core; the phone's
+seat actions, queue item, status fetch, job status line and route choice; the set's `spoken` origin and
+fields, the merge rule and the older-phone gate in the core, and the phone citing a `spoken` entry as a
+team learning (§12.5). Not built: the portal's endpoints, queue page and merge into the crew-experience
+set (S1).

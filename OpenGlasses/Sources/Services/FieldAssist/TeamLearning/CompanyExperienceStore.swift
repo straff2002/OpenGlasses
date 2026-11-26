@@ -132,8 +132,11 @@ final class CompanyExperienceStore {
 
     // MARK: - From the wire
 
-    /// A set's entries in the phone's own form: origin `recollection`, bound to no job, the
-    /// approver's role only (the portal publishes no name).
+    /// A set's entries in the phone's own form, the approver's role only (the portal publishes no
+    /// name). A sheet row is a `recollection`, bound to no job until one confirms it. A learning an
+    /// administrator approved in the portal (origin `spoken`, Plan NG P0b) is `.spoken`, with its
+    /// candidate and jobs, so it is cited and introduced as a team learning, not as crew experience.
+    /// `CrewExperienceSet.check` has already refused any other origin.
     nonisolated static func entries(of set: CrewExperienceSet) -> [LearningEntry] {
         set.entries.map { wire in
             let subject: LearningEntry.Subject
@@ -148,7 +151,8 @@ final class CompanyExperienceStore {
                                  outcome: wire.outcome, approvedAt: Date(timeIntervalSince1970: TimeInterval(wire.approvedAt)),
                                  approvedByRole: wire.approvedByRole, approvedByName: "",
                                  authorIsApprover: wire.authorIsApprover, contradictsSafetyNote: wire.contradictsSafetyNote,
-                                 origin: .recollection)
+                                 candidateID: wire.candidateID, origin: wire.isSpoken ? .spoken : .recollection,
+                                 sourceJobIDs: wire.sourceJobIDs, confirmedJobCount: wire.confirmedJobCount)
         }
     }
 

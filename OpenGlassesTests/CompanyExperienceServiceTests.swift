@@ -196,6 +196,38 @@ final class CompanyExperienceServiceTests: XCTestCase {
         XCTAssertEqual(experience.set(for: vaultId)?.sequence, 2)
     }
 
+    // MARK: - A learning approved in the portal (Plan NG P0b)
+
+    private func learning(origin: String = "spoken") -> CrewExperienceSet.Entry {
+        .init(entryID: "0000000000000000000000000000000a",
+              subject: .model(modelToken: "QXRT-990", manufacturer: "Fixturetherm", equipmentType: nil),
+              vaultIDs: [vaultId], finding: "Tighten the condenser fan set screw before replacing the motor",
+              symptom: "Fan rattles at start", fix: "Tightened the set screw", faultCode: nil, tried: nil, outcome: nil,
+              approvedAt: 1_795_564_800, approvedByRole: "Service manager", authorIsApprover: false, origin: origin,
+              candidateID: "c0ffee00000000000000000000000001",
+              sourceJobIDs: [String(repeating: "b", count: 31) + "2"], confirmedJobCount: 1)
+    }
+
+    func testAPortalLearningArrivesBesideTheSheetsRowsAndIsCitedAsATeamLearning() async throws {
+        try publish(generation: 1, experience: try publishSet(sequence: 1, entries: [entry(1), learning()]))
+        let m = manager()
+        try await enrol(m)
+        let held = try XCTUnwrap(experience.set(for: vaultId)).entries
+        XCTAssertEqual(held.map(\.origin), [.recollection, .spoken])
+        XCTAssertTrue(held[0].isCrewExperience)
+        XCTAssertFalse(held[1].isCrewExperience, "a learning the administrator approved is a team learning")
+        XCTAssertEqual(held[1].citationName, "Team learning · QXRT-990 · 2026-11-25 · approved by Service manager")
+        XCTAssertEqual(held[1].candidateID, "c0ffee00000000000000000000000001")
+        XCTAssertEqual(held[1].sourceJobIDs, [String(repeating: "b", count: 31) + "2"])
+        XCTAssertEqual(held[1].confirmedJobCount, 1)
+
+        // Any other origin is refused whole, and the last good set stays.
+        try publish(generation: 2, experience: try publishSet(sequence: 2, entries: [entry(2), learning(origin: "report")]))
+        await foreground(m)
+        XCTAssertEqual(heldIDs, [entry(1).entryID, learning().entryID])
+        XCTAssertEqual(experience.set(for: vaultId)?.sequence, 1)
+    }
+
     // MARK: - The last good set stays
 
     func testEveryRefusalKeepsTheLastGoodSet() async throws {

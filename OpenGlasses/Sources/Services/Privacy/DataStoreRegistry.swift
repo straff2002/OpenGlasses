@@ -1021,8 +1021,9 @@ enum SensitiveStore: String, CaseIterable {
 
         case .companyExperience:
             // A company's crew experience (Plan NF P1): each company vault's last applied set,
-            // published from the company's sheet in the portal and delivered sealed on the
-            // company-vault catalog. Its documents answer from the `learning:` namespaces (inside
+            // published from the company's sheet in the portal (and, Plan NG P0b, the crew's
+            // learnings its administrator approved there, carrying a candidate id and job hashes
+            // only) and delivered sealed on the company-vault catalog. Its documents answer from the `learning:` namespaces (inside
             // `ragDocuments`). The portal redacts contact details and keys, but a customer's name
             // can slip past, so it is treated as able to hold a third party: walked by the subject
             // erasure, protected, kept out of backup, and cleared when the phone leaves its company

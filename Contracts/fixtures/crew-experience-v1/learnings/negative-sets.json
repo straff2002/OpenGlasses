@@ -1,0 +1,649 @@
+[
+  {
+    "name" : "an office report's origin",
+    "refusal" : "0000000000000000000000000000000a's origin report is not one a set carries (recollection or spoken)",
+    "set" : {
+      "entries" : [
+        {
+          "approvedAt" : 1795568400,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "candidateID" : "c0ffee00000000000000000000000001",
+          "confirmedJobCount" : 1,
+          "contradictsSafetyNote" : false,
+          "entryID" : "0000000000000000000000000000000a",
+          "finding" : "Tighten the condenser fan set screw before replacing the motor",
+          "fix" : "Tightened the set screw",
+          "origin" : "report",
+          "sourceJobIDs" : [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+          ],
+          "subject" : {
+            "equipmentType" : "rooftop unit",
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "Fan rattles at start",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        }
+      ],
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.crew-experience-set",
+      "profileId" : "fixture-company",
+      "retracted" : [
+
+      ],
+      "sequence" : 2,
+      "vaultId" : "fixture-crew-units",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "a review pass's origin",
+    "refusal" : "0000000000000000000000000000000a's origin reportReview is not one a set carries (recollection or spoken)",
+    "set" : {
+      "entries" : [
+        {
+          "approvedAt" : 1795568400,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "candidateID" : "c0ffee00000000000000000000000001",
+          "confirmedJobCount" : 1,
+          "contradictsSafetyNote" : false,
+          "entryID" : "0000000000000000000000000000000a",
+          "finding" : "Tighten the condenser fan set screw before replacing the motor",
+          "fix" : "Tightened the set screw",
+          "origin" : "reportReview",
+          "sourceJobIDs" : [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+          ],
+          "subject" : {
+            "equipmentType" : "rooftop unit",
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "Fan rattles at start",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        }
+      ],
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.crew-experience-set",
+      "profileId" : "fixture-company",
+      "retracted" : [
+
+      ],
+      "sequence" : 2,
+      "vaultId" : "fixture-crew-units",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "an origin spelled in capitals",
+    "refusal" : "0000000000000000000000000000000a's origin Spoken is not one a set carries (recollection or spoken)",
+    "set" : {
+      "entries" : [
+        {
+          "approvedAt" : 1795568400,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "candidateID" : "c0ffee00000000000000000000000001",
+          "confirmedJobCount" : 1,
+          "contradictsSafetyNote" : false,
+          "entryID" : "0000000000000000000000000000000a",
+          "finding" : "Tighten the condenser fan set screw before replacing the motor",
+          "fix" : "Tightened the set screw",
+          "origin" : "Spoken",
+          "sourceJobIDs" : [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+          ],
+          "subject" : {
+            "equipmentType" : "rooftop unit",
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "Fan rattles at start",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        }
+      ],
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.crew-experience-set",
+      "profileId" : "fixture-company",
+      "retracted" : [
+
+      ],
+      "sequence" : 2,
+      "vaultId" : "fixture-crew-units",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "a spoken entry without its candidate",
+    "refusal" : "0000000000000000000000000000000a: a spoken entry carries the candidateID it was approved from",
+    "set" : {
+      "entries" : [
+        {
+          "approvedAt" : 1795568400,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "confirmedJobCount" : 1,
+          "contradictsSafetyNote" : false,
+          "entryID" : "0000000000000000000000000000000a",
+          "finding" : "Tighten the condenser fan set screw before replacing the motor",
+          "fix" : "Tightened the set screw",
+          "origin" : "spoken",
+          "sourceJobIDs" : [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+          ],
+          "subject" : {
+            "equipmentType" : "rooftop unit",
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "Fan rattles at start",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        }
+      ],
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.crew-experience-set",
+      "profileId" : "fixture-company",
+      "retracted" : [
+
+      ],
+      "sequence" : 2,
+      "vaultId" : "fixture-crew-units",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "a candidate id that is not hex",
+    "refusal" : "0000000000000000000000000000000a: candidateID C0FFEE00000000000000000000000001 is not 32 lowercase hex",
+    "set" : {
+      "entries" : [
+        {
+          "approvedAt" : 1795568400,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "candidateID" : "C0FFEE00000000000000000000000001",
+          "confirmedJobCount" : 1,
+          "contradictsSafetyNote" : false,
+          "entryID" : "0000000000000000000000000000000a",
+          "finding" : "Tighten the condenser fan set screw before replacing the motor",
+          "fix" : "Tightened the set screw",
+          "origin" : "spoken",
+          "sourceJobIDs" : [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+          ],
+          "subject" : {
+            "equipmentType" : "rooftop unit",
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "Fan rattles at start",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        }
+      ],
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.crew-experience-set",
+      "profileId" : "fixture-company",
+      "retracted" : [
+
+      ],
+      "sequence" : 2,
+      "vaultId" : "fixture-crew-units",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "a spoken entry without its jobs",
+    "refusal" : "0000000000000000000000000000000a: a spoken entry carries sourceJobIDs and confirmedJobCount",
+    "set" : {
+      "entries" : [
+        {
+          "approvedAt" : 1795568400,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "candidateID" : "c0ffee00000000000000000000000001",
+          "contradictsSafetyNote" : false,
+          "entryID" : "0000000000000000000000000000000a",
+          "finding" : "Tighten the condenser fan set screw before replacing the motor",
+          "fix" : "Tightened the set screw",
+          "origin" : "spoken",
+          "subject" : {
+            "equipmentType" : "rooftop unit",
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "Fan rattles at start",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        }
+      ],
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.crew-experience-set",
+      "profileId" : "fixture-company",
+      "retracted" : [
+
+      ],
+      "sequence" : 2,
+      "vaultId" : "fixture-crew-units",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "jobs without a count",
+    "refusal" : "0000000000000000000000000000000a: sourceJobIDs and confirmedJobCount come together or not at all",
+    "set" : {
+      "entries" : [
+        {
+          "approvedAt" : 1795568400,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "candidateID" : "c0ffee00000000000000000000000001",
+          "contradictsSafetyNote" : false,
+          "entryID" : "0000000000000000000000000000000a",
+          "finding" : "Tighten the condenser fan set screw before replacing the motor",
+          "fix" : "Tightened the set screw",
+          "origin" : "spoken",
+          "sourceJobIDs" : [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+          ],
+          "subject" : {
+            "equipmentType" : "rooftop unit",
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "Fan rattles at start",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        }
+      ],
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.crew-experience-set",
+      "profileId" : "fixture-company",
+      "retracted" : [
+
+      ],
+      "sequence" : 2,
+      "vaultId" : "fixture-crew-units",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "a count without jobs",
+    "refusal" : "0000000000000000000000000000000a: sourceJobIDs and confirmedJobCount come together or not at all",
+    "set" : {
+      "entries" : [
+        {
+          "approvedAt" : 1795568400,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "candidateID" : "c0ffee00000000000000000000000001",
+          "confirmedJobCount" : 1,
+          "contradictsSafetyNote" : false,
+          "entryID" : "0000000000000000000000000000000a",
+          "finding" : "Tighten the condenser fan set screw before replacing the motor",
+          "fix" : "Tightened the set screw",
+          "origin" : "spoken",
+          "subject" : {
+            "equipmentType" : "rooftop unit",
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "Fan rattles at start",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        }
+      ],
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.crew-experience-set",
+      "profileId" : "fixture-company",
+      "retracted" : [
+
+      ],
+      "sequence" : 2,
+      "vaultId" : "fixture-crew-units",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "no jobs",
+    "refusal" : "0000000000000000000000000000000a: sourceJobIDs is empty",
+    "set" : {
+      "entries" : [
+        {
+          "approvedAt" : 1795568400,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "candidateID" : "c0ffee00000000000000000000000001",
+          "confirmedJobCount" : 1,
+          "contradictsSafetyNote" : false,
+          "entryID" : "0000000000000000000000000000000a",
+          "finding" : "Tighten the condenser fan set screw before replacing the motor",
+          "fix" : "Tightened the set screw",
+          "origin" : "spoken",
+          "sourceJobIDs" : [
+
+          ],
+          "subject" : {
+            "equipmentType" : "rooftop unit",
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "Fan rattles at start",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        }
+      ],
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.crew-experience-set",
+      "profileId" : "fixture-company",
+      "retracted" : [
+
+      ],
+      "sequence" : 2,
+      "vaultId" : "fixture-crew-units",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "a raw session id instead of the job hash",
+    "refusal" : "0000000000000000000000000000000a: a source job id is not 32 lowercase hex",
+    "set" : {
+      "entries" : [
+        {
+          "approvedAt" : 1795568400,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "candidateID" : "c0ffee00000000000000000000000001",
+          "confirmedJobCount" : 1,
+          "contradictsSafetyNote" : false,
+          "entryID" : "0000000000000000000000000000000a",
+          "finding" : "Tighten the condenser fan set screw before replacing the motor",
+          "fix" : "Tightened the set screw",
+          "origin" : "spoken",
+          "sourceJobIDs" : [
+            "7D3F0E52-1B7A-4C4E-9A51-0E6E3B1C2D4F"
+          ],
+          "subject" : {
+            "equipmentType" : "rooftop unit",
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "Fan rattles at start",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        }
+      ],
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.crew-experience-set",
+      "profileId" : "fixture-company",
+      "retracted" : [
+
+      ],
+      "sequence" : 2,
+      "vaultId" : "fixture-crew-units",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "the same job twice",
+    "refusal" : "0000000000000000000000000000000a: sourceJobIDs names a job twice",
+    "set" : {
+      "entries" : [
+        {
+          "approvedAt" : 1795568400,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "candidateID" : "c0ffee00000000000000000000000001",
+          "confirmedJobCount" : 2,
+          "contradictsSafetyNote" : false,
+          "entryID" : "0000000000000000000000000000000a",
+          "finding" : "Tighten the condenser fan set screw before replacing the motor",
+          "fix" : "Tightened the set screw",
+          "origin" : "spoken",
+          "sourceJobIDs" : [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+          ],
+          "subject" : {
+            "equipmentType" : "rooftop unit",
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "Fan rattles at start",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        }
+      ],
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.crew-experience-set",
+      "profileId" : "fixture-company",
+      "retracted" : [
+
+      ],
+      "sequence" : 2,
+      "vaultId" : "fixture-crew-units",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "a count below its jobs",
+    "refusal" : "0000000000000000000000000000000a: confirmedJobCount 1 is fewer than its 2 source jobs",
+    "set" : {
+      "entries" : [
+        {
+          "approvedAt" : 1795568400,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "candidateID" : "c0ffee00000000000000000000000001",
+          "confirmedJobCount" : 1,
+          "contradictsSafetyNote" : false,
+          "entryID" : "0000000000000000000000000000000a",
+          "finding" : "Tighten the condenser fan set screw before replacing the motor",
+          "fix" : "Tightened the set screw",
+          "origin" : "spoken",
+          "sourceJobIDs" : [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+          ],
+          "subject" : {
+            "equipmentType" : "rooftop unit",
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "Fan rattles at start",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        }
+      ],
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.crew-experience-set",
+      "profileId" : "fixture-company",
+      "retracted" : [
+
+      ],
+      "sequence" : 2,
+      "vaultId" : "fixture-crew-units",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "a recollection with a candidate",
+    "refusal" : "00000000000000000000000000000002: a recollection came from no candidate, so it carries no candidateID",
+    "set" : {
+      "entries" : [
+        {
+          "approvedAt" : 1795564800,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "candidateID" : "c0ffee00000000000000000000000001",
+          "contradictsSafetyNote" : false,
+          "entryID" : "00000000000000000000000000000002",
+          "faultCode" : "E998",
+          "finding" : "Check the relay first.\nThe coil is rarely the cause.",
+          "fix" : "Replaced the stage two relay on the board",
+          "origin" : "recollection",
+          "outcome" : "fixed it every time",
+          "subject" : {
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "E998: No heat on stage two",
+          "tried" : "Gas valve coil, 24 V at the board",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        }
+      ],
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.crew-experience-set",
+      "profileId" : "fixture-company",
+      "retracted" : [
+
+      ],
+      "sequence" : 2,
+      "vaultId" : "fixture-crew-units",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "a recollection confirmed on no job",
+    "refusal" : "00000000000000000000000000000002: sourceJobIDs is empty",
+    "set" : {
+      "entries" : [
+        {
+          "approvedAt" : 1795564800,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "confirmedJobCount" : 0,
+          "contradictsSafetyNote" : false,
+          "entryID" : "00000000000000000000000000000002",
+          "faultCode" : "E998",
+          "finding" : "Check the relay first.\nThe coil is rarely the cause.",
+          "fix" : "Replaced the stage two relay on the board",
+          "origin" : "recollection",
+          "outcome" : "fixed it every time",
+          "sourceJobIDs" : [
+
+          ],
+          "subject" : {
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "E998: No heat on stage two",
+          "tried" : "Gas valve coil, 24 V at the board",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        }
+      ],
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.crew-experience-set",
+      "profileId" : "fixture-company",
+      "retracted" : [
+
+      ],
+      "sequence" : 2,
+      "vaultId" : "fixture-crew-units",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "one candidate approved twice",
+    "refusal" : "0000000000000000000000000000000b: candidate c0ffee00000000000000000000000001 is on two entries",
+    "set" : {
+      "entries" : [
+        {
+          "approvedAt" : 1795568400,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "candidateID" : "c0ffee00000000000000000000000001",
+          "confirmedJobCount" : 1,
+          "contradictsSafetyNote" : false,
+          "entryID" : "0000000000000000000000000000000a",
+          "finding" : "Tighten the condenser fan set screw before replacing the motor",
+          "fix" : "Tightened the set screw",
+          "origin" : "spoken",
+          "sourceJobIDs" : [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+          ],
+          "subject" : {
+            "equipmentType" : "rooftop unit",
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "Fan rattles at start",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        },
+        {
+          "approvedAt" : 1795568400,
+          "approvedByRole" : "Service manager",
+          "authorIsApprover" : false,
+          "candidateID" : "c0ffee00000000000000000000000001",
+          "confirmedJobCount" : 1,
+          "contradictsSafetyNote" : false,
+          "entryID" : "0000000000000000000000000000000b",
+          "finding" : "Tighten the condenser fan set screw before replacing the motor",
+          "fix" : "Tightened the set screw",
+          "origin" : "spoken",
+          "sourceJobIDs" : [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+          ],
+          "subject" : {
+            "equipmentType" : "rooftop unit",
+            "kind" : "model",
+            "manufacturer" : "Fixturetherm",
+            "modelToken" : "QXRT-990"
+          },
+          "symptom" : "Fan rattles at start",
+          "vaultIDs" : [
+            "fixture-crew-units"
+          ]
+        }
+      ],
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.crew-experience-set",
+      "profileId" : "fixture-company",
+      "retracted" : [
+
+      ],
+      "sequence" : 2,
+      "vaultId" : "fixture-crew-units",
+      "version" : 1
+    }
+  }
+]

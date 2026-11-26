@@ -366,6 +366,16 @@ public enum SeatPolicy {
         }
     }
 
+    /// Plan NG P0b, the older-phone gate over the ledger: whether `set` may be published to `profileId`
+    /// now. A set holding a `spoken` entry waits until every seat held on the profile last reported a
+    /// build at or above `CrewExperienceSet.spokenEntriesMinAppBuild`
+    /// (`CrewExperienceSet.mayPublish(_:seatBuilds:)`); freed and lapsed seats do not count.
+    public static func mayPublishCrewExperience(_ set: CrewExperienceSet, seats: [SeatRecord], profileId: String,
+                                                now: Date) -> Bool {
+        CrewExperienceSet.mayPublish(set, seatBuilds: seats.filter { $0.profileId == profileId && isHeld($0, now: now) }
+            .map { Optional($0.build) })
+    }
+
     public static func fleetGenerations(_ seats: [SeatRecord], profileId: String, now: Date) -> FleetGenerations {
         var held = 0
         var counts: [Int: Int] = [:]
