@@ -217,7 +217,7 @@ class AgentScheduler: ObservableObject {
         // clinic replied"), so which task ran is not written down; the model it was pinned
         // to is a catalog id and is.
         PrivacyLog.agent(.scheduler, .taskStarted,
-                         model: task.modelId.map(PrivacyToken.init),
+                         model: task.modelId.map { PrivacyToken(modelName: $0) },
                          reason: PrivacyToken(trigger.rawValue),
                          minutes: task.intervalMinutes)
         let started = Date()
@@ -471,11 +471,11 @@ class AgentScheduler: ObservableObject {
             personaName = persona.name
             // Persona names are omitted rather than fingerprinted: the set is small and
             // wearer-visible, so a stable hash would not anonymise which persona was in use.
-            PrivacyLog.agent(.scheduler, .personaSwitched, model: PrivacyToken(persona.modelId))
+            PrivacyLog.agent(.scheduler, .personaSwitched, model: PrivacyToken(modelName: persona.modelId))
         } else if let modelId = task.modelId {
             Config.setActiveModelId(modelId)
             appState.llmService.refreshActiveModel()
-            PrivacyLog.agent(.scheduler, .modelSwitched, model: PrivacyToken(modelId))
+            PrivacyLog.agent(.scheduler, .modelSwitched, model: PrivacyToken(modelName: modelId))
         }
 
         // Run the task. Inside the run, the router knows its tool calls are the scheduled task's.
@@ -492,7 +492,7 @@ class AgentScheduler: ObservableObject {
         if task.personaId != nil || task.modelId != nil {
             Config.setActiveModelId(previousModelId)
             appState.llmService.refreshActiveModel()
-            PrivacyLog.agent(.scheduler, .modelRestored, model: PrivacyToken(previousModelId))
+            PrivacyLog.agent(.scheduler, .modelRestored, model: PrivacyToken(modelName: previousModelId))
         }
 
         return run.status

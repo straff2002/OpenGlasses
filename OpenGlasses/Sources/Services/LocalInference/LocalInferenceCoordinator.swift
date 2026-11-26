@@ -78,7 +78,7 @@ actor LocalInferenceCoordinator {
             let loaded = try await backend.load(installation, configuration: configuration)
             resident = loaded
             residentRuntime = installation.runtime
-            PrivacyLog.localModel(.loaded, model: PrivacyToken(installation.id.rawValue),
+            PrivacyLog.localModel(.loaded, model: PrivacyToken(modelName: installation.id.rawValue),
                                   vision: loaded.supportsVision,
                                   detail: PrivacyToken("coordinator-\(installation.runtime.rawValue)"))
             return loaded
@@ -87,7 +87,7 @@ actor LocalInferenceCoordinator {
             // its own partial state, and the coordinator must not claim a lease it doesn't hold.
             resident = nil
             residentRuntime = nil
-            PrivacyLog.localModel(.loadFailed, model: PrivacyToken(installation.id.rawValue),
+            PrivacyLog.localModel(.loadFailed, model: PrivacyToken(modelName: installation.id.rawValue),
                                   detail: PrivacyToken("coordinator-\(installation.runtime.rawValue)"),
                                   error: SafeErrorSummary(error))
             throw error

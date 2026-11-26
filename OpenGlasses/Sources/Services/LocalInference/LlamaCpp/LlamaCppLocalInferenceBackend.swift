@@ -253,7 +253,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
             if chatTemplates != nil, !LlamaCppEngine.catchesStandardExceptions {
                 // A template that needs `common/chat`'s automatic parser will not render in this
                 // image (see `LlamaCppEngine.catchesStandardExceptions`); its tool turns fall back.
-                PrivacyLog.localModel(.toolFormat, model: PrivacyToken(installation.id.rawValue),
+                PrivacyLog.localModel(.toolFormat, model: PrivacyToken(modelName: installation.id.rawValue),
                                       detail: PrivacyToken("gguf-exceptions-unreliable"))
             }
             let templateProfile: LlamaChatTemplateProfile?
@@ -325,7 +325,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
 
             let loadMilliseconds = milliseconds(since: startedAt)
             PrivacyLog.localModel(.loaded,
-                                  model: PrivacyToken(installation.id.rawValue),
+                                  model: PrivacyToken(modelName: installation.id.rawValue),
                                   vision: false,
                                   tokens: actualContext,
                                   footprintMegabytes: megabytes(appFootprintBytes()),
@@ -357,7 +357,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
             tearDown(partial)
             let typed = (error as? LlamaEngineError).map(LlamaBackendError.engine) ?? error
             PrivacyLog.localModel(.loadFailed,
-                                  model: PrivacyToken(installation.id.rawValue),
+                                  model: PrivacyToken(modelName: installation.id.rawValue),
                                   detail: PrivacyToken("gguf"),
                                   milliseconds: milliseconds(since: startedAt),
                                   error: SafeErrorSummary(typed))
@@ -378,7 +378,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                              sampler: resources.sampler,
                              chatTemplates: resources.chatTemplates))
         PrivacyLog.localModel(.unloaded,
-                              model: PrivacyToken(resources.installation.id.rawValue),
+                              model: PrivacyToken(modelName: resources.installation.id.rawValue),
                               headroomMegabytes: megabytes(availableProcessBytes()),
                               detail: PrivacyToken("gguf"))
     }
@@ -504,7 +504,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                                  reserveTokens: reserveTokens,
                                                  contextTokens: resources.contextTokens)
             PrivacyLog.localModel(.generationFailed,
-                                  model: PrivacyToken(resources.installation.id.rawValue),
+                                  model: PrivacyToken(modelName: resources.installation.id.rawValue),
                                   count: admission.overflowTokens,
                                   total: resources.contextTokens,
                                   tokens: admission.promptTokens,
@@ -532,7 +532,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                                              contextTokens: resources.contextTokens)
         guard admission.fits else {
             PrivacyLog.localModel(.generationFailed,
-                                  model: PrivacyToken(resources.installation.id.rawValue),
+                                  model: PrivacyToken(modelName: resources.installation.id.rawValue),
                                   count: admission.overflowTokens,
                                   total: resources.contextTokens,
                                   tokens: admission.promptTokens,
@@ -577,7 +577,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                     try engine.setChatGrammar(sampler, model: resources.model, renderJSON: chat.renderJSON)
                 } catch {
                     engine.clearGrammar(sampler)
-                    PrivacyLog.localModel(.toolFormat, model: PrivacyToken(resources.installation.id.rawValue),
+                    PrivacyLog.localModel(.toolFormat, model: PrivacyToken(modelName: resources.installation.id.rawValue),
                                           detail: PrivacyToken("gguf-grammar-unavailable"))
                 }
             } else {
@@ -592,7 +592,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
         }
 
         PrivacyLog.localModel(.generationStarted,
-                              model: PrivacyToken(resources.installation.id.rawValue),
+                              model: PrivacyToken(modelName: resources.installation.id.rawValue),
                               tokens: admission.promptTokens,
                               detail: PrivacyToken(prepared.chat == nil ? "gguf" : "gguf-chat"),
                               state: thermalToken())
@@ -651,7 +651,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
     private func noteChatFormat(_ format: String, model: LocalModelID) {
         guard chatFormatLogged != format else { return }
         chatFormatLogged = format
-        PrivacyLog.localModel(.toolFormat, model: PrivacyToken(model.rawValue),
+        PrivacyLog.localModel(.toolFormat, model: PrivacyToken(modelName: model.rawValue),
                               detail: PrivacyToken("gguf-\(format)"))
     }
 
@@ -680,7 +680,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                 } catch where resources.templateProfile != nil {
                     // The template would not render this turn with its tools: the Hermes
                     // instruction over the fixed-list path, rather than no answer.
-                    PrivacyLog.localModel(.toolFormat, model: PrivacyToken(resources.installation.id.rawValue),
+                    PrivacyLog.localModel(.toolFormat, model: PrivacyToken(modelName: resources.installation.id.rawValue),
                                           detail: PrivacyToken("gguf-render-failed"))
                 }
             }
@@ -1005,7 +1005,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
             let promptDecodedAt = monotonicNanoseconds()
             let decodedPromptTokens = plan.promptTokens.count - kept
             PrivacyLog.localModel(.promptDecoded,
-                                  model: PrivacyToken(plan.installationID.rawValue),
+                                  model: PrivacyToken(modelName: plan.installationID.rawValue),
                                   count: (decodedPromptTokens + plan.batchTokens - 1) / plan.batchTokens,
                                   total: kept,
                                   tokens: plan.promptTokens.count,
@@ -1067,12 +1067,12 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
                         content = parsed.content
                         calls = parsed.calls
                         if parsed.malformedCalls > 0 || !calls.isEmpty {
-                            PrivacyLog.localModel(.toolCall, model: PrivacyToken(plan.installationID.rawValue),
+                            PrivacyLog.localModel(.toolCall, model: PrivacyToken(modelName: plan.installationID.rawValue),
                                                   count: calls.count, total: calls.count + parsed.malformedCalls,
                                                   detail: PrivacyToken("gguf-parsed"))
                         }
                     } else {
-                        PrivacyLog.localModel(.toolCall, model: PrivacyToken(plan.installationID.rawValue),
+                        PrivacyLog.localModel(.toolCall, model: PrivacyToken(modelName: plan.installationID.rawValue),
                                               count: 0, detail: PrivacyToken("gguf-unparsed"))
                     }
                 }
@@ -1091,7 +1091,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
             engine.synchronize(plan.context)
             forgetSnapshot()
             PrivacyLog.localModel(.generationFailed,
-                                  model: PrivacyToken(plan.installationID.rawValue),
+                                  model: PrivacyToken(modelName: plan.installationID.rawValue),
                                   count: generated,
                                   detail: PrivacyToken("gguf-cancelled"))
             return (.forgotten, CancellationError())
@@ -1101,7 +1101,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
             let mapped: Error = error == .cancelled ? CancellationError()
                                                     : LlamaBackendError.engine(error)
             PrivacyLog.localModel(.generationFailed,
-                                  model: PrivacyToken(plan.installationID.rawValue),
+                                  model: PrivacyToken(modelName: plan.installationID.rawValue),
                                   count: generated,
                                   detail: PrivacyToken("gguf"),
                                   error: SafeErrorSummary(mapped))
@@ -1140,7 +1140,7 @@ actor LlamaCppLocalInferenceBackend: LocalInferenceBackend {
             Int(($0 &- plan.promptStartedAt) / 1_000_000)
         }
         PrivacyLog.localModel(.generationCompleted,
-                              model: PrivacyToken(plan.installationID.rawValue),
+                              model: PrivacyToken(modelName: plan.installationID.rawValue),
                               count: generated,
                               total: plan.contextTokens,
                               tokens: plan.promptTokens.count,

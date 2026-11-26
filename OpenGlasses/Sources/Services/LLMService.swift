@@ -1064,13 +1064,14 @@ class LLMService: ObservableObject {
                                           vaultOnly: VaultOnlyPolicy.jobIsSealed)
         let decision = ToolExposurePolicy.decide(mode: Config.toolDefinitionsMode, available: available.names,
                                                  fullSetBytes: available.bytes, contextWindow: window?.tokens,
-                                                 core: core, remembered: toolExposureMemory)
+                                                 core: core, remembered: toolExposureMemory,
+                                                 onDemandWhenWindowUnknown: provider == .custom)
         // Schemas the first request carries: the declared set, the lookup tool when on demand,
         // and OpenClaw's `execute`, which is never on demand.
         let lookup = decision.exposure == .core && registry?.tool(named: ToolLookupTool.toolName) != nil ? 1 : 0
         let gateway = includeOpenClaw ? 1 : 0
         PrivacyLog.model(.toolExposure, provider: PrivacyToken(provider.rawValue),
-                         model: PrivacyToken(config.model),
+                         model: PrivacyToken(modelName: config.model),
                          count: decision.declared.count + lookup + gateway,
                          total: decision.available.count + gateway,
                          tokens: decision.fullSetTokens,
@@ -1340,7 +1341,7 @@ class LLMService: ObservableObject {
            let offered = ChatGPTModelAvailability.modelForTurn(modelConfig.model,
                                                                accountID: chatGPTAccount.accountID) {
             PrivacyLog.model(.modelSubstituted, provider: PrivacyToken(LLMProvider.chatgpt.rawValue),
-                             model: PrivacyToken(offered), detail: PrivacyToken(modelConfig.model))
+                             model: PrivacyToken(modelName: offered), detail: PrivacyToken(modelConfig.model))
             if Self.announcedModelSubstitutions.insert(modelConfig.model).inserted {
                 modelNotice = ChatGPTModelAvailability.substitutionNotice
             }
@@ -1489,7 +1490,7 @@ class LLMService: ObservableObject {
         if includeOpenClaw && !smallContext { capabilities.append("openClaw") }
         if smallContext { capabilities.append("smallContext") }
         PrivacyLog.model(.turnStarted, provider: PrivacyToken(provider.rawValue),
-                         model: PrivacyToken(modelConfig.model),
+                         model: PrivacyToken(modelName: modelConfig.model),
                          configuration: PrivateIdentifier(modelConfig.name),
                          detail: PrivacyToken(capabilities.joined(separator: "-")))
 
@@ -1697,7 +1698,7 @@ class LLMService: ObservableObject {
             break
         case .handOff(let to, let announce):
             PrivacyLog.model(.onDeviceJobRouted, provider: PrivacyToken(to.provider.rawValue),
-                             model: PrivacyToken(to.model), configuration: PrivateIdentifier(to.name),
+                             model: PrivacyToken(modelName: to.model), configuration: PrivateIdentifier(to.name),
                              success: announce, detail: PrivacyToken("handOff"))
         case .stayOnDevice(let reason):
             PrivacyLog.model(.onDeviceJobRouted, provider: PrivacyToken(LLMProvider.appleOnDevice.rawValue),
@@ -2015,14 +2016,43 @@ class LLMService: ObservableObject {
     /// A lead the last turn hopped away from stays second for a while (`ModelCascadeMemory`):
     /// the model that answered starts, so the wearer does not wait out the same failure every
     /// turn. Plan KA P1: a photo turn tries the chosen Vision model first.
-    private func cascadeStartOrder(lead leadId: String, imageAttached: Bool, now: Date)
+    private func cascadeStartOrder(lead leadId: String, imageAttached: Bool, now: Date, logSkips: Bool = false)
         -> (chain: [ModelFallbackChain.Candidate], candidates: [ModelFallbackChain.Candidate]) {
         let visionModelId = imageAttached ? Config.visionRoleModelId : nil
-        let chain = ModelFallbackChain.candidates(
+        let full = ModelFallbackChain.candidates(
             activeId: leadId, saved: Config.savedModels,
             fallbackOrder: Config.modelFallbackOrder, requiresVision: imageAttached,
             visionModelId: visionModelId)
+        let savedById = Dictionary(Config.savedModels.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let (chain, skipped) = ModelFallbackChain.droppingUnusableFallbacks(full, lead: leadId) { candidate in
+            savedById[candidate.id].flatMap(self.unusableFallbackReason)
+        }
+        if logSkips {
+            for (candidate, reason) in skipped {
+                PrivacyLog.model(.cascadeCandidateSkipped, configuration: PrivateIdentifier(candidate.id),
+                                 reason: PrivacyToken(reason.rawValue))
+            }
+        }
         return (chain, cascadeMemory.startOrder(chain, lead: leadId, visionModelId: visionModelId, now: now))
+    }
+
+    /// Why a saved model cannot be hopped to this turn, or nil when it can be tried.
+    private func unusableFallbackReason(_ model: ModelConfig) -> ModelFallbackChain.Unusable? {
+        switch model.llmProvider {
+        case .appleOnDevice:
+            if #available(iOS 26.0, *) {
+                guard case .available = SystemLanguageModel.default.availability else { return .unavailableOnDevice }
+                return nil
+            }
+            return .unavailableOnDevice
+        case .local:
+            return nil
+        default:
+            // A model with nothing to send with has no route; it fails on its credential as before.
+            guard let route = CloudServiceFactsProvider.modelRoute(model),
+                  let url = URL(string: route.url.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+            return processingConsent.refusesWithoutAsking(url: url, scope: .conversation) ? .sharingNotAllowed : nil
+        }
     }
 
     /// Whether a turn led by `leadId` will start on another model: a hold left by an earlier
@@ -2088,7 +2118,7 @@ class LLMService: ObservableObject {
         let learned = perMinuteAllowances.record(limit: limit, requested: rejection.requested,
                                                  estimate: estimate, for: model)
         PrivacyLog.model(.perMinuteFit, provider: PrivacyToken(model.llmProvider.rawValue),
-                         model: PrivacyToken(model.model), tokens: estimate,
+                         model: PrivacyToken(modelName: model.model), tokens: estimate,
                          detail: PrivacyToken("learned"),
                          reason: PrivacyToken(learned.calibration == nil ? "uncalibrated" : "calibrated"),
                          limit: limit, requested: rejection.requested)
@@ -2177,12 +2207,12 @@ class LLMService: ObservableObject {
 
         let choice = PerMinuteFit.choose(ladder, allowance: allowance)
         PrivacyLog.model(.perMinuteFit, provider: PrivacyToken(provider.rawValue),
-                         model: PrivacyToken(config.model), total: choice.ceiling,
+                         model: PrivacyToken(modelName: config.model), total: choice.ceiling,
                          tokens: choice.estimate, detail: PrivacyToken(choice.rung.rawValue),
                          limit: allowance.limit)
         func onDemand() -> ToolExposureTurn {
             PrivacyLog.model(.toolExposure, provider: PrivacyToken(provider.rawValue),
-                             model: PrivacyToken(config.model),
+                             model: PrivacyToken(modelName: config.model),
                              count: emptied.declared.count + 1 + (includeOpenClaw ? 1 : 0),
                              total: emptied.available.count + (includeOpenClaw ? 1 : 0),
                              tokens: emptied.fullSetTokens, detail: PrivacyToken(emptied.exposure.rawValue),
@@ -2329,7 +2359,8 @@ class LLMService: ObservableObject {
         // Plan KA P1: a photo turn tries the chosen Vision model first; the rest of the
         // conversation stays on the assistant.
         let now = Date()
-        let (chain, candidates) = cascadeStartOrder(lead: leadId, imageAttached: imageData != nil, now: now)
+        let (chain, candidates) = cascadeStartOrder(lead: leadId, imageAttached: imageData != nil, now: now,
+                                                    logSkips: true)
         // A photo needs a capable model even when the text-request fallback switch is off.
         guard (Config.modelCascadeEnabled || imageData != nil), !chain.isEmpty else {
             return try await send()
@@ -3316,7 +3347,7 @@ class LLMService: ObservableObject {
             if let object = StructuredVisionParser.anthropic(data, toolName: tool.name) { return object }
             if attempt < attempts {
                 PrivacyLog.model(.structuredRetry, provider: PrivacyToken("anthropic"),
-                                 model: PrivacyToken(config.model), detail: PrivacyToken(detail))
+                                 model: PrivacyToken(modelName: config.model), detail: PrivacyToken(detail))
             }
         }
         return nil
@@ -3473,7 +3504,7 @@ class LLMService: ObservableObject {
                                                          recallOffered: recallOffered)
                         systemBlocks = PromptLayout.anthropicSystem(stable: system.stable, volatile: system.volatile)
                         PrivacyLog.model(.thinkingDropped, provider: PrivacyToken("anthropic"),
-                                         model: PrivacyToken(config.model))
+                                         model: PrivacyToken(modelName: config.model))
                     }
                     state.lastSent = ThinkingReplayGuard.record(system: systemBlocks, tools: tools,
                                                                 messages: historyForRequest)
@@ -3688,7 +3719,7 @@ class LLMService: ObservableObject {
                     conversationHistory, fromTurnStart: turnHistoryStart)
                 turn.historyChanged = true
                 PrivacyLog.model(.providerSearch, provider: PrivacyToken(config.llmProvider.rawValue),
-                                 model: PrivacyToken(config.model), detail: PrivacyToken(reason.token))
+                                 model: PrivacyToken(modelName: config.model), detail: PrivacyToken(reason.token))
                 return nil
             }
             return turn.spec.flatMap { kinds.contains($0.kind) ? $0 : nil }
@@ -3698,7 +3729,7 @@ class LLMService: ObservableObject {
         if case .ourTool(.notDeclared) = decision { return nil }
         turn.settled = true
         PrivacyLog.model(.providerSearch, provider: PrivacyToken(config.llmProvider.rawValue),
-                         model: PrivacyToken(config.model), detail: PrivacyToken(decision.token))
+                         model: PrivacyToken(modelName: config.model), detail: PrivacyToken(decision.token))
         guard let spec = decision.spec, kinds.contains(spec.kind) else { return nil }
         guard let origin = ProviderSearchLive.origin(for: config),
               (try? await processingConsent.authorize(url: origin, scope: .webSearch)) != nil else {
@@ -3774,7 +3805,7 @@ class LLMService: ObservableObject {
             TurnRecorder.noteProviderSearchRefused(provider: config.llmProvider.rawValue, kind: kind,
                                                    turnID: TurnRecorder.toolTraceID)
             PrivacyLog.model(.providerSearch, provider: PrivacyToken(config.llmProvider.rawValue),
-                             model: PrivacyToken(config.model), status: status,
+                             model: PrivacyToken(modelName: config.model), status: status,
                              detail: PrivacyToken(ProviderSearchPolicy.Reason.refusedEarlier(kind).token))
             turn.forcedOurTool = true
             turn.spec = nil
@@ -3843,7 +3874,7 @@ class LLMService: ObservableObject {
     static func noteRoute(_ selection: OpenAIRouteSelector.Selection,
                           provider: LLMProvider, model: String) {
         PrivacyLog.model(.routeSelected, provider: PrivacyToken(provider.rawValue),
-                         model: PrivacyToken(model), detail: PrivacyToken(selection.token))
+                         model: PrivacyToken(modelName: model), detail: PrivacyToken(selection.token))
         PrivacyLog.model(.routeSelected, detail: PrivacyToken(selection.reason.rawValue))
         TurnRecorder.noteRoute(selection.token)
     }
@@ -3891,7 +3922,7 @@ class LLMService: ObservableObject {
         let rejection = ProviderRejection(response: response, body: body, provider: .anthropic)
         PrivacyLog.modelRejected(rejection, provider: PrivacyToken("anthropic"),
                                  auth: AnthropicAuth.credentialKind(of: request),
-                                 bytes: body.count, detail: detail.map(PrivacyToken.init))
+                                 bytes: body.count, detail: detail.map { PrivacyToken($0) })
         return rejection
     }
 
@@ -3900,7 +3931,7 @@ class LLMService: ObservableObject {
     static func noteReasoning(_ resolution: ReasoningPolicy.Resolution,
                               provider: LLMProvider, model: String) {
         PrivacyLog.model(.reasoningResolved, provider: PrivacyToken(provider.rawValue),
-                         model: PrivacyToken(model), detail: PrivacyToken(resolution.token))
+                         model: PrivacyToken(modelName: model), detail: PrivacyToken(resolution.token))
         PrivacyLog.model(.reasoningResolved, detail: PrivacyToken(resolution.reason.rawValue))
         TurnRecorder.noteReasoning(resolution.token)
     }
@@ -4036,7 +4067,7 @@ class LLMService: ObservableObject {
                 let rewindTo = min(max(0, turnHistoryStart), conversationHistory.count)
                 conversationHistory.removeSubrange(rewindTo...)
                 PrivacyLog.model(.routeFallback, provider: PrivacyToken(provider.rawValue),
-                                 model: PrivacyToken(config.model), status: status,
+                                 model: PrivacyToken(modelName: config.model), status: status,
                                  detail: PrivacyToken(OpenAIRouteSelector.Endpoint.chatCompletions.rawValue))
                 TurnRecorder.noteRoute(OpenAIRouteSelector.Endpoint.chatCompletions.rawValue)
                 onStreamReset?()
@@ -4084,7 +4115,7 @@ class LLMService: ObservableObject {
             ]
             conversationHistory.append(["role": "user", "content": content])
         } else if imageData != nil && !supportsVision {
-            PrivacyLog.model(.imageSkipped, model: PrivacyToken(config.model))
+            PrivacyLog.model(.imageSkipped, model: PrivacyToken(modelName: config.model))
             // Drop the image but keep the text, and inform the model
             conversationHistory.append(["role": "user", "content": text + "\n[System note: The user attempted to send an image, but the current model (\(config.model)) does not support image analysis.]"])
         } else {
@@ -4222,7 +4253,7 @@ class LLMService: ObservableObject {
                     || ToolResultImage.historyCarriesImage(messages)
                 let bodySize = request.httpBody?.count ?? 0
                 PrivacyLog.model(.requestSent, provider: PrivacyToken(provider.rawValue),
-                                 model: PrivacyToken(config.model), count: messageCount,
+                                 model: PrivacyToken(modelName: config.model), count: messageCount,
                                  bytes: bodySize,
                                  detail: PrivacyToken(hasImage ? "withImage" : "textOnly"))
                 // Plan KL P1: what this request comes to, should it be refused as over the
@@ -4336,7 +4367,7 @@ class LLMService: ObservableObject {
                     if toolsAttached { Self.reasoningToolRejections.insert(config.model) }
                     body["reasoning_effort"] = ReasoningEffort.none.rawValue
                     PrivacyLog.model(.reasoningRetried, provider: PrivacyToken(provider.rawValue),
-                                     model: PrivacyToken(config.model), attempt: 1,
+                                     model: PrivacyToken(modelName: config.model), attempt: 1,
                                      detail: PrivacyToken(ReasoningEffort.none.rawValue))
                     TurnRecorder.noteReasoning(ReasoningEffort.none.rawValue)
                     var retried = request
@@ -4480,7 +4511,7 @@ class LLMService: ObservableObject {
                 ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(base64)"]],
             ]])
         } else if imageData != nil {
-            PrivacyLog.model(.imageSkipped, model: PrivacyToken(config.model))
+            PrivacyLog.model(.imageSkipped, model: PrivacyToken(modelName: config.model))
             conversationHistory.append(["role": "user", "content": text + "\n[System note: The user attempted to send an image, but the current model (\(config.model)) does not support image analysis.]"])
         } else {
             conversationHistory.append(["role": "user", "content": text])
@@ -4589,7 +4620,7 @@ class LLMService: ObservableObject {
                 if ResponsesTranslator.incompleteReason(responseJSON) == "max_output_tokens",
                    parsed.text.isEmpty, parsed.toolCalls.isEmpty {
                     PrivacyLog.model(.emptyCompletion, provider: PrivacyToken(provider.rawValue),
-                                     model: PrivacyToken(config.model),
+                                     model: PrivacyToken(modelName: config.model),
                                      detail: PrivacyToken("maxOutputTokens"))
                 }
                 PrivacyLog.model(.toolCallsParsed, provider: PrivacyToken(provider.rawValue),
@@ -4893,7 +4924,7 @@ class LLMService: ObservableObject {
                 }
                 recordTimeline(decision, omitted: selected.omittedMessages)
             }
-            PrivacyLog.model(.contextBudget, provider: PrivacyToken(providerToken), model: PrivacyToken(model),
+            PrivacyLog.model(.contextBudget, provider: PrivacyToken(providerToken), model: PrivacyToken(modelName: model),
                              count: selected.omittedMessages, total: allowance, tokens: selected.estimate.total,
                              detail: PrivacyToken(limit.provenance))
             for (component, count) in [("instructions", selected.estimate.instructions),
@@ -5577,7 +5608,7 @@ class LLMService: ObservableObject {
                 // As the Chat Completions path logs it: without this line a Gemini request that
                 // timed out could not be told from one never sent (support report, build 728).
                 PrivacyLog.model(.requestSent, provider: PrivacyToken(config.llmProvider.rawValue),
-                                 model: PrivacyToken(config.model), count: contents.count,
+                                 model: PrivacyToken(modelName: config.model), count: contents.count,
                                  bytes: request.httpBody?.count ?? 0,
                                  detail: PrivacyToken(imageData != nil ? "withImage" : "textOnly"))
 
@@ -5767,16 +5798,16 @@ class LLMService: ObservableObject {
                 switch reason {
                 case .deviceNotEligible:
                     // The keyless first-run default can land here, so name the way out.
-                    throw LLMError.missingAPIKey(String(localized: "Device does not support Apple Intelligence — add an API key in Settings → Assistant → AI Models to use a cloud model"))
+                    throw LLMError.onDeviceUnavailable(reason: "deviceNotEligible", message: String(localized: "Device does not support Apple Intelligence — add an API key in Settings → Assistant → AI Models to use a cloud model"))
                 case .appleIntelligenceNotEnabled:
-                    throw LLMError.missingAPIKey(String(localized: "Enable Apple Intelligence in iPhone Settings > Apple Intelligence & Siri"))
+                    throw LLMError.onDeviceUnavailable(reason: "appleIntelligenceNotEnabled", message: String(localized: "Enable Apple Intelligence in iPhone Settings > Apple Intelligence & Siri"))
                 case .modelNotReady:
-                    throw LLMError.missingAPIKey(String(localized: "Apple Intelligence model is still downloading, try again later"))
+                    throw LLMError.onDeviceUnavailable(reason: "modelNotReady", message: String(localized: "Apple Intelligence model is still downloading, try again later"))
                 @unknown default:
-                    throw LLMError.missingAPIKey(String(localized: "Apple Intelligence unavailable"))
+                    throw LLMError.onDeviceUnavailable(reason: "unknown", message: String(localized: "Apple Intelligence unavailable"))
                 }
             default:
-                throw LLMError.missingAPIKey(String(localized: "Apple Intelligence unavailable"))
+                throw LLMError.onDeviceUnavailable(reason: "unknown", message: String(localized: "Apple Intelligence unavailable"))
             }
         }
 
@@ -5932,7 +5963,7 @@ class LLMService: ObservableObject {
         // first result answers it (`AppleToolResultCache`).
         return await appleToolResults.resolve(name: name, argumentsJSON: argumentsJSON) { [weak self] in
             let args = AppleToolArguments.dictionary(fromJSON: argumentsJSON)
-            PrivacyLog.localModel(.toolCall, model: PrivacyToken("appleOnDevice"), tool: PrivacyToken(name))
+            PrivacyLog.localModel(.toolCall, model: PrivacyToken(modelName: "appleOnDevice"), tool: PrivacyToken(name))
             // Plan KL P2: only a call that runs is entered; a replay above ran nothing new.
             let ledgerID = self?.ledgerDispatched(name, args: args,
                                                   arguments: AttemptToolLedger.canonicalArguments(json: argumentsJSON))
@@ -5964,7 +5995,7 @@ class LLMService: ObservableObject {
         case .exceededContextWindowSize:
             return .contextOverflow(provider: "Apple Intelligence", toolsRan: false)
         case .assetsUnavailable:
-            return .missingAPIKey(String(localized: "Apple Intelligence isn't available right now — try again in a moment, or add an API key in Settings → Assistant → AI Models"))
+            return .onDeviceUnavailable(reason: "assetsUnavailable", message: String(localized: "Apple Intelligence isn't available right now — try again in a moment, or add an API key in Settings → Assistant → AI Models"))
         case .unsupportedLanguageOrLocale:
             return .invalidConfiguration(String(localized: "Apple Intelligence doesn't support this language yet — choose a cloud model in Settings → Assistant → AI Models"))
         case .rateLimited, .concurrentRequests:
@@ -6172,7 +6203,7 @@ class LLMService: ObservableObject {
             // Plan IU: the on-device path is outside the setting — it has always carried its own
             // reduced list, names only, smaller than any core set. Logged so the report says so.
             PrivacyLog.model(.toolExposure, provider: PrivacyToken(config.llmProvider.rawValue),
-                             model: PrivacyToken(config.model), count: toolNames.count,
+                             model: PrivacyToken(modelName: config.model), count: toolNames.count,
                              total: router.registry.toolNames.count,
                              detail: PrivacyToken(ToolExposure.core.rawValue),
                              reason: PrivacyToken(ToolExposureReason.onDevice.rawValue))
@@ -6327,7 +6358,7 @@ class LLMService: ObservableObject {
                 // refuses it inside `generate`. Same outcome, and deliberately the same words —
                 // answering blind about a photo the model never saw is the failure both nets
                 // exist to prevent.
-                PrivacyLog.localModel(.imageRefused, model: PrivacyToken(selectedID.rawValue))
+                PrivacyLog.localModel(.imageRefused, model: PrivacyToken(modelName: selectedID.rawValue))
                 response = LocalLLMService.visionWeightsUnavailableMessage
             }
             if let onToken {
@@ -6633,26 +6664,26 @@ class LLMService: ObservableObject {
             PrivacyLog.localModel(.generationFailed, error: SafeErrorSummary(error))
             throw LLMError.invalidResponse(String(localized: "Local model error: \(error.localizedDescription)"))
         }
-        PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.executed.count,
+        PrivacyLog.localModel(.toolLoop, model: PrivacyToken(modelName: selectedID.rawValue), count: outcome.executed.count,
                               total: outcome.generations, detail: PrivacyToken(outcome.endReason.rawValue))
         if let routed = outcome.executed.first(where: \.routed) {
             // A registered tool's name: the router names only tools it routes to, never the turn.
-            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.routedCalls,
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(modelName: selectedID.rawValue), count: outcome.routedCalls,
                                   tool: PrivacyToken(routed.call.name), detail: PrivacyToken("routed"))
         }
         if outcome.argumentsDropped > 0 {
             // A count only: the arguments' names and values are the model's text and are never logged.
-            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.argumentsDropped,
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(modelName: selectedID.rawValue), count: outcome.argumentsDropped,
                                   detail: PrivacyToken("argumentsDropped"))
         }
         if outcome.argumentsCompleted > 0 {
             // A count only: what was filled is the technician's words and is never logged.
-            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.argumentsCompleted,
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(modelName: selectedID.rawValue), count: outcome.argumentsCompleted,
                                   detail: PrivacyToken("argumentsCompleted"))
         }
         if outcome.multiCallGenerations > 0 {
             // A count only: generations that asked for more than one call, all of which ran or were counted.
-            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.multiCallGenerations,
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(modelName: selectedID.rawValue), count: outcome.multiCallGenerations,
                                   detail: PrivacyToken("multiCall"))
         }
         var answer = outcome.text
@@ -6766,7 +6797,7 @@ class LLMService: ObservableObject {
                     locationContext: locationContext, memoryContext: memoryContext,
                     hasImage: false, turn: text, weatherContext: weatherContext, device: device,
                     localModelID: localConfig.model)
-            PrivacyLog.model(.agentSelected, model: PrivacyToken(localConfig.model),
+            PrivacyLog.model(.agentSelected, model: PrivacyToken(modelName: localConfig.model),
                              detail: PrivacyToken("medicalLocalOnly"))
             switch localConfig.llmProvider {
             case .local:
@@ -6801,7 +6832,7 @@ class LLMService: ObservableObject {
             model: agentModelId,
             baseURL: ""
         )
-        PrivacyLog.model(.agentSelected, model: PrivacyToken(agentModelId),
+        PrivacyLog.model(.agentSelected, model: PrivacyToken(modelName: agentModelId),
                          detail: PrivacyToken("local"))
         return try await sendLocal(text, systemPrompt: leanPrompt, config: localConfig, includeTools: hasNativeTools)
     }
@@ -7266,6 +7297,11 @@ extension LLMService {
 
 enum LLMError: LocalizedError {
     case missingAPIKey(String)
+    /// An on-device model this phone cannot run now: `reason` is Apple's availability case
+    /// (`deviceNotEligible`, `appleIntelligenceNotEnabled`, `modelNotReady`). Not a key, though it
+    /// ends the candidate the same way; the build 737 report called an iPhone 13's Apple model
+    /// `missingAPIKey`.
+    case onDeviceUnavailable(reason: String, message: String)
     case invalidResponse(String)
     case invalidConfiguration(String)
     /// `rejection` is what the provider's answer classified as (Plan IE P0): its error type, its
@@ -7299,6 +7335,7 @@ enum LLMError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingAPIKey(let msg): return msg
+        case .onDeviceUnavailable(_, let msg): return msg
         case .invalidResponse(let provider): return String(localized: "Invalid response from \(provider)")
         case .invalidConfiguration(let msg): return msg
         case .apiError(let provider, let code, let msg, _):

@@ -81,6 +81,9 @@ enum ModelSwitchNarrator {
         switch error as? CloudProcessingRefusal {
         case .permissionRequired:
             return "I need your permission to use this service. Open Avenkin and allow it, then ask me again."
+        case .declined:
+            // Asking again is refused the same way until it is allowed, so name where.
+            return "You chose Not now for this service. To use it, allow it in Avenkin under Cloud AI Sharing."
         case .withdrawn:
             return "Sharing with this service is turned off. You can turn it back on in Avenkin, under Cloud AI Sharing."
         case .unavailable:

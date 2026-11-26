@@ -52,6 +52,9 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
         /// rather than starting again on another model (Plan KL P2). The detail is the category
         /// of what the model failed on.
         case stoppedAfterTools
+        /// An on-device model this phone cannot run now (not supported, switched off, still
+        /// downloading). The detail is the reason.
+        case unavailableOnDevice
         case unknown
     }
 
@@ -83,8 +86,11 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
     /// through to a type name plus a domain/code pair, which is the most that can be said about
     /// an unknown error without quoting it.
     init(_ error: Error) {
-        if error is CloudProcessingRefusal {
-            self.init(category: .refused, detail: PrivacyToken("cloudSharingConsent"))
+        if let refusal = error as? CloudProcessingRefusal {
+            // Which refusal: a Not now, a withdrawal or nobody there to ask are fixed differently,
+            // and the build 737 report could not tell them apart.
+            let reason = PrivacyToken.caseName(of: refusal)?.description ?? "unknown"
+            self.init(category: .refused, detail: PrivacyToken("cloudSharingConsent.\(reason)"))
             return
         }
         if error is CancellationError {
@@ -199,6 +205,8 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
                                     detail: PrivacyToken(toolsRan ? "afterTools" : "beforeTools"))
         case .missingAPIKey:
             return SafeErrorSummary(category: .unknown, detail: PrivacyToken("missingAPIKey"))
+        case .onDeviceUnavailable(let reason, _):
+            return SafeErrorSummary(category: .unavailableOnDevice, detail: PrivacyToken(reason))
         case .invalidConfiguration:
             return SafeErrorSummary(category: .unknown, detail: PrivacyToken("invalidConfiguration"))
         }
@@ -215,7 +223,7 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
     /// code is, and it still goes through the vocabulary filter.
     static func remote(code: String?) -> SafeErrorSummary {
         SafeErrorSummary(category: .badServerResponse,
-                         detail: code.map(PrivacyToken.init) ?? PrivacyToken("unknown"))
+                         detail: code.map { PrivacyToken($0) } ?? PrivacyToken("unknown"))
     }
 
     /// A SQLite fault. The result code and its extended code are a fixed numeric vocabulary
