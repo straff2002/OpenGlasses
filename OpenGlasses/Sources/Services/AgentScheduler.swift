@@ -663,8 +663,11 @@ class AgentScheduler: ObservableObject {
     /// Shortcut every 15 minutes, which iOS doesn't allow from the background, read nothing back,
     /// and with agent mode on piled up approvals and held runs while the person was away (field
     /// report, build 770). Check Email is now the person's own automation handing mail to
-    /// `ReviewEmailIntent`, so the task can never do anything useful.
-    nonisolated static let retiredTaskIDs: Set<String> = ["morning-briefing", "shortcut-email-check"]
+    /// `ReviewEmailIntent`, so the task can never do anything useful. `shortcut-message-check` is
+    /// the old Check Messages task, retired the same way for `ReviewMessagesIntent`.
+    nonisolated static let retiredTaskIDs: Set<String> = [
+        "morning-briefing", "shortcut-email-check", "shortcut-message-check",
+    ]
 
     nonisolated static func withoutRetiredTasks(_ tasks: [ScheduledTask]) -> [ScheduledTask] {
         tasks.filter { !retiredTaskIDs.contains($0.id) }

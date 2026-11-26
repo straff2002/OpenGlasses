@@ -75,11 +75,13 @@ final class EmailReviewTests: XCTestCase {
 
     // MARK: - The review never runs with tools
 
+    /// The intent hands the mail to the shared run (`AutomationReviewRun`), which reviews it with
+    /// the tools-off, conversation-free completion. `MessageReviewTests` holds the run itself to that.
     func testTheIntentReviewsWithoutToolsAndOutsideTheConversation() throws {
         let source = try String(contentsOf: Self.sources
             .appendingPathComponent("App/Intents/ReviewEmailIntent.swift"), encoding: .utf8)
-        XCTAssertTrue(source.contains("completeStateless("),
-                      "the review must use the tools-off, conversation-free completion")
+        XCTAssertTrue(source.contains("AutomationReviewRun.run(EmailReview.review"),
+                      "the review must go through the shared tools-off run")
         for call in ["sendMessage(", "sendTextMessage(", "sendOffConversation(", "runTool(", "nativeToolRouter"] {
             XCTAssertFalse(source.contains(call), "the email review must not reach \(call)")
         }

@@ -1,7 +1,9 @@
 import Foundation
 import UserNotifications
 
-/// Reviewing unread email that the wearer's own Shortcuts automation hands over.
+/// Reviewing unread email that the wearer's own Shortcuts automation hands over. The review's
+/// shape (envelope, outcome, silent notification) is `AutomationReview`, shared with
+/// `MessageReview`; this file holds what is particular to email.
 ///
 /// The app has no mail access of its own, and it can't run a Shortcut from the background and
 /// read what it returns: `shortcuts://` only opens while the app is in front, and nothing comes
@@ -22,20 +24,15 @@ enum EmailReview {
     /// the data came from.
     static let sourceName = "email_review"
 
-    /// The most email text one review reads. A day of unread mail from a busy inbox can run long,
-    /// and the cost goes to the wearer's own provider key. What's cut is cut from the end, and the
-    /// model is told so.
+    /// The most email text one review reads. A day of unread mail from a busy inbox can run long.
     static let maxInputCharacters = 12_000
 
-    /// The most a notification carries. The banner shows only the first lines, but the text stays
-    /// in Notification Centre.
+    /// The most a notification carries.
     static let maxReportCharacters = 600
 
     /// What the model answers when nothing needs the wearer.
-    static let nothingMarker = "[NOTHING]"
+    static let nothingMarker = AutomationReview.nothingMarker
 
-    /// The fixed token a review's log lines carry. Never the mail, the senders or the reply, only
-    /// how long they were.
     static let logReason = PrivacyToken("emailReview")
 
     /// The system prompt. Fixed: it carries none of the email text.
@@ -55,64 +52,28 @@ enum EmailReview {
         from and what they need. At most five lines, plain text, no preamble.
         """
 
-    /// The request the model gets for `emails`, or nil when there is nothing to review.
-    static func request(for emails: String) -> String? {
-        let trimmed = emails.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let truncated = trimmed.count > maxInputCharacters
-        let body = truncated ? String(trimmed.prefix(maxInputCharacters)) : trimmed
-        let note = truncated
-            ? "\n\n(The list was longer than this; the rest was cut. Say so in your last line if you report anything.)"
-            : ""
-        return "Unread emails to sort:\n" + PromptInjectionPolicy.wrap(toolName: sourceName, content: body) + note
-    }
-
-    /// What one review came to.
-    enum Outcome: Equatable {
-        /// Nothing needs the wearer: no notification.
-        case nothingToReport
-        /// The lines to show the wearer.
-        case report(String)
-    }
-
-    /// The model's reply, read as an outcome. The marker anywhere in the reply means nothing to
-    /// report, matching how scheduled tasks read it: a model that hedges ("[NOTHING] — all
-    /// newsletters") still meant nothing.
-    static func outcome(from response: String) -> Outcome {
-        let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty || trimmed.lowercased().contains(nothingMarker.lowercased()) {
-            return .nothingToReport
-        }
-        guard trimmed.count > maxReportCharacters else { return .report(trimmed) }
-        return .report(String(trimmed.prefix(maxReportCharacters - 1)) + "…")
-    }
-
-    // MARK: - Notification
-
-    /// The one identifier every review posts under, so a new review replaces the last one rather
-    /// than stacking a banner per run of the automation.
+    /// The one identifier every review posts under, so a new review replaces the last one.
     static let notificationIdentifier = "email_review.latest"
 
-    /// The notification for a report: no sound, since a scheduled result is never spoken or
-    /// chimed through the phone. Its text is what the wearer's own automation gave the app, about
-    /// the wearer's own mail. Lock-screen previews follow the wearer's iOS setting.
-    static func notification(for report: String) -> UNNotificationRequest {
-        let content = UNMutableNotificationContent()
-        content.title = String(localized: "Email that needs you",
-                               comment: "Notification title: the email review found mail worth reading.")
-        content.body = report
-        content.sound = nil
-        content.threadIdentifier = "email_review"
-        content.categoryIdentifier = "email_review"
-        return UNNotificationRequest(identifier: notificationIdentifier, content: content, trigger: nil)
-    }
+    /// The review itself, shared in shape with `MessageReview`.
+    static let review = AutomationReview(
+        sourceName: sourceName,
+        heading: "Unread emails to sort:",
+        maxInputCharacters: maxInputCharacters,
+        maxReportCharacters: maxReportCharacters,
+        systemPrompt: systemPrompt,
+        notificationIdentifier: notificationIdentifier,
+        threadIdentifier: "email_review",
+        notificationTitle: {
+            String(localized: "Email that needs you",
+                   comment: "Notification title: the email review found mail worth reading.")
+        },
+        logReason: logReason)
 
-    static func postToCenter(_ request: UNNotificationRequest) {
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error {
-                PrivacyLog.agent(.notifications, .taskFailed, reason: logReason,
-                                 error: SafeErrorSummary(error))
-            }
-        }
-    }
+    typealias Outcome = AutomationReview.Outcome
+
+    static func request(for emails: String) -> String? { review.request(for: emails) }
+    static func outcome(from response: String) -> Outcome { review.outcome(from: response) }
+    static func notification(for report: String) -> UNNotificationRequest { review.notification(for: report) }
+    static func postToCenter(_ request: UNNotificationRequest) { review.postToCenter(request) }
 }
