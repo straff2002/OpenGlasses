@@ -28,7 +28,7 @@ class AgentScheduler: ObservableObject {
     private var store: AgentScheduleStateStore { stateStore ?? .shared }
     /// 0…1, spreading retry waits a little (`SchedulePolicy.retryDelay`); tests fix it.
     var jitter: () -> Double = { Double.random(in: 0...1) }
-    /// Where a result a task doesn't speak is posted (`ScheduledTaskNotification`); tests catch it.
+    /// Where a result a task doesn't speak is posted (`ScheduledTaskNotification`); tests can replace it.
     var postSilentResult: (UNNotificationRequest) -> Void = { ScheduledTaskNotification.postToCenter($0) }
 
     /// Built-in scheduled tasks. Users can add more via quick actions.
