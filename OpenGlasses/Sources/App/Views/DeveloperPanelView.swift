@@ -256,8 +256,11 @@ struct DeveloperPanelView: View {
             // Plan LM P1: what the shared background wake actually did — the device pass's evidence.
             BackgroundRefreshSection(ledger: BackgroundRefreshCoordinator.shared.ledger)
             NotificationButtonTestSection(log: NotificationButtonTestLog.shared)
+
+            #if !AVENKIN_PHONE_ONLY
             // Rokid RV101 support is early and unproven on hardware, so its camera switch and the
-            // link probe live here rather than in the glasses settings everyone sees.
+            // link probe live here rather than in the glasses settings everyone sees. Not in the
+            // phone-only build, which has no glasses and no MFi transport.
             OGSection(
                 header: "Rokid Glasses",
                 footer: "Early support that has not been tested on the glasses yet. The camera choice applies from the next launch, and until the glasses can send photos, captures use the iPhone camera."
@@ -274,6 +277,7 @@ struct DeveloperPanelView: View {
                 }
                 .buttonStyle(.plain)
             }
+            #endif
 
             OGSection(
                 header: "Debug Events",

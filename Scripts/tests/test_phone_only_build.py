@@ -232,6 +232,28 @@ class ArtifactTextTests(unittest.TestCase):
         errors = self.inspected(lambda app: (app / "en.lproj/Localizable.strings").unlink())
         self.assertEqual(errors, ["No compiled string tables found; localized text could not be checked"])
 
+    def test_a_linked_accessory_framework_is_found(self):
+        loaded = "\t/System/Library/Frameworks/ExternalAccessory.framework/ExternalAccessory (compatibility version 1.0.0)\n"
+
+        def inspected_with(loaded_text):
+            with tempfile.TemporaryDirectory() as directory:
+                app = Path(directory) / "Avenkin.app"
+                (app / "Metadata.appintents").mkdir(parents=True)
+                (app / "en.lproj").mkdir()
+                info = {"AvenkinBuildVariant": "phone-only", "CFBundleExecutable": "OpenGlasses"}
+                (app / "Info.plist").write_bytes(plistlib.dumps(info))
+                (app / "Metadata.appintents/extract.actionsdata").write_text('{"actions": {}}')
+                (app / "OpenGlasses").write_bytes(b"\xcf\xfa\xed\xfe\x00")
+                (app / "en.lproj/Localizable.strings").write_bytes(plistlib.dumps({"Save": "Save"}, fmt=plistlib.FMT_BINARY))
+                unsigned = types.SimpleNamespace(returncode=1, stdout=b"")
+                otool = lambda *args: loaded_text if args[:2] == ("xcrun", "otool") else ""
+                with mock.patch.object(check, "run", side_effect=otool), \
+                        mock.patch.object(check.subprocess, "run", return_value=unsigned), mock.patch("builtins.print"):
+                    return check.check(app)[0]
+
+        self.assertEqual(inspected_with(loaded), ["ExternalAccessory linked into OpenGlasses"])
+        self.assertEqual(inspected_with("\t/System/Library/Frameworks/CoreBluetooth.framework/CoreBluetooth\n"), [])
+
     def test_a_test_bundles_fixtures_are_not_product_text(self):
         def test_bundle(app):
             plugin = app / "PlugIns/OpenGlassesTests.xctest"

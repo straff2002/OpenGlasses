@@ -15,6 +15,9 @@ from pathlib import Path
 
 SDK = re.compile(r"MWDAT(?:Core|Camera|Display|MockDevice)|MetaWearablesDAT")
 SYMBOL = re.compile(r"(?:\$s|\$S)(?:9MWDATCore|11MWDATCamera|12MWDATDisplay|15MWDATMockDevice)")
+# The glasses accessory framework. Meta's SDK links it, and so would a glasses transport of our own
+# (the Rokid MFi transport does); App Review asks any build that links it for an MFi product id.
+ACCESSORY = re.compile(r"/ExternalAccessory\.framework/")
 # Product and company text. The bare word "Meta" is allowed because it means "goal" in several
 # translations and is a device kind in llama.cpp, so only a phrase counts. Boundaries are ASCII so
 # that a phrase next to CJK text still matches. "Oakley-EC2N" is a key-exchange group in WebRTC, and
@@ -172,6 +175,8 @@ def check(path, require_signed=False):
         symbols = run("xcrun", "nm", "-j", str(item))
         if SDK.search(loaded) or SYMBOL.search(symbols):
             errors.append(f"SDK linked into {item.relative_to(path)}")
+        if ACCESSORY.search(loaded):
+            errors.append(f"ExternalAccessory linked into {item.relative_to(path)}")
         if not is_test_bundle_content(item, path):
             terms = binary_terms(item)
             if terms:
