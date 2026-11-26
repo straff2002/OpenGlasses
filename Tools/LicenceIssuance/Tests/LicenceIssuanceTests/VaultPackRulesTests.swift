@@ -47,6 +47,41 @@ final class VaultPackRulesTests: XCTestCase {
         XCTAssertEqual(VaultPackRules.manifestIssues(.init(id: "v", name: "V", files: [], documentCount: 1), manualOnly: true), [])
     }
 
+    /// Plan IM decision 4: `equipment_types`, the closed list a symptom subject's type comes from.
+    func testEquipmentTypesAreAClosedListOfPlainNames() throws {
+        XCTAssertNil(try manifest("{}").equipmentTypes)
+        let listed = try manifest(#"{"equipment_types":["Dryer","walk-in cooler"]}"#)
+        XCTAssertEqual(listed.equipmentTypes, ["Dryer", "walk-in cooler"])
+        XCTAssertFalse(listed.equipmentTypesUnreadable)
+        XCTAssertTrue(try manifest(#"{"equipment_types":"dryer"}"#).equipmentTypesUnreadable)
+        XCTAssertTrue(try manifest(#"{"equipment_types":[1,2]}"#).equipmentTypesUnreadable)
+        XCTAssertFalse(try manifest(#"{"equipment_types":null}"#).equipmentTypesUnreadable, "null reads as absent")
+
+        let base = VaultPackRules.Manifest(id: "v", name: "V", files: ["core.md"], promptRules: rules)
+        var good = base
+        good.equipmentTypes = ["Dryer", "walk-in cooler"]
+        XCTAssertEqual(VaultPackRules.manifestIssues(good), [])
+        var bad = base
+        bad.equipmentTypes = ["Dryer", " ", "DRYER", "door\u{7}", String(repeating: "x", count: 81)]
+        XCTAssertEqual(VaultPackRules.manifestIssues(bad), [
+            "equipment_types has an empty name",
+            "equipment type 'dryer' is listed twice",
+            "equipment type 'door\u{7}' contains a control character",
+            "equipment type '\(String(repeating: "x", count: 81))' is longer than 80 characters",
+        ])
+        var empty = base
+        empty.equipmentTypes = []
+        XCTAssertEqual(VaultPackRules.manifestIssues(empty), ["equipment_types lists nothing; leave it out instead"])
+        var unreadable = base
+        unreadable.equipmentTypesUnreadable = true
+        XCTAssertEqual(VaultPackRules.manifestIssues(unreadable), ["equipment_types must be a list of names"])
+
+        XCTAssertEqual(VaultPackRules.equipmentTypeKey("  Walk-in   Cooler "), "walk-in cooler")
+        XCTAssertEqual(VaultPackRules.listedEquipmentType("WALK-IN cooler", in: ["Dryer", "walk-in cooler"]), "walk-in cooler")
+        XCTAssertNil(VaultPackRules.listedEquipmentType("dishwasher", in: ["Dryer"]))
+        XCTAssertNil(VaultPackRules.listedEquipmentType("  ", in: ["Dryer"]))
+    }
+
     func testAListedFileIsTextAndNotEmpty() {
         XCTAssertNil(VaultPackRules.listedFileIssue("core.md", contents: "# Core\n"))
         XCTAssertEqual(VaultPackRules.listedFileIssue("core.md", contents: nil), "listed file missing: core.md")

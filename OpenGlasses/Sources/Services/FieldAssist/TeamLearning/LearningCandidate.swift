@@ -83,19 +83,54 @@ struct LearningCandidate: Codable, Equatable, Identifiable {
         }
     }
 
+    /// The part of an experience recording a candidate was drafted from (Plan IM P0, contract §13):
+    /// which recording, and where in it, so a reviewer can ask "what did they say here?". A pointer,
+    /// never the audio or its transcript, which stay where the recording is kept (IM decision 2).
+    struct Recording: Codable, Equatable {
+        /// 32 lowercase hex characters, as every other identifier the contract names.
+        let recordingID: String
+        /// Whole seconds from the recording's start: the segment is `segmentStart..<segmentEnd`.
+        let segmentStart: Int
+        let segmentEnd: Int
+
+        /// The longest recording a segment can point into: a day, in seconds.
+        static let maximumSeconds = 86_400
+
+        /// Nil unless the id is 32 lowercase hex and the segment is non-empty and within a day.
+        init?(recordingID: String, segment: Range<Int>) {
+            guard Self.isValid(recordingID: recordingID, start: segment.lowerBound, end: segment.upperBound) else {
+                return nil
+            }
+            self.recordingID = recordingID
+            self.segmentStart = segment.lowerBound
+            self.segmentEnd = segment.upperBound
+        }
+
+        var segment: Range<Int> { segmentStart..<segmentEnd }
+
+        static func isValid(recordingID: String, start: Int, end: Int) -> Bool {
+            LearningBundleSchema.isHexIdentifier(recordingID) && start >= 0 && end > start && end <= maximumSeconds
+        }
+    }
+
     /// The evidence in force when it was filed, as the contract carries it: the pages and
-    /// citations by name, the readings and photos by count. No reading value, no photo.
+    /// citations by name, the readings and photos by count. No reading value, no photo. A candidate
+    /// drafted from an experience recording also points at the part of it it came from (`recording`,
+    /// Plan IM); absent on every other candidate, so their evidence encodes as it always did.
     struct Evidence: Codable, Equatable {
         let pagesVerified: [String]
         let citationsOpened: [String]
         let readings: Int
         let photos: Int
+        var recording: Recording?
 
-        init(pagesVerified: [String] = [], citationsOpened: [String] = [], readings: Int = 0, photos: Int = 0) {
+        init(pagesVerified: [String] = [], citationsOpened: [String] = [], readings: Int = 0, photos: Int = 0,
+             recording: Recording? = nil) {
             self.pagesVerified = pagesVerified
             self.citationsOpened = citationsOpened
             self.readings = readings
             self.photos = photos
+            self.recording = recording
         }
 
         /// A copy of the task's — or, with no task running, the job's — evidence at filing time.
@@ -122,6 +157,12 @@ struct LearningCandidate: Codable, Equatable, Identifiable {
     var finding: String
     var symptom: String?
     var fix: String?
+    /// What was checked or tried on the way to the fix (Plan IM decision 3; contract §13). Up to
+    /// 500 characters. Nil on every candidate filed before it existed.
+    var tried: String?
+    /// How sure the technician is, in their own words ("worked once"), never a number (IM decision
+    /// 3). Up to 120 characters, the entry's own limit, so an approval carries it as written.
+    var outcome: String?
     let evidence: Evidence
     let author: String
     let createdAt: Date
@@ -146,7 +187,8 @@ struct LearningCandidate: Codable, Equatable, Identifiable {
     init(id: String = LearningCandidate.newID(), origin: Origin = .spoken, revision: Int = 1,
          status: Status = .filed, sessionId: String, jobReference: String?, taskId: String?,
          vaultId: String, equipment: Equipment?, spokenModel: String?, finding: String,
-         symptom: String?, fix: String?, evidence: Evidence, author: String,
+         symptom: String?, fix: String?, tried: String? = nil, outcome: String? = nil,
+         evidence: Evidence, author: String,
          createdAt: Date, updatedAt: Date? = nil, redactions: [String]) {
         self.id = id
         self.origin = origin
@@ -161,6 +203,8 @@ struct LearningCandidate: Codable, Equatable, Identifiable {
         self.finding = finding
         self.symptom = symptom
         self.fix = fix
+        self.tried = tried
+        self.outcome = outcome
         self.evidence = evidence
         self.author = author
         self.createdAt = createdAt
@@ -200,7 +244,7 @@ struct LearningCandidate: Codable, Equatable, Identifiable {
         case jobReference = "jobNumber"
         case taskId = "taskID"
         case vaultId = "vaultID"
-        case equipment, spokenModel, finding, symptom, fix, evidence, author
+        case equipment, spokenModel, finding, symptom, fix, tried, outcome, evidence, author
         case createdAt, updatedAt, redactions
         case entryID, reviewReason, importedFrom
         case portalReceivedRevision, portalRefusal
@@ -276,15 +320,27 @@ enum LearningCandidateText {
     static let findingLimit = 2_000
     static let fieldLimit = 500
     static let authorLimit = 120
+    /// `outcome`'s limit: the entry's (team-learning §11), so an approval carries it as written.
+    static let outcomeLimit = 120
 
     enum Field: String, Equatable {
-        case finding, symptom, fix
+        case finding, symptom, fix, tried, outcome
 
         var spoken: String {
             switch self {
             case .finding: return "finding"
             case .symptom: return "symptom"
             case .fix: return "fix"
+            case .tried: return "list of what was checked"
+            case .outcome: return "note of how sure"
+            }
+        }
+
+        var limit: Int {
+            switch self {
+            case .finding: return LearningCandidateText.findingLimit
+            case .outcome: return LearningCandidateText.outcomeLimit
+            case .symptom, .fix, .tried: return LearningCandidateText.fieldLimit
             }
         }
     }
@@ -318,11 +374,16 @@ enum LearningCandidateText {
         let symptom: String?
         let fix: String?
         let redactions: [String]
+        /// What was checked, and how sure (Plan IM decision 3); nil unless given.
+        var tried: String? = nil
+        var outcome: String? = nil
     }
 
-    /// Validate and redact one capture. Symptom and fix are optional; empty is absent.
+    /// Validate and redact one capture. Symptom, fix, tried and outcome are optional; empty is
+    /// absent.
     static func clean(finding rawFinding: String?, symptom rawSymptom: String?,
-                      fix rawFix: String?) -> Result<Cleaned, Refusal> {
+                      fix rawFix: String?, tried rawTried: String? = nil,
+                      outcome rawOutcome: String? = nil) -> Result<Cleaned, Refusal> {
         var fired: [String] = []
         func process(_ raw: String?, _ field: Field) -> Result<String?, Refusal> {
             guard let raw else { return .success(nil) }
@@ -332,7 +393,7 @@ enum LearningCandidateText {
                 guard !text.isEmpty else { return .success(nil) }
                 let (redacted, hits) = SecretPatterns.redact(text)
                 for hit in hits where !fired.contains(hit) { fired.append(hit) }
-                let limit = field == .finding ? findingLimit : fieldLimit
+                let limit = field.limit
                 let count = length(redacted)
                 guard count <= limit else { return .failure(.tooLong(field, count: count, limit: limit)) }
                 return .success(redacted)
@@ -354,11 +415,22 @@ enum LearningCandidateText {
         case .failure(let refusal): return .failure(refusal)
         case .success(let value): fix = value
         }
+        let tried: String?
+        switch process(rawTried, .tried) {
+        case .failure(let refusal): return .failure(refusal)
+        case .success(let value): tried = value
+        }
+        let outcome: String?
+        switch process(rawOutcome, .outcome) {
+        case .failure(let refusal): return .failure(refusal)
+        case .success(let value): outcome = value
+        }
         // In `SecretPatterns.all` order whatever order the fields fired in, so the same text always
         // records the same list.
         let order = SecretPatterns.all.map(\.name)
         let redactions = fired.sorted { (order.firstIndex(of: $0) ?? .max) < (order.firstIndex(of: $1) ?? .max) }
-        return .success(Cleaned(finding: finding, symptom: symptom, fix: fix, redactions: redactions))
+        return .success(Cleaned(finding: finding, symptom: symptom, fix: fix, redactions: redactions,
+                                tried: tried, outcome: outcome))
     }
 
     /// Tabs to spaces, carriage returns to line feeds, line feeds to spaces outside `finding`;

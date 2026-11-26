@@ -62,6 +62,13 @@ struct VaultManifest: Codable, Equatable {
     /// that does not set it, so such a manifest encodes exactly as it did. An older build ignores
     /// the key, which is why a sealed vault states the build it needs.
     let vaultOnly: Bool?
+    /// Plan IM decision 4: `"equipment_types": ["dryer", "dishwasher"]`, the closed list the
+    /// equipment type of a symptom learning comes from — the only way a team learning names
+    /// equipment without a model, and what keeps a dryer's finding from answering for a dishwasher.
+    /// Nil, and absent from the JSON, on every vault that does not declare one, so such a manifest
+    /// encodes exactly as it did. A malformed list refuses the manifest (`VaultPackRules`), as
+    /// `sites` does: it bounds what answers.
+    let equipmentTypes: [String]?
 
     struct Gating: Codable, Equatable {
         /// IAP product identifier required to unlock this vault. Nil = free.
@@ -91,7 +98,7 @@ struct VaultManifest: Codable, Equatable {
                       gating: gating, promptRules: promptRules,
                       sourceAttributionFormat: sourceAttributionFormat,
                       sourceAttributionRequired: sourceAttributionRequired, trades: trades,
-                      sites: sites, vaultOnly: vaultOnly)
+                      sites: sites, vaultOnly: vaultOnly, equipmentTypes: equipmentTypes)
     }
 
     /// Location of a document relative to the vault root.
@@ -119,6 +126,7 @@ struct VaultManifest: Codable, Equatable {
         case trades
         case sites
         case vaultOnly = "vault_only"
+        case equipmentTypes = "equipment_types"
     }
 
     init(
@@ -136,7 +144,8 @@ struct VaultManifest: Codable, Equatable {
         sourceAttributionRequired: Bool = true,
         trades: [String]? = nil,
         sites: [String]? = nil,
-        vaultOnly: Bool? = nil
+        vaultOnly: Bool? = nil,
+        equipmentTypes: [String]? = nil
     ) {
         self.id = id
         self.name = name
@@ -153,6 +162,7 @@ struct VaultManifest: Codable, Equatable {
         self.trades = trades
         self.sites = sites
         self.vaultOnly = vaultOnly
+        self.equipmentTypes = equipmentTypes
     }
 
     /// Hand-written so every manifest authored before the reference tier existed — and every
@@ -179,7 +189,13 @@ struct VaultManifest: Codable, Equatable {
         // A malformed `vault_only` refuses the manifest too: read as false, a seal the author asked
         // for would silently not be there.
         vaultOnly = try c.decodeIfPresent(Bool.self, forKey: .vaultOnly)
+        // A malformed `equipment_types` refuses the manifest too: read as absent, every symptom
+        // learning the author meant to bound would answer everywhere.
+        equipmentTypes = try c.decodeIfPresent([String].self, forKey: .equipmentTypes)
     }
+
+    /// The vault's closed list of equipment types (Plan IM decision 4); empty when it declares none.
+    var equipmentTypeList: [String] { equipmentTypes ?? [] }
 
     /// The site documents this vault lists; empty for every vault without them.
     var siteFiles: [String] { sites ?? [] }
@@ -305,6 +321,6 @@ extension VaultPackRules.Manifest {
     init(_ manifest: VaultManifest) {
         self.init(id: manifest.id, name: manifest.name, files: manifest.files, documentCount: manifest.documents.count,
                   promptRules: manifest.promptRules, gatingIAP: manifest.gating.iap, hasSites: manifest.sites != nil,
-                  proceduresDir: manifest.proceduresDir)
+                  proceduresDir: manifest.proceduresDir, equipmentTypes: manifest.equipmentTypes)
     }
 }

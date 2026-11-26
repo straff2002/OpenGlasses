@@ -136,7 +136,8 @@ parse. A spelling the phone's index could not read as a model is refused there
 ### 4.3 Equipment type alone
 
 `equipment_type` must be on the vault's closed list, compared case-insensitively with runs of spaces
-as one, and is stored as the list spells it. A row with an equipment type and no model becomes the
+as one, and is stored as the list spells it. The list is the vault manifest's `equipment_types`
+(team-learning §13, read by `VaultPackRules.Manifest`), the same list the phone bounds answers by. A row with an equipment type and no model becomes the
 **symptom subject** `{ kind: "symptom", equipmentType, phrase }` (Plan IM decision 4), `phrase` being
 the symptom as written without the fault code. It answers only within that equipment type, so a
 dryer's row never answers for a dishwasher. A row with both is a model subject carrying the type.

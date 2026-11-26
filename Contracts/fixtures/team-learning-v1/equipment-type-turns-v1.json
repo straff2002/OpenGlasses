@@ -1,0 +1,98 @@
+{
+  "cases": [
+    {
+      "admits": {
+        "Dishwasher": false,
+        "dryer": true
+      },
+      "name": "the turn names the dryer",
+      "resolved": [
+        "dryer"
+      ],
+      "turn": "The dryer won't heat"
+    },
+    {
+      "admits": {
+        "dishwasher": false,
+        "dryer": true
+      },
+      "name": "a plural, any case",
+      "resolved": [
+        "dryer"
+      ],
+      "turn": "both DRYERS trip the breaker"
+    },
+    {
+      "admits": {
+        "dryer": false,
+        "walk-in cooler": true
+      },
+      "name": "spacing inside a name",
+      "resolved": [
+        "walk-in cooler"
+      ],
+      "turn": "walk-in   cooler door sweats"
+    },
+    {
+      "admits": {
+        "dishwasher": true,
+        "dryer": true
+      },
+      "name": "a word that only starts with a type",
+      "resolved": null,
+      "turn": "the dryerless unit hums"
+    },
+    {
+      "admits": {
+        "dishwasher": true,
+        "dryer": false
+      },
+      "jobContext": "Dishwasher not draining",
+      "name": "the job names it when the turn does not",
+      "resolved": [
+        "dishwasher"
+      ],
+      "turn": "it won't drain"
+    },
+    {
+      "admits": {
+        "dishwasher": false,
+        "dryer": true
+      },
+      "jobContext": "Dishwasher not draining",
+      "name": "the turn outranks the job",
+      "resolved": [
+        "dryer"
+      ],
+      "turn": "and the dryer?"
+    },
+    {
+      "activeTypes": [
+        "Dryer"
+      ],
+      "admits": {
+        "dishwasher": false,
+        "dryer": true
+      },
+      "name": "the active unit's type",
+      "resolved": [
+        "dryer"
+      ],
+      "turn": "it won't heat"
+    },
+    {
+      "admits": {
+        "dishwasher": true,
+        "dryer": true
+      },
+      "name": "nothing resolves a type",
+      "resolved": null,
+      "turn": "it won't heat"
+    }
+  ],
+  "vocabulary": [
+    "dryer",
+    "dishwasher",
+    "walk-in cooler"
+  ]
+}

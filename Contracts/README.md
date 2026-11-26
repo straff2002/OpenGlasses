@@ -18,7 +18,9 @@ implementation, fixtures and the phone's import), [office commissioning](commiss
 and the two signed messages have reference code and fixtures; nothing records or sends),
 [team learning](team-learning.md) (§12, Plan NG: the portal binding and the two seat actions a
 portal company's phones send candidates and fetch statuses on; reference code in the licence core, fixtures in
-`fixtures/team-learning-portal-v1/`, and the phone's half), [managed office folders](office-folders.md),
+`fixtures/team-learning-portal-v1/`, and the phone's half; §13, Plan IM: a candidate's recording evidence,
+`tried` and `outcome`, the manifest's `equipment_types` and the symptom subject's retrieval, fixtures in
+`fixtures/team-learning-v1/` and the phone's half), [managed office folders](office-folders.md),
 [bulk content](office-bulk.md) (an organisation's own publisher, the assignment receipt, and what
 a job names; messages, fixtures, and the phone's half in the opt-in build),
 [office reports](office-reports.md) (messages, fixtures and the phone's half in the opt-in

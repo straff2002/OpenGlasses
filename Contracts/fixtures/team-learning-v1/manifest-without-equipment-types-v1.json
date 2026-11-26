@@ -1,0 +1,12 @@
+{
+  "files": [
+    "core.md"
+  ],
+  "id": "fixture-appliances",
+  "name": "Fixture Appliances",
+  "prompt_rules": [
+    "Never fabricate a value.",
+    "Cite the file every answer comes from."
+  ],
+  "version": "1.0.0"
+}

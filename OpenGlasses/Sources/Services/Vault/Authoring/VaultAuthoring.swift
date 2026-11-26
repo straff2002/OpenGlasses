@@ -300,7 +300,7 @@ extension VaultManifest {
                       documentsDir: documentsDir, documents: documents, documentsIncluded: documentsIncluded,
                       gating: gating, promptRules: promptRules, sourceAttributionFormat: sourceAttributionFormat,
                       sourceAttributionRequired: sourceAttributionRequired, trades: trades, sites: sites,
-                      vaultOnly: vaultOnly)
+                      vaultOnly: vaultOnly, equipmentTypes: equipmentTypes)
     }
 }
 

@@ -37,15 +37,21 @@ struct TeamLearningDisclosure: Equatable {
     var showsTeamLearningBadge: Bool { !entries.isEmpty }
 
     /// The sentence a learning-alone answer opens with; nil when a manual passage carried it.
+    ///
+    /// Crew experience's when the answer rests on recollections only (Plan IM decision 5); as soon
+    /// as a learning seen on a job is among them, FP's, with that learning's count — the retriever
+    /// ranks those first (`VaultRetriever.learningsBySeenOnAJob`), so it is the one leading.
     var leadIn: String? {
         guard restsOnLearningAlone else { return nil }
-        if entries.first?.isCrewExperience == true { return Self.crewExperienceLeadIn }
-        return Self.leadIn(confirmedJobCount: entries.first?.confirmedJobCount)
+        if !entries.isEmpty, entries.allSatisfy(\.isCrewExperience) { return Self.crewExperienceLeadIn }
+        return Self.leadIn(confirmedJobCount: entries.first { !$0.isCrewExperience }?.confirmedJobCount)
     }
 
     /// What an answer resting on the company's crew experience alone opens with (team-learning
     /// §11): the portal's own words, `CrewExperienceSheet.leadIn`. An experience-only vault has no
-    /// manual, so every answer it gives opens with it.
+    /// manual, so every answer it gives opens with it. It is also Plan IM decision 5's recalled
+    /// lead-in: a recollection from an experience recording is crew experience like a sheet row,
+    /// and is introduced by the same sentence rather than a second one (team-learning §13).
     static let crewExperienceLeadIn = CrewExperienceSheet.leadIn
 
     /// "The manual doesn't cover this. Your crew's own finding[, noted on <n> previous jobs]:" —

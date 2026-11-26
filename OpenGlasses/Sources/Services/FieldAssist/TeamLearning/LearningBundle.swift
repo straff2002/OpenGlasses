@@ -44,7 +44,9 @@ struct LearningBundle: Equatable {
         case decisions
     }
 
-    /// A candidate as it travels (contract §3, plus the 2026-10-09 `origin`).
+    /// A candidate as it travels (contract §3, plus the 2026-10-09 `origin` and the 2026-11-27
+    /// `tried`, `outcome` and `evidence.recording` of §13 — each encoded only when present, so a
+    /// candidate without them is the bytes it always was).
     struct Candidate: Codable, Equatable {
         var candidateID: String
         var revision: Int64
@@ -61,6 +63,8 @@ struct LearningBundle: Equatable {
         var finding: String
         var symptom: String?
         var fix: String?
+        var tried: String?
+        var outcome: String?
         var evidence: LearningCandidate.Evidence
         var redactions: [String]
     }
@@ -94,7 +98,8 @@ struct LearningBundle: Equatable {
         var issuedAt: Int64
     }
 
-    /// An approved entry as it travels (contract §5, plus the amendment's three fields).
+    /// An approved entry as it travels (contract §5, plus the amendment's three fields, and §11's
+    /// `tried` and `outcome` since a candidate carries them, §13).
     struct Entry: Codable, Equatable {
         var entryID: String
         var subject: LearningEntry.Subject
@@ -102,6 +107,8 @@ struct LearningBundle: Equatable {
         var finding: String
         var symptom: String?
         var fix: String?
+        var tried: String?
+        var outcome: String?
         var approvedAt: Int64
         var approvedByRole: String
         var authorIsApprover: Bool
@@ -181,6 +188,8 @@ extension LearningBundle.Candidate {
                   spokenModel: present(candidate.spokenModel), finding: candidate.finding,
                   symptom: candidate.withdrawn ? nil : present(candidate.symptom),
                   fix: candidate.withdrawn ? nil : present(candidate.fix),
+                  tried: candidate.withdrawn ? nil : present(candidate.tried),
+                  outcome: candidate.withdrawn ? nil : present(candidate.outcome),
                   evidence: candidate.evidence, redactions: candidate.redactions)
     }
 
@@ -194,8 +203,8 @@ extension LearningBundle.Candidate {
             status: withdrawn ? .withdrawn : .received, sessionId: jobSessionID, jobReference: jobNumber,
             taskId: taskID, vaultId: vaultID,
             equipment: modelToken.map { LearningCandidate.Equipment(modelToken: $0, heading: $0, source: "bundle") },
-            spokenModel: spokenModel, finding: finding, symptom: symptom, fix: fix, evidence: evidence,
-            author: author, createdAt: created, updatedAt: created, redactions: redactions)
+            spokenModel: spokenModel, finding: finding, symptom: symptom, fix: fix, tried: tried, outcome: outcome,
+            evidence: evidence, author: author, createdAt: created, updatedAt: created, redactions: redactions)
         candidate.importedFrom = note
         return candidate
     }
@@ -205,7 +214,7 @@ extension LearningBundle.Entry {
 
     init(_ entry: LearningEntry) {
         self.init(entryID: entry.id, subject: entry.subject, vaultIDs: entry.vaultIDs, finding: entry.finding,
-                  symptom: entry.symptom, fix: entry.fix,
+                  symptom: entry.symptom, fix: entry.fix, tried: entry.tried, outcome: entry.outcome,
                   approvedAt: Int64(entry.approvedAt.timeIntervalSince1970.rounded(.down)),
                   approvedByRole: entry.approvedByRole, authorIsApprover: entry.authorIsApprover,
                   contradictsSafetyNote: entry.contradictsSafetyNote, supersedes: entry.supersedes,
@@ -217,7 +226,7 @@ extension LearningBundle.Entry {
     /// what the citation carries — so the history names the role.
     func entry() -> LearningEntry {
         LearningEntry(id: entryID, subject: subject, vaultIDs: vaultIDs, finding: finding, symptom: symptom,
-                      fix: fix, approvedAt: Date(timeIntervalSince1970: TimeInterval(approvedAt)),
+                      fix: fix, tried: tried, outcome: outcome, approvedAt: Date(timeIntervalSince1970: TimeInterval(approvedAt)),
                       approvedByRole: approvedByRole, approvedByName: approvedByRole,
                       authorIsApprover: authorIsApprover, contradictsSafetyNote: contradictsSafetyNote,
                       supersedes: supersedes, candidateID: candidateID, origin: origin ?? .spoken,
@@ -391,9 +400,16 @@ extension LearningBundle {
             let path = "candidates[\(index)]"
             if candidate.withdrawn {
                 guard candidate.finding.isEmpty, candidate.symptom.map(\.isEmpty) ?? true,
-                      candidate.fix.map(\.isEmpty) ?? true else { return .outOfRange(path + ".withdrawn") }
+                      candidate.fix.map(\.isEmpty) ?? true, candidate.tried.map(\.isEmpty) ?? true,
+                      candidate.outcome.map(\.isEmpty) ?? true else { return .outOfRange(path + ".withdrawn") }
             } else if candidate.finding.isEmpty {
                 return .empty(path + ".finding")
+            }
+            // The schema holds each bound alone; the segment's order and ceiling need both ends.
+            if let recording = candidate.evidence.recording,
+               !LearningCandidate.Recording.isValid(recordingID: recording.recordingID, start: recording.segmentStart,
+                                                    end: recording.segmentEnd) {
+                return .outOfRange(path + ".evidence.recording.segmentEnd")
             }
         }
         for (index, status) in bundle.statuses.enumerated() {
@@ -430,6 +446,8 @@ extension LearningBundle {
             c.finding = clean(c.finding, into: &hits)
             c.symptom = clean(optional: c.symptom, into: &hits)
             c.fix = clean(optional: c.fix, into: &hits)
+            c.tried = clean(optional: c.tried, into: &hits)
+            c.outcome = clean(optional: c.outcome, into: &hits)
             c.spokenModel = clean(optional: c.spokenModel, into: &hits)
             for hit in hits where !c.redactions.contains(hit) { c.redactions.append(hit) }
             c.redactions = ordered(c.redactions)
@@ -441,6 +459,8 @@ extension LearningBundle {
             e.finding = clean(e.finding, into: &ignored)
             e.symptom = clean(optional: e.symptom, into: &ignored)
             e.fix = clean(optional: e.fix, into: &ignored)
+            e.tried = clean(optional: e.tried, into: &ignored)
+            e.outcome = clean(optional: e.outcome, into: &ignored)
             out.entries[index] = e
         }
         for index in out.statuses.indices {
@@ -579,11 +599,23 @@ enum LearningBundleSchema {
     static let reference = FieldType.text(minimum: 1, limit: 120, lineFeeds: false)
     static let timestamp = FieldType.integer(minimum: 1)
 
+    /// `outcome`, at the entry's limit (§11, §13).
+    static let outcomeText = FieldType.text(minimum: 0, limit: LearningCandidateText.outcomeLimit, lineFeeds: false)
+
+    /// The part of an experience recording a candidate was drafted from (§13): whole seconds,
+    /// `segmentStart..<segmentEnd`. The order and the ceiling are checked once both are read.
+    static let recording = Object(fields: [
+        "recordingID": Field(type: .hexIdentifier, required: true),
+        "segmentStart": Field(type: .integer(minimum: 0), required: true),
+        "segmentEnd": Field(type: .integer(minimum: 1), required: true),
+    ])
+
     static let evidence = Object(fields: [
         "pagesVerified": Field(type: .texts(itemLimit: LearningCandidateText.fieldLimit, maximumCount: 200), required: true),
         "citationsOpened": Field(type: .texts(itemLimit: LearningCandidateText.fieldLimit, maximumCount: 200), required: true),
         "readings": Field(type: .integer(minimum: 0), required: true),
         "photos": Field(type: .integer(minimum: 0), required: true),
+        "recording": Field(type: .object(recording), required: false),
     ])
 
     static let candidate = Object(fields: [
@@ -602,6 +634,8 @@ enum LearningBundleSchema {
         "finding": Field(type: finding, required: true),
         "symptom": Field(type: shortText, required: false),
         "fix": Field(type: shortText, required: false),
+        "tried": Field(type: shortText, required: false),
+        "outcome": Field(type: outcomeText, required: false),
         "evidence": Field(type: .object(evidence), required: true),
         "redactions": Field(type: .texts(itemLimit: 40, maximumCount: 20), required: true),
     ])
@@ -637,6 +671,8 @@ enum LearningBundleSchema {
         "finding": Field(type: .text(minimum: 1, limit: LearningCandidateText.findingLimit, lineFeeds: true), required: true),
         "symptom": Field(type: shortText, required: false),
         "fix": Field(type: shortText, required: false),
+        "tried": Field(type: .text(minimum: 1, limit: LearningCandidateText.fieldLimit, lineFeeds: false), required: false),
+        "outcome": Field(type: .text(minimum: 1, limit: LearningCandidateText.outcomeLimit, lineFeeds: false), required: false),
         "approvedAt": Field(type: timestamp, required: true),
         "approvedByRole": Field(type: .text(minimum: 1, limit: LearningEntry.roleLimit, lineFeeds: false), required: true),
         "authorIsApprover": Field(type: .bool, required: true),

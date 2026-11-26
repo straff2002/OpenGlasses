@@ -2867,9 +2867,20 @@ final class FieldSessionService: ObservableObject {
                         .flatMap { $0.printedPage > 0 ? $0.printedPage : nil }
                 }
                 if space.source == .teamLearning {
-                    passage.subjectModelToken = TeamLearningSources.entry(forDocumentId: raw.documentId, reviewed: entries,
-                                                                          experience: experience).map { $0.subject.modelToken }
+                    let entry = TeamLearningSources.entry(forDocumentId: raw.documentId, reviewed: entries,
+                                                          experience: experience)
+                    passage.subjectModelToken = entry.map { $0.subject.modelToken }
                         ?? LearningCorpus.subjectModelToken(fromDocumentText: raw.text)
+                    // Plan IM: the symptom learning's equipment type, and whether it is a recollection
+                    // no job has confirmed — read from the entry, else from its own artefact (the
+                    // `Equipment:` line, the `Crew experience` citation).
+                    if let entry {
+                        if case .symptom(let type, _) = entry.subject { passage.subjectEquipmentType = type }
+                        passage.isUnconfirmedRecollection = Self.isUnconfirmedRecollection(entry)
+                    } else {
+                        passage.subjectEquipmentType = LearningCorpus.subjectEquipmentType(fromDocumentText: raw.text)
+                        passage.isUnconfirmedRecollection = TeamLearningCitation.isCrewExperience(raw.documentName)
+                    }
                 }
                 if labelsEditions, space.source == .manual {
                     passage.editionLabel = editions.edition(of: raw.documentName)?.label
@@ -2945,6 +2956,9 @@ final class FieldSessionService: ObservableObject {
                                                documentIds: ids(for: space), alsoWithin: within) ?? [], space)
             }
         }))
+        retriever.equipmentTypes = Self.equipmentTypeScope(
+            vocabulary: store.manifest.equipmentTypeList, activeTokens: retrievalModelScope?.activeTokens ?? [],
+            entries: (entries?.entries ?? []) + (experience?.entries ?? []))
         // A section the turn names carries on past the passage found in it (Plan KR P3): the
         // manual's own chunks after it, read from the namespace that holds the document.
         retriever.followingChunks = { passage, limit in
@@ -2957,6 +2971,31 @@ final class FieldSessionService: ObservableObject {
     }
 
     // MARK: - Team learnings at answer time (Plan FP P2)
+
+    /// A recollection no recorded job has confirmed (Plan IM decision 5).
+    nonisolated static func isUnconfirmedRecollection(_ entry: LearningEntry) -> Bool {
+        entry.origin == .recollection && (entry.confirmedJobCount ?? 0) == 0
+    }
+
+    /// The retriever's equipment-type scope (Plan IM decision 4): the vault's closed list, and the
+    /// active unit's types as its live approved model entries name them (a model entry's
+    /// `equipmentType`, matched to the unit by identity, contract §7.2). Nil when there is neither,
+    /// so nothing is scoped.
+    nonisolated static func equipmentTypeScope(vocabulary: [String], activeTokens: Set<String>,
+                                               entries: [LearningEntry]) -> VaultRetriever.EquipmentTypeScope? {
+        var active: [String] = []
+        if !activeTokens.isEmpty {
+            for entry in entries where entry.isLive {
+                guard case .model(let token, _, let type?) = entry.subject,
+                      let identity = VaultRetriever.ModelScope.identity(token), activeTokens.contains(identity),
+                      !active.contains(where: { VaultPackRules.equipmentTypeKey($0) == VaultPackRules.equipmentTypeKey(type) })
+                else { continue }
+                active.append(type)
+            }
+        }
+        guard !vocabulary.isEmpty || !active.isEmpty else { return nil }
+        return VaultRetriever.EquipmentTypeScope(vocabulary: vocabulary, activeTypes: active)
+    }
 
     /// The evidence behind the latest answer: its basis and the team-learning badge flag the
     /// phone and the lens read. Published; the visible badge is P4's.

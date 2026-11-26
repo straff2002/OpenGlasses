@@ -1,0 +1,106 @@
+{
+  "candidates": [
+    {
+      "author": "Fixture Technician",
+      "candidateID": "000000000000000000000000000000a1",
+      "createdAt": 1795564801,
+      "evidence": {
+        "citationsOpened": [
+          "Table 99"
+        ],
+        "pagesVerified": [
+          "Installation manual p. 12"
+        ],
+        "photos": 1,
+        "readings": 2
+      },
+      "finding": "Fixture finding 1",
+      "fix": "Reseated the harness",
+      "jobNumber": "J-1001",
+      "jobSessionID": "fixture-job-1",
+      "modelToken": "QXRT-990",
+      "origin": "spoken",
+      "redactions": [],
+      "revision": 1,
+      "symptom": "E228 on start",
+      "vaultID": "fixture-crew-units",
+      "withdrawn": false
+    },
+    {
+      "author": "Fixture Technician",
+      "candidateID": "000000000000000000000000000000a2",
+      "createdAt": 1795564802,
+      "evidence": {
+        "citationsOpened": [],
+        "pagesVerified": [],
+        "photos": 0,
+        "readings": 0
+      },
+      "finding": "The drain pan heater fuse fails first",
+      "jobNumber": "J-1002",
+      "jobSessionID": "fixture-job-2",
+      "modelToken": "QXRT-990",
+      "origin": "report",
+      "redactions": [],
+      "revision": 1,
+      "vaultID": "fixture-crew-units",
+      "withdrawn": false
+    },
+    {
+      "author": "Fixture Technician",
+      "candidateID": "000000000000000000000000000000a3",
+      "createdAt": 1795564803,
+      "evidence": {
+        "citationsOpened": [],
+        "pagesVerified": [],
+        "photos": 0,
+        "readings": 0
+      },
+      "finding": "Low airflow trips the freeze stat",
+      "jobNumber": "J-1003",
+      "jobSessionID": "fixture-job-3",
+      "origin": "reportReview",
+      "redactions": [],
+      "revision": 1,
+      "spokenModel": "the big rooftop",
+      "vaultID": "fixture-crew-units",
+      "withdrawn": false
+    },
+    {
+      "author": "Fixture Technician",
+      "candidateID": "000000000000000000000000000000a4",
+      "createdAt": 1795564804,
+      "evidence": {
+        "citationsOpened": [],
+        "pagesVerified": [],
+        "photos": 0,
+        "readings": 0,
+        "recording": {
+          "recordingID": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "segmentEnd": 97,
+          "segmentStart": 42
+        }
+      },
+      "finding": "Door frame sweats when the heater fuse has gone",
+      "fix": "Replace the heater fuse",
+      "jobSessionID": "fixture-recording-session",
+      "origin": "recollection",
+      "outcome": "fixed it most times",
+      "redactions": [],
+      "revision": 1,
+      "symptom": "Door frame sweats in summer",
+      "tried": "Checked the door gasket and the defrost timer first",
+      "vaultID": "fixture-crew-units",
+      "withdrawn": false
+    }
+  ],
+  "direction": "candidates",
+  "entries": [],
+  "issuedAt": 1795565000,
+  "kind": "avenkin.learning-bundle",
+  "organisationLabel": "Fixture Crew",
+  "retracted": [],
+  "schemaVersion": 1,
+  "sequence": 3,
+  "statuses": []
+}

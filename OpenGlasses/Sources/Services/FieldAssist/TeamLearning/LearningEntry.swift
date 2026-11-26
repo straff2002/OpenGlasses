@@ -19,8 +19,8 @@ struct LearningEntry: Codable, Equatable, Identifiable {
     enum Subject: Equatable {
         case model(modelToken: String, manufacturer: String? = nil, equipmentType: String? = nil)
         case practice(topic: String)
-        /// An equipment type alone, with the symptom phrase it was recorded under. No retrieval path
-        /// reads it yet: matching it to a turn's equipment type is IM P0's.
+        /// An equipment type alone, with the symptom phrase it was recorded under. It answers only
+        /// within the turn's equipment type (`VaultRetriever.EquipmentTypeScope`, Plan IM P0).
         case symptom(equipmentType: String, phrase: String)
 
         /// The `<subject>` part of the citation name: the model token, the topic or the equipment
