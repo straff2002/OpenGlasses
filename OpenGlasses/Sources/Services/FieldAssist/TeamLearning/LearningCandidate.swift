@@ -136,6 +136,12 @@ struct LearningCandidate: Codable, Equatable, Identifiable {
     /// being filed here (Plan FP P3). Nil for every candidate this phone filed itself. An imported
     /// candidate is reviewed exactly like a local one — arriving is not approval.
     var importedFrom: String?
+    /// Plan NG: the highest revision the portal answered `received` for. Nil until it does; a
+    /// candidate whose revision is above it is still owed to the portal.
+    var portalReceivedRevision: Int?
+    /// Plan NG: why the portal last refused it (`SeatLearningRefusal`'s name), until a send is
+    /// received. Named on the job.
+    var portalRefusal: String?
 
     init(id: String = LearningCandidate.newID(), origin: Origin = .spoken, revision: Int = 1,
          status: Status = .filed, sessionId: String, jobReference: String?, taskId: String?,
@@ -181,7 +187,7 @@ struct LearningCandidate: Codable, Equatable, Identifiable {
     /// The same, saying whether an approved entry made from it now answers on this phone.
     func reference(inUse: Bool) -> LearningCandidateReference {
         LearningCandidateReference(candidateId: id, status: status, modelToken: modelToken,
-                                   createdAt: createdAt, inUse: inUse)
+                                   createdAt: createdAt, inUse: inUse, sendRefusal: portalRefusal)
     }
 
     /// Filed on this phone, not imported from another.
@@ -197,6 +203,7 @@ struct LearningCandidate: Codable, Equatable, Identifiable {
         case equipment, spokenModel, finding, symptom, fix, evidence, author
         case createdAt, updatedAt, redactions
         case entryID, reviewReason, importedFrom
+        case portalReceivedRevision, portalRefusal
     }
 }
 
@@ -215,14 +222,18 @@ struct LearningCandidateReference: Codable, Equatable {
     /// Whether an answer can draw on it. A candidate answers nothing; this turns true only when an
     /// approved entry made from it (or merged into) has been accepted on this phone (P3).
     var inUse: Bool = false
+    /// Plan NG: why the portal refused it, by the refusal's name, while it is still waiting to be
+    /// received. Nil on every other route, and once a send is received. Internal, like the rest.
+    var sendRefusal: String?
 
     init(candidateId: String, status: LearningCandidate.Status, modelToken: String?, createdAt: Date,
-         inUse: Bool = false) {
+         inUse: Bool = false, sendRefusal: String? = nil) {
         self.candidateId = candidateId
         self.status = status
         self.modelToken = modelToken
         self.createdAt = createdAt
         self.inUse = inUse
+        self.sendRefusal = sendRefusal
     }
 
     enum CodingKeys: String, CodingKey {
@@ -231,6 +242,7 @@ struct LearningCandidateReference: Codable, Equatable {
         case modelToken = "model_token"
         case createdAt = "created_at"
         case inUse = "in_use"
+        case sendRefusal = "send_refusal"
     }
 
     init(from decoder: Decoder) throws {
@@ -240,6 +252,7 @@ struct LearningCandidateReference: Codable, Equatable {
         modelToken = try c.decodeIfPresent(String.self, forKey: .modelToken)
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         inUse = try c.decodeIfPresent(Bool.self, forKey: .inUse) ?? false
+        sendRefusal = try c.decodeIfPresent(String.self, forKey: .sendRefusal)
     }
 }
 

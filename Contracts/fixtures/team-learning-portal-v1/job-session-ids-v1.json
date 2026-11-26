@@ -1,0 +1,17 @@
+[
+  {
+    "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+    "profileId" : "fixture-company",
+    "sessionId" : "6F1C2D3E-0000-4000-8000-000000000001"
+  },
+  {
+    "jobSessionID" : "700ea0ae5c979e149bc6f852f51b14a8",
+    "profileId" : "fixture-company",
+    "sessionId" : "6F1C2D3E-0000-4000-8000-000000000002"
+  },
+  {
+    "jobSessionID" : "cbc3da17b8f1f60ebaed78f87d01e1a6",
+    "profileId" : "other-company",
+    "sessionId" : "6F1C2D3E-0000-4000-8000-000000000001"
+  }
+]

@@ -2888,6 +2888,16 @@ struct Config {
         return raw.isEmpty ? nil : raw
     }
 
+    /// Whether a portal company's team learnings go to its administrator in the portal (Plan NG
+    /// decision 9): true unless the organisation's profile says false. On its own it routes nothing:
+    /// `TeamLearningRoute` also asks for an office binding and the company's vaults. Written only by
+    /// a profile; there is no setter on purpose.
+    static var organizationTeamLearningsInPortal: Bool {
+        guard PolicyEnvelope.isLocked(.organizationTeamLearningsInPortal) else { return true }
+        return PolicyEnvelope.bool(.organizationTeamLearningsInPortal,
+                                   stored: UserDefaults.standard.object(forKey: "organizationTeamLearningsInPortal") as? Bool ?? true)
+    }
+
     /// Whether the organisation's profile says the stock list is a clinic's (Plan MY §9): doses
     /// given and wasted, by lot. Nil with no profile, or one that does not say; the list's own
     /// choice then stands. Written only by a profile; there is no setter on purpose.

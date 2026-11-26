@@ -561,6 +561,12 @@ final class MeetingSummaryNotesTests: XCTestCase {
         XCTAssertEqual(phoneFacts().notesSource, .phone)
     }
 
+    func testTopicsWithTheSameCountComeOutInTheSameOrderEveryTime() {
+        // Every word below appears once: the order must not follow the Dictionary's.
+        XCTAssertEqual(phoneFacts().topics, ["budget", "friday", "probably", "rest", "revised", "send"])
+        for _ in 0..<20 { XCTAssertEqual(phoneFacts().topics, phoneFacts().topics) }
+    }
+
     func testAMeetingWithNoCommitmentsHasNoActionItems() {
         // The keyword extraction read "should" as an action item; the model's empty list stands.
         XCTAssertFalse(phoneFacts().actionItems.isEmpty)

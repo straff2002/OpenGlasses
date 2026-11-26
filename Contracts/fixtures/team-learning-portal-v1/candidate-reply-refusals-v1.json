@@ -1,0 +1,29 @@
+[
+  {
+    "refusal" : "badNonce"
+  },
+  {
+    "refusal" : "badRequest"
+  },
+  {
+    "refusal" : "tooLarge"
+  },
+  {
+    "refusal" : "freed"
+  },
+  {
+    "refusal" : "licenceLapsed"
+  },
+  {
+    "refusal" : "unknownProfile"
+  },
+  {
+    "refusal" : "notSeatChecked"
+  },
+  {
+    "refusal" : "routeOff"
+  },
+  {
+    "refusal" : "notIncluded"
+  }
+]

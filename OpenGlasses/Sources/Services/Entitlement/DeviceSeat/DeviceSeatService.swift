@@ -6,6 +6,16 @@ import Combine
 protocol DeviceSeatServer: Sendable {
     func nonce(origin: URL) async throws -> String
     func send(_ action: DeviceSeatLease.Action, envelope: DeviceSeatLease.Envelope, origin: URL) async throws -> DeviceSeatLease.Reply
+    /// Plan NG: a team-learning seat action (`/seats/learning-candidate`, `/seats/learning-status`).
+    /// The reply's raw JSON, at most 8 KiB; the caller decodes it as the action's reply.
+    func sendLearning(_ action: SeatLearningWire.Action, envelope: DeviceSeatLease.Envelope, origin: URL) async throws -> Data
+}
+
+extension DeviceSeatServer {
+    /// A seat service that predates the team-learning actions answers none of them.
+    func sendLearning(_ action: SeatLearningWire.Action, envelope: DeviceSeatLease.Envelope, origin: URL) async throws -> Data {
+        throw URLError(.unsupportedURL)
+    }
 }
 
 /// The production transport. The address is the origin of the licence's **signed** `profile`
@@ -35,6 +45,14 @@ struct DeviceSeatHTTPClient: DeviceSeatServer {
         let data = try await post(origin.appendingPathComponent(String(action.path.dropFirst())),
                                   body: try DeviceSeatLease.encode(envelope))
         return try LicenseService.decoder.decode(DeviceSeatLease.Reply.self, from: data)
+    }
+
+    /// Plan NG: the same session, origin and reply cap, under the team-learning route's own guard:
+    /// what it carries is the technician's words, not only the seat's identifiers.
+    func sendLearning(_ action: SeatLearningWire.Action, envelope: DeviceSeatLease.Envelope, origin: URL) async throws -> Data {
+        try MedicalEgressGuard.check(.teamLearningPortal)
+        return try await post(origin.appendingPathComponent(String(action.path.dropFirst())),
+                              body: try DeviceSeatLease.encode(envelope))
     }
 
     private func post(_ url: URL, body: Data) async throws -> Data {
@@ -291,6 +309,58 @@ final class DeviceSeatService: ObservableObject {
         }
         releaseTask = task
         return task
+    }
+
+    // MARK: - Team learnings (Plan NG)
+
+    /// How a team-learning seat action went.
+    enum LearningExchange: Equatable, Sendable {
+        /// The phone holds no live lease of its own on a seat-checked licence: there is no seat to
+        /// sign with, so nothing was sent.
+        case noSeat
+        /// No answer: no signal, the service is down, or it answered nothing usable.
+        case unreachable
+        /// The reply's JSON, at most 8 KiB.
+        case reply(Data)
+    }
+
+    /// The seat a team-learning request is sent under: the lease this phone holds and its seat id
+    /// (the lease's `deviceKeyHash`), only while the lease is live for this phone, this enrolment and
+    /// the code in force. Never makes a key: a phone without one has no seat to send under.
+    func learningSeat() -> (lease: String, seatID: String, profileId: String)? {
+        guard let (code, _) = seatCheckedLicence(), let record = seams.loadRecord(), let lease = record.lease,
+              let key = try? seams.keys.existing() else { return nil }
+        let seatID = DeviceSeatLease.deviceKeyHash(publicKeyX963: key.publicKeyX963)
+        let verdict = DeviceSeatLease.verdict(lease: lease, keys: seams.leaseKeys, deviceKeyHash: seatID,
+                                              enrolmentId: record.enrolmentId,
+                                              licenseIDHash: LiveFieldAssistEntitlementProvider.licenseIDHash(for: code),
+                                              previousLicenseIDHash: record.previousLicenseIDHash,
+                                              clockHighWater: record.clockHighWater, now: wholeSeconds(seams.now()))
+        guard verdict.isLive else { return nil }
+        return (lease, seatID, record.profileId)
+    }
+
+    /// One team-learning seat action: `request` builds the request's JSON for the lease and seat id
+    /// in force (nil sends nothing). Nonce, sign, send; a stale nonce is asked for once more.
+    func learningExchange(_ action: SeatLearningWire.Action,
+                          request: (_ lease: String, _ seatID: String, _ profileId: String) -> Data?) async -> LearningExchange {
+        guard let (_, payload) = seatCheckedLicence(),
+              let origin = DeviceSeatLease.seatOrigin(profileAddress: payload.profile),
+              let seat = learningSeat(), let key = try? seams.keys.existing() else { return .noSeat }
+        guard let body = request(seat.lease, seat.seatID, seat.profileId) else { return .noSeat }
+        let server = seams.server
+        for _ in 0..<2 {
+            guard let nonce = try? await server.nonce(origin: origin),
+                  let signature = try? key.sign(SeatLearningWire.signedBytes(action: action, nonce: nonce, request: body))
+            else { return .unreachable }
+            let envelope = DeviceSeatLease.Envelope(nonce: nonce, request: body.base64EncodedString(),
+                                                    signature: signature.base64EncodedString())
+            guard let reply = try? await server.sendLearning(action, envelope: envelope, origin: origin) else { return .unreachable }
+            struct RefusalOnly: Decodable { let refusal: SeatLearningRefusal? }
+            if (try? SeatLearningWire.decoder().decode(RefusalOnly.self, from: reply))?.refusal == .badNonce { continue }
+            return .reply(reply)
+        }
+        return .unreachable
     }
 
     // MARK: - One exchange

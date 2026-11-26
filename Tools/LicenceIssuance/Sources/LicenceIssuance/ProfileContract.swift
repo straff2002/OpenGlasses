@@ -196,6 +196,8 @@ public enum ProfileContract {
         "expertHandoverIncludesAddress": "owned:bool",
         "expertHandoverRetentionDays": "owned:string",
         "customerReportShowsExpertTime": "owned:bool",
+        // Plan NG decision 9: a portal company's team learnings go to the portal unless this is false.
+        "organizationTeamLearningsInPortal": "owned:bool",
         // Organisation policy — tighten only
         "organizationAllowsUnsignedVaults": "ceiling:false",
         "organizationRequiresSignedJobFiles": "ceiling:true",
@@ -263,7 +265,7 @@ public enum ProfileContract {
         "customerReportShowsExpertTime", "capturedManualsPolicy", "organizationManualSearchModel",
         "organizationStockPlace", "organizationStockClinical", "stockSystemEnabled", "stockSystemConnector",
         "stockSystemSendBack", "stockSystemAdjustmentReason", "workizEnabled", "workizReportFieldName",
-        "workizClientNotes",
+        "workizClientNotes", "organizationTeamLearningsInPortal",
     ]
 
     /// The top-level profile fields an administrator's edit may change, besides `settings` (checked key by key

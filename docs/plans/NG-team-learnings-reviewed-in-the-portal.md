@@ -1,7 +1,18 @@
 # Plan NG — Team Learnings Reviewed in the Portal (what a technician files on the job reaches the company's administrator, not a reviewer phone)
 
-**Status:** 📝 Drafted 2026-11-25. Nothing is built. All 10 [decisions](#decisions-for-greig) taken as
-recommended the same day.
+**Status:** 🚧 P0 and P1 built 2026-11-26, PR pending. **P0:** `Contracts/team-learning.md` §12 (the
+portal binding `profileId` + `seatID`, the job session id sent only as a per-company hash, the two seat
+actions `/seats/learning-candidate` and `/seats/learning-status` with their requests, replies, paging and
+every refusal by name, and the route rule), golden fixtures in `Contracts/fixtures/team-learning-portal-v1/`,
+and the shared core `SeatLearning.swift` (Foundation only, compiled into the app; `SeatWire.openLearningEnvelope`
+and `learningJobSessionID` beside the other seat actions), with `organizationTeamLearningsInPortal` (company
+value, on unless false) in the profile contract. **P1:** `DeviceSeatServer.sendLearning` and
+`DeviceSeatService.learningExchange` (signed by the seat, live lease only, never makes a key), the
+`teamLearningPortal` queue item (id and revision only), `sent` only on `received`, the status fetch after a
+foreground with its paging, the job's status line (refusals named via `send_refusal`), the route choice
+(`TeamLearningRoute`), and the new egress disclosed (route `teamLearningPortal`, manifest, both Privacy
+footers). Not built: S1 (the portal), P2 (catalog), P3 (device pass). Drafted 2026-11-25. All 10
+[decisions](#decisions-for-greig) taken as recommended the same day.
 **Track:** Field Assist — company knowledge. The licence portal, device seats, the team-learning corpus.
 **Builds on:** Plan [FP](FP-team-learnings.md) P1–P3 (the candidate filed on the job, its statuses, the merge
 that counts confirming jobs), Plan [NF](NF-crew-experience-sheet.md) (the portal's review preview and the sealed

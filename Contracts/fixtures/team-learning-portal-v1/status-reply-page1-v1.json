@@ -1,0 +1,285 @@
+{
+  "next" : "0000000000000000000000000000001a",
+  "statuses" : [
+    {
+      "candidateID" : "00000000000000000000000000000001",
+      "entryID" : "000000000000000000000000000003e9",
+      "issuedAt" : 1795568400,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 2,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "approved",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000002",
+      "entryID" : "000000000000000000000000000003ea",
+      "issuedAt" : 1795572000,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 3,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "merged",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000003",
+      "issuedAt" : 1795575600,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "reason" : "Already in the sheet as row 3; thanks for checking.",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "not_taken_up",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000004",
+      "issuedAt" : 1795579200,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 2,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "received",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000005",
+      "entryID" : "000000000000000000000000000003ed",
+      "issuedAt" : 1795582800,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 3,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "approved",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000006",
+      "entryID" : "000000000000000000000000000003ee",
+      "issuedAt" : 1795586400,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "merged",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000007",
+      "issuedAt" : 1795590000,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "reason" : "Already in the sheet as row 7; thanks for checking.",
+      "revision" : 2,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "not_taken_up",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000008",
+      "issuedAt" : 1795593600,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 3,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "received",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000009",
+      "entryID" : "000000000000000000000000000003f1",
+      "issuedAt" : 1795597200,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "approved",
+      "version" : 1
+    },
+    {
+      "candidateID" : "0000000000000000000000000000000a",
+      "entryID" : "000000000000000000000000000003f2",
+      "issuedAt" : 1795600800,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 2,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "merged",
+      "version" : 1
+    },
+    {
+      "candidateID" : "0000000000000000000000000000000b",
+      "issuedAt" : 1795604400,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "reason" : "Already in the sheet as row 11; thanks for checking.",
+      "revision" : 3,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "not_taken_up",
+      "version" : 1
+    },
+    {
+      "candidateID" : "0000000000000000000000000000000c",
+      "issuedAt" : 1795608000,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "received",
+      "version" : 1
+    },
+    {
+      "candidateID" : "0000000000000000000000000000000d",
+      "entryID" : "000000000000000000000000000003f5",
+      "issuedAt" : 1795611600,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 2,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "approved",
+      "version" : 1
+    },
+    {
+      "candidateID" : "0000000000000000000000000000000e",
+      "entryID" : "000000000000000000000000000003f6",
+      "issuedAt" : 1795615200,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 3,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "merged",
+      "version" : 1
+    },
+    {
+      "candidateID" : "0000000000000000000000000000000f",
+      "issuedAt" : 1795618800,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "reason" : "Already in the sheet as row 15; thanks for checking.",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "not_taken_up",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000010",
+      "issuedAt" : 1795622400,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 2,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "received",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000011",
+      "entryID" : "000000000000000000000000000003f9",
+      "issuedAt" : 1795626000,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 3,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "approved",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000012",
+      "entryID" : "000000000000000000000000000003fa",
+      "issuedAt" : 1795629600,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "merged",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000013",
+      "issuedAt" : 1795633200,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "reason" : "Already in the sheet as row 19; thanks for checking.",
+      "revision" : 2,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "not_taken_up",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000014",
+      "issuedAt" : 1795636800,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 3,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "received",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000015",
+      "entryID" : "000000000000000000000000000003fd",
+      "issuedAt" : 1795640400,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "approved",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000016",
+      "entryID" : "000000000000000000000000000003fe",
+      "issuedAt" : 1795644000,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 2,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "merged",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000017",
+      "issuedAt" : 1795647600,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "reason" : "Already in the sheet as row 23; thanks for checking.",
+      "revision" : 3,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "not_taken_up",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000018",
+      "issuedAt" : 1795651200,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "received",
+      "version" : 1
+    },
+    {
+      "candidateID" : "00000000000000000000000000000019",
+      "entryID" : "00000000000000000000000000000401",
+      "issuedAt" : 1795654800,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 2,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "approved",
+      "version" : 1
+    },
+    {
+      "candidateID" : "0000000000000000000000000000001a",
+      "entryID" : "00000000000000000000000000000402",
+      "issuedAt" : 1795658400,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 3,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "merged",
+      "version" : 1
+    }
+  ]
+}

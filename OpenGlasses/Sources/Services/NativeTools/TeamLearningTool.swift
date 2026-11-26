@@ -69,6 +69,9 @@ final class TeamLearningTool: NativeTool {
 
     private var service: LearningCandidateService { injectedService ?? .shared }
 
+    /// Which route this company reviews team learnings by (Plan NG §4), for the status words.
+    var route: () -> SeatLearningRoute = { TeamLearningRoute.current() }
+
     /// Said with every filing and every amendment. The rule a capture tool can state but not
     /// enforce: redaction does not know what a name is.
     static let standingRule = "No customer names or addresses in a team learning — your supervisor removes any that slip through."
@@ -126,7 +129,7 @@ final class TeamLearningTool: NativeTool {
             let date = candidate.createdAt.formatted(date: .abbreviated, time: .omitted)
             var line = "\(index + 1). Id \(candidate.shortHandle), \(date)"
             if let machine = candidate.modelToken ?? candidate.spokenModel { line += ", \(machine)" }
-            line += ": \(candidate.status.spoken)."
+            line += ": \(TeamLearningStatusLine.spoken(candidate, route: route()))."
             if !candidate.withdrawn { line += " " + Self.readBack(candidate) }
             lines.append(line)
         }

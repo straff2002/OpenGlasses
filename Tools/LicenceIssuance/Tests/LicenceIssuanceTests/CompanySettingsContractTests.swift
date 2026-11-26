@@ -14,7 +14,7 @@ final class CompanySettingsContractTests: XCTestCase {
     }
 
     func testEveryKeyHasAKind() {
-        XCTAssertEqual(ProfileContract.allowList.count, 64)
+        XCTAssertEqual(ProfileContract.allowList.count, 65)   // Plan NG: organizationTeamLearningsInPortal
         XCTAssertTrue(ProfileContract.administratorEditableSettings.isSubset(of: Set(ProfileContract.allowList.keys)))
         XCTAssertTrue(ProfileContract.phoneCheckedSettings.isSubset(of: Set(ProfileContract.allowList.keys)))
     }

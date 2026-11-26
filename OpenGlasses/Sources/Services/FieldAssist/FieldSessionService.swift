@@ -3996,6 +3996,7 @@ final class FieldSessionService: ObservableObject {
         ]
         if let model = reference.modelToken { payload["model_token"] = AnyCodable(model) }
         if reference.inUse { payload["in_use"] = AnyCodable(true) }
+        if let refusal = reference.sendRefusal { payload["send_refusal"] = AnyCodable(refusal) }
         if let otherLogger {
             otherLogger.append(.init(timestamp: now, kind: kind, text: nil, payload: payload))
         }

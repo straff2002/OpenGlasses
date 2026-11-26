@@ -1,0 +1,968 @@
+[
+  {
+    "name" : "kind",
+    "problem" : {
+      "field" : "kind",
+      "reason" : "wrongKind"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-set",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "version",
+    "problem" : {
+      "field" : "version",
+      "reason" : "wrongVersion"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 2,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "candidate id upper case",
+    "problem" : {
+      "field" : "candidateID",
+      "reason" : "badIdentifier"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "C0FFEE00C0FFEE00C0FFEE00C0FFEE01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "revision zero",
+    "problem" : {
+      "field" : "revision",
+      "reason" : "badRevision"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 0,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "profile id with a slash",
+    "problem" : {
+      "field" : "profileId",
+      "reason" : "badIdentifier"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture/company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "seat id short",
+    "problem" : {
+      "field" : "seatID",
+      "reason" : "badIdentifier"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "job session id is the session id",
+    "problem" : {
+      "field" : "jobSessionID",
+      "reason" : "badIdentifier"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "6F1C2D3E-0000-4000-8000-000000000001",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "vault id empty",
+    "problem" : {
+      "field" : "vaultID",
+      "reason" : "badIdentifier"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "created at zero",
+    "problem" : {
+      "field" : "createdAt",
+      "reason" : "badTime"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 0,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "job number too long",
+    "problem" : {
+      "field" : "jobNumber",
+      "reason" : "tooLong"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "999999999999999999999999999999999999999999999999999999999999999999999999999999999",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "author empty",
+    "problem" : {
+      "field" : "author",
+      "reason" : "empty"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "author over 120",
+    "problem" : {
+      "field" : "author",
+      "reason" : "tooLong"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "finding empty",
+    "problem" : {
+      "field" : "finding",
+      "reason" : "missingFinding"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "finding over 2000",
+    "problem" : {
+      "field" : "finding",
+      "reason" : "tooLong"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "finding with a tab",
+    "problem" : {
+      "field" : "finding",
+      "reason" : "controlCharacter"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "harness\tplug",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "finding with a bidirectional override",
+    "problem" : {
+      "field" : "finding",
+      "reason" : "controlCharacter"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "plug ‮hctiws",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "symptom with a line feed",
+    "problem" : {
+      "field" : "symptom",
+      "reason" : "controlCharacter"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228\non start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "fix over 500",
+    "problem" : {
+      "field" : "fix",
+      "reason" : "tooLong"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "withdrawal with words",
+    "problem" : {
+      "field" : "finding",
+      "reason" : "textInWithdrawal"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : true
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "negative photo count",
+    "problem" : {
+      "field" : "photos",
+      "reason" : "badCount"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : -1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "an empty page name",
+    "problem" : {
+      "field" : "pagesVerified",
+      "reason" : "empty"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            ""
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "a redaction that is not a pattern name",
+    "problem" : {
+      "field" : "redactions",
+      "reason" : "badIdentifier"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "matched text@example.com"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+    }
+  },
+  {
+    "name" : "no lease",
+    "problem" : {
+      "field" : "lease",
+      "reason" : "badLease"
+    },
+    "request" : {
+      "candidate" : {
+        "author" : "Fixture Technician",
+        "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+        "createdAt" : 1795564800,
+        "evidence" : {
+          "citationsOpened" : [
+            "Installation manual p. 12"
+          ],
+          "pagesVerified" : [
+            "Installation manual p. 12"
+          ],
+          "photos" : 1,
+          "readings" : 2
+        },
+        "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+        "fix" : "Reseated the harness at the plug",
+        "jobNumber" : "J-1042",
+        "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+        "kind" : "avenkin.learning-candidate",
+        "modelToken" : "QXRT-990",
+        "profileId" : "fixture-company",
+        "redactions" : [
+          "email"
+        ],
+        "revision" : 1,
+        "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+        "symptom" : "E228 on start",
+        "taskID" : "task-2",
+        "vaultID" : "fixture-crew-units",
+        "version" : 1,
+        "withdrawn" : false
+      },
+      "lease" : ""
+    }
+  }
+]

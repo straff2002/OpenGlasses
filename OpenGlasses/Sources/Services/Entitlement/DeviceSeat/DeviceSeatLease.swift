@@ -135,7 +135,8 @@ enum DeviceSeatLease {
     nonisolated static let noncePath = "/seats/nonce"
 
     /// The four fields the claim discloses — and no other. The privacy manifest, the in-app copy and
-    /// `DeviceSeatServiceTests` name exactly these.
+    /// `DeviceSeatTests` name exactly these. (A team learning sent over the seat, Plan NG, is its own
+    /// route, `teamLearningPortal`, disclosed on its own.)
     struct ClaimRequest: Codable, Equatable, Sendable {
         let build: String
         let devicePublicKey: String

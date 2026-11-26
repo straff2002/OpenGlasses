@@ -1,0 +1,12 @@
+{
+  "status" : {
+    "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+    "issuedAt" : 1795564860,
+    "kind" : "avenkin.learning-candidate-status",
+    "profileId" : "fixture-company",
+    "revision" : 1,
+    "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+    "status" : "received",
+    "version" : 1
+  }
+}
