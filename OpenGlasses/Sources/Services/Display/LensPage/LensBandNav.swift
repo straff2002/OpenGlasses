@@ -37,6 +37,14 @@ enum LensBandPageAction: Equatable {
     /// (`LensPageViewport.move`), nothing at the edge.
     case panLeft
     case panRight
+    /// Reading mode: the passage's next or previous text page, as **Next ›** and **‹ Back** (and
+    /// "next" and "back" by voice) turn it.
+    case nextText
+    case previousText
+    /// The whole page, and reading mode past its first or last text page: the staged page before
+    /// or after, opened as it opens (the whole page), as **Next page ›** opens it.
+    case previousPageAsOpened
+    case nextPageAsOpened
 }
 
 /// Which page action a swipe asks for, from what the lens shows (Plan MU §7, decision 8). Pure.
@@ -49,14 +57,19 @@ enum LensBandPageAction: Equatable {
 /// | close-up of a part in one column | – | – |
 /// | fit width | the page before (none on the first) | the page after (none on the last) |
 /// | a spoken zoom (Plan NB §1) | half a crop to the left (none at the edge) | half a crop to the right (none at the edge) |
-/// | whole page, rows, reading | – | – |
+/// | whole page | the staged page before, as it opens (none on the first) | the staged page after, as it opens (none on the last) |
+/// | reading | the text page before; on the first, the staged page before, as it opens (else none) | the text page after; on the last, the staged page after, as it opens (else none) |
+/// | rows | – | – |
 ///
-/// Nothing wraps. The whole page, the rows and reading mode map nothing: the plan gives the band's
-/// left and right only to the close-up's halves, to fit width and to the zoomed view, the whole
-/// page's and the close-up's own button rows may need left and right for Meta's focus, and those
-/// views already have one press for what a swipe would do (Next page ›, Next ›). The zoomed view
-/// has one button (Back), so Meta's focus does not need left and right there; up and down stay
-/// the lens's own scroll of its strip.
+/// Nothing wraps. Since 2026-11-26 (Plan MU §7) the whole page and reading mode turn pages: left
+/// and right only moved Meta's focus across their buttons there, and a tester asked for them to
+/// move through the pages instead. A swipe that turns a page sends a new frame, and a new frame
+/// puts the lens's focus back where that frame opens it, so Meta's own focus move on the same
+/// swipe doesn't stick; at an edge, where nothing turns, the swipe is Meta's to move focus as
+/// before. The buttons stay as they were (Next ›, Next page ›, and the words by voice). The rows
+/// map nothing: their cards are the focus's to move between. The zoomed view has one button
+/// (Back), so Meta's focus does not need left and right there; up and down stay the lens's own
+/// scroll of its strip.
 enum LensBandNavMap {
 
     /// What the map reads of the view.
@@ -75,10 +88,14 @@ enum LensBandNavMap {
         /// against the page's edge).
         var canPanLeft = false
         var canPanRight = false
+        /// Reading mode: the text page shown among the passage's text pages.
+        var readingIndex = 0
+        var readingCount = 0
 
         init(view: HUDPageViewState.View, closeUpKind: LensPageCloseUp.Kind? = nil, hasHalves: Bool = false,
              only: LensPageCloseUp.Half? = nil, pageIndex: Int = 0, pageCount: Int = 1,
-             canPanLeft: Bool = false, canPanRight: Bool = false) {
+             canPanLeft: Bool = false, canPanRight: Bool = false,
+             readingIndex: Int = 0, readingCount: Int = 0) {
             self.view = view
             self.closeUpKind = closeUpKind
             self.hasHalves = hasHalves
@@ -87,25 +104,52 @@ enum LensBandNavMap {
             self.pageCount = pageCount
             self.canPanLeft = canPanLeft
             self.canPanRight = canPanRight
+            self.readingIndex = readingIndex
+            self.readingCount = readingCount
         }
 
         init(_ state: HUDPageViewState, pageIndex: Int, pageCount: Int) {
             let zoomed = state.view == .zoomed
+            let reading = state.view == .reading
             self.init(view: state.view, closeUpKind: state.closeUp?.kind, hasHalves: state.closeUp?.hasHalves ?? false,
                       only: state.closeUp?.only, pageIndex: pageIndex, pageCount: pageCount,
                       canPanLeft: zoomed && state.viewport.canMove(.left),
-                      canPanRight: zoomed && state.viewport.canMove(.right))
+                      canPanRight: zoomed && state.viewport.canMove(.right),
+                      readingIndex: reading ? state.readingIndex : 0,
+                      readingCount: reading ? state.readingPages.count : 0)
         }
+
+        var hasPageBefore: Bool { pageIndex > 0 }
+        var hasPageAfter: Bool { pageIndex + 1 < pageCount }
     }
 
     static func action(for nav: LensBandNav, in context: Context) -> LensBandPageAction? {
-        if context.view == .zoomed {
+        switch context.view {
+        case .zoomed:
             switch nav {
             case .left: return context.canPanLeft ? .panLeft : nil
             case .right: return context.canPanRight ? .panRight : nil
             }
+        case .whole:
+            switch nav {
+            case .left: return context.hasPageBefore ? .previousPageAsOpened : nil
+            case .right: return context.hasPageAfter ? .nextPageAsOpened : nil
+            }
+        case .reading:
+            switch nav {
+            case .left:
+                if context.readingIndex > 0 { return .previousText }
+                return context.hasPageBefore ? .previousPageAsOpened : nil
+            case .right:
+                if context.readingIndex + 1 < context.readingCount { return .nextText }
+                return context.hasPageAfter ? .nextPageAsOpened : nil
+            }
+        case .rows:
+            return nil
+        case .closeUp:
+            break
         }
-        guard context.view == .closeUp, let kind = context.closeUpKind else { return nil }
+        guard let kind = context.closeUpKind else { return nil }
         switch kind {
         case .part:
             guard context.hasHalves else { return nil }
@@ -115,8 +159,8 @@ enum LensBandNavMap {
             }
         case .fitWidth:
             switch nav {
-            case .left: return context.pageIndex > 0 ? .previousPage : nil
-            case .right: return context.pageIndex + 1 < context.pageCount ? .nextPage : nil
+            case .left: return context.hasPageBefore ? .previousPage : nil
+            case .right: return context.hasPageAfter ? .nextPage : nil
             }
         }
     }

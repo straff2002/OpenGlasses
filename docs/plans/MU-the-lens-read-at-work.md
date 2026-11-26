@@ -230,6 +230,17 @@ aren't in what Inputs reports today.
    ready to move into the store build if Meta makes `MWDATInputs` stable. Until then the store build
    keeps §6's voice and buttons. Free drag and pinch-to-zoom are not attempted: Inputs doesn't report
    them (decision 8).
+
+   **2026-11-26: the whole page and reading mode turn pages too.** A tester reported that on those
+   views left and right only moved Meta's focus across the buttons, and asked for them to move
+   through the pages instead; the owner agreed. On the whole page, right and left open the staged
+   page after or before, as it opens (as **Next page ›** does), nothing at the ends. In reading
+   mode they turn the text pages (as **Next ›** and **‹ Back**), and past the last or first text page
+   open the staged page after or before, as it opens. A swipe that turns a page sends a new frame,
+   which puts the lens's focus back where that frame opens it, so Meta's focus move on the same swipe
+   doesn't stick; at an edge, where nothing turns, the swipe stays Meta's to move focus as before.
+   The rows still map nothing, and the buttons and voice words are unchanged. Text pages turned by a
+   swipe are counted apart in the page report ("text pages").
 8. **Ask Meta (§8).** Not done (decision 9, declined 2026-11-21): Meta will add zoom, pan, an image
    size, horizontal scroll and an app-visible double tap when it decides to. Each DAT
    bump's interface diff looks for them.
@@ -372,7 +383,8 @@ unchanged), live-mode answer cards beyond what the reading view already shows.
     `consumeBack: false`), select, drag and the buttons. A close-up of a part in one column, the
     whole page, the rows and reading mode map nothing: the plan gives left and right only to the
     halves and fit width, the whole page keeps **Next page ›** and reading mode **Next ›**, and the
-    button rows may need left and right for Meta's own focus.
+    button rows may need left and right for Meta's own focus. *(Changed 2026-11-26, §7: the whole
+    page and reading mode now turn pages; the rows still map nothing.)*
   - **Shape:** the decision is pure and in every build (`LensBandNav`, `LensBandNavMap`,
     `LensBandNavGate`, `LensPageSession.handleBand`). Only `Glasses/Experimental/LensBandNavService`
     adds Inputs, with its own configuration (`LensBandNavConfiguration`: the band's discrete inputs

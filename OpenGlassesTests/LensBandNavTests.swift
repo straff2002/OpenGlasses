@@ -63,11 +63,85 @@ final class LensBandNavTests: XCTestCase {
         for nav in LensBandNav.allCases { XCTAssertNil(Map.action(for: nav, in: alone), nav.rawValue) }
     }
 
-    func testTheWholePageRowsAndReadingMapNothing() {
-        for view in [HUDPageViewState.View.whole, .rows, .reading] {
-            let context = Context(view: view, pageIndex: 1, pageCount: 3, canPanLeft: true, canPanRight: true)
-            for nav in LensBandNav.allCases { XCTAssertNil(Map.action(for: nav, in: context), "\(view) \(nav)") }
+    func testTheRowsMapNothing() {
+        let context = Context(view: .rows, pageIndex: 1, pageCount: 3, canPanLeft: true, canPanRight: true,
+                              readingIndex: 1, readingCount: 3)
+        for nav in LensBandNav.allCases { XCTAssertNil(Map.action(for: nav, in: context), nav.rawValue) }
+    }
+
+    /// 2026-11-26: the whole page turns the staged pages, each opened as it opens, with no wrap.
+    func testTheWholePageTurnsTheStagedPagesAsTheyOpen() {
+        let middle = Context(view: .whole, pageIndex: 1, pageCount: 3)
+        XCTAssertEqual(Map.action(for: .left, in: middle), .previousPageAsOpened)
+        XCTAssertEqual(Map.action(for: .right, in: middle), .nextPageAsOpened)
+
+        let first = Context(view: .whole, pageIndex: 0, pageCount: 3)
+        XCTAssertNil(Map.action(for: .left, in: first), "the first page: left is Meta's to move focus")
+        XCTAssertEqual(Map.action(for: .right, in: first), .nextPageAsOpened)
+
+        let last = Context(view: .whole, pageIndex: 2, pageCount: 3)
+        XCTAssertEqual(Map.action(for: .left, in: last), .previousPageAsOpened)
+        XCTAssertNil(Map.action(for: .right, in: last), "the last page: no wrap")
+
+        let alone = Context(view: .whole, pageIndex: 0, pageCount: 1, canPanLeft: true, canPanRight: true)
+        for nav in LensBandNav.allCases { XCTAssertNil(Map.action(for: nav, in: alone), "one page: \(nav)") }
+    }
+
+    /// 2026-11-26: reading mode turns its text pages, and past either end the staged page that way.
+    func testReadingTurnsTheTextPagesThenTheStagedPages() {
+        let middle = Context(view: .reading, pageIndex: 0, pageCount: 1, readingIndex: 1, readingCount: 3)
+        XCTAssertEqual(Map.action(for: .right, in: middle), .nextText)
+        XCTAssertEqual(Map.action(for: .left, in: middle), .previousText)
+
+        let lastAlone = Context(view: .reading, pageIndex: 0, pageCount: 1, readingIndex: 2, readingCount: 3)
+        XCTAssertNil(Map.action(for: .right, in: lastAlone), "the last text page of the only page: nothing")
+        XCTAssertEqual(Map.action(for: .left, in: lastAlone), .previousText)
+
+        let lastWithMore = Context(view: .reading, pageIndex: 0, pageCount: 2, readingIndex: 2, readingCount: 3)
+        XCTAssertEqual(Map.action(for: .right, in: lastWithMore), .nextPageAsOpened,
+                       "as the reading row's Next page › does: the next page as it opens")
+
+        let firstAlone = Context(view: .reading, pageIndex: 0, pageCount: 2, readingIndex: 0, readingCount: 3)
+        XCTAssertNil(Map.action(for: .left, in: firstAlone), "the first text page of the first page: nothing")
+        XCTAssertEqual(Map.action(for: .right, in: firstAlone), .nextText)
+
+        let firstAfterAnother = Context(view: .reading, pageIndex: 1, pageCount: 2, readingIndex: 0, readingCount: 3)
+        XCTAssertEqual(Map.action(for: .left, in: firstAfterAnother), .previousPageAsOpened)
+
+        let onePage = Context(view: .reading, pageIndex: 1, pageCount: 3, readingIndex: 0, readingCount: 1)
+        XCTAssertEqual(Map.action(for: .left, in: onePage), .previousPageAsOpened)
+        XCTAssertEqual(Map.action(for: .right, in: onePage), .nextPageAsOpened, "one text page: both ends at once")
+    }
+
+    /// The context reads the reading index and count only in reading mode.
+    func testTheContextReadsTheTextPagesOnlyInReadingMode() {
+        let page = CGSize(width: 612, height: 792)
+        var state = HUDPageViewState(viewport: LensPageViewport(wholePage: page), legibility: LensLegibility())
+        state.readingPages = ["One.", "Two.", "Three."].enumerated().map {
+            HUDAnswerPage(body: $1, lines: [$1], index: $0, count: 3, isCapped: false)
         }
+        state.readingIndex = 1
+        var context = Context(state, pageIndex: 0, pageCount: 2)
+        XCTAssertEqual(context.view, .whole, "words to read, but the picture is up")
+        XCTAssertEqual(context.readingCount, 0)
+        state.isReading = true
+        context = Context(state, pageIndex: 0, pageCount: 2)
+        XCTAssertEqual(context.view, .reading)
+        XCTAssertEqual(context.readingIndex, 1)
+        XCTAssertEqual(context.readingCount, 3)
+    }
+
+    /// The close-up and the zoomed view keep their rows when reading figures are about.
+    func testTheReadingFieldsLeaveTheCloseUpAndTheZoomAsTheyWere() {
+        var halves = self.halves
+        halves.readingIndex = 1
+        halves.readingCount = 3
+        halves.pageCount = 3
+        XCTAssertEqual(Map.action(for: .right, in: halves), .rightHalf)
+        XCTAssertNil(Map.action(for: .left, in: halves))
+        let zoomedAtEdge = Context(view: .zoomed, pageIndex: 1, pageCount: 3, canPanLeft: false, canPanRight: false,
+                                   readingIndex: 1, readingCount: 3)
+        for nav in LensBandNav.allCases { XCTAssertNil(Map.action(for: nav, in: zoomedAtEdge), "zoomed at an edge: \(nav)") }
     }
 
     /// Plan NB §1: a spoken zoom pans half a crop left or right, nothing at the edge.
@@ -153,11 +227,11 @@ final class LensBandNavTests: XCTestCase {
         stats.update("metaRayBan") { $0.viewsOpened = 1 }
         XCTAssertFalse(LensPageReport.lines(for: stats).contains { $0.contains("Band:") }, "a store build never says it")
         stats.update("metaRayBan") { entry in
-            entry.bandSwipes = 3; entry.bandHalves = 2; entry.bandPages = 1
+            entry.bandSwipes = 5; entry.bandHalves = 2; entry.bandPages = 1; entry.bandTexts = 2
             entry.bandNothingToDo = 1; entry.bandDropped = 4; entry.bandOther = 6; entry.bandListening = 1
         }
         XCTAssertTrue(LensPageReport.lines(for: stats).contains(
-            "    Band: swipes acted on 3 (halves 2, pages 1, pans 0), nothing to do 1, dropped in a burst 4,"
+            "    Band: swipes acted on 5 (halves 2, pages 1, text pages 2, pans 0), nothing to do 1, dropped in a burst 4,"
                 + " other inputs 6; listening 1, failed 0"))
     }
 
@@ -196,7 +270,13 @@ final class LensBandNavTests: XCTestCase {
     /// A row as wide as the page, as its text layer would mark it: its close-up has two halves.
     private static let rowRect = CGRect(x: 60, y: 340, width: 492, height: 12)
 
-    private func makeRig(marked: Bool) -> Rig {
+    /// Invented words, long enough for more than one text page of the reading frame.
+    private static let invented = "Turn the invented dial to its second mark and wait for the blue lamp to blink, "
+        + "then press the invented reset key once and listen for two short tones from the panel. "
+        + "If no tones sound, move the invented lever to the left, count to ten, and move it back again. "
+        + "Write the dial's mark and the lamp's colour in the invented logbook before you close the cover."
+
+    private func makeRig(marked: Bool, reading: Bool = false) -> Rig {
         let display = GlassesDisplayService()
         display.testCapabilityOverride = true
         display.testDrawsPicturesOverride = true
@@ -210,11 +290,13 @@ final class LensBandNavTests: XCTestCase {
         session.sourceURL = { _ in URL(fileURLWithPath: "/invented/guide.pdf") }
         session.requestWords = { "show me the page" }
         let letter = LensPageFixtures.letter
+        session.readingGeometry = { LensPageFrame.readingGeometry }
+        let words = reading ? LensPageReading(passages: [.init(number: 1, words: Self.invented)], showsNumbers: false) : nil
         session.layoutPage = { _ in
             let marks = marked
                 ? LensPageMarks(marks: [.init(number: 1, lineRects: [Self.rowRect], bounds: Self.rowRect)], showsNumbers: false)
                 : nil
-            return LensPageLayout(pageSize: letter, marks: marks, pictureAreas: [], tone: .lineArt)
+            return LensPageLayout(pageSize: letter, marks: marks, pictureAreas: [], tone: .lineArt, reading: words)
         }
         session.renderPicture = { _, _ in LensPageFixtures.picture() }
         session.scheduleTimer = { _, _ in }
@@ -252,7 +334,7 @@ final class LensBandNavTests: XCTestCase {
         await drain(rig)
         XCTAssertEqual(rig.session.shownState?.view, .whole)
         let onWhole = await swipe(rig, .nav(.right))
-        XCTAssertEqual(onWhole, .nothingToDo, "the whole page maps nothing")
+        XCTAssertEqual(onWhole, .nothingToDo, "the whole page of the only page: nothing to turn")
         XCTAssertTrue(rig.session.handle(.closeUp))
         await drain(rig)
         XCTAssertEqual(rig.session.shownState?.closeUp?.hasHalves, true)
@@ -328,9 +410,92 @@ final class LensBandNavTests: XCTestCase {
         XCTAssertTrue(rig.session.handle(.wholePage))
         await drain(rig)
         let onWhole = await swipe(rig, .nav(.right))
-        XCTAssertEqual(onWhole, .nothingToDo, "the whole page keeps Next page › for that")
+        XCTAssertEqual(onWhole, .sent(.nextPageAsOpened), "the whole page turns to the next page as it opens")
+        XCTAssertEqual(rig.session.pageIndex, 1)
+        XCTAssertNil(rig.session.shownState?.closeUp, "as it opens, not at fit width")
+        XCTAssertEqual(rig.session.stats["metaRayBan"].bandPages, 3)
+    }
+
+    /// 2026-11-26: on the whole page right and left turn the staged pages, each as it opens, one
+    /// send each and no wrap; at an edge the swipe is left to Meta's focus.
+    func testOnTheWholePageLeftAndRightTurnTheStagedPages() async throws {
+        let rig = makeRig(marked: false)
+        rig.session.stage([LensPageFixtures.staged(page: 3, figure: nil), LensPageFixtures.staged(page: 4, figure: nil),
+                           LensPageFixtures.staged(page: 5, figure: nil)])
+        await drain(rig)
+        XCTAssertEqual(rig.session.shownState?.view, .whole)
+
+        let first = await swipe(rig, .nav(.left))
+        XCTAssertEqual(first, .nothingToDo, "nothing before the first page")
+        for expected in 1...2 {
+            let next = await swipe(rig, .nav(.right))
+            XCTAssertEqual(next, .sent(.nextPageAsOpened))
+            XCTAssertEqual(rig.session.pageIndex, expected)
+            XCTAssertEqual(rig.session.shownState?.view, .whole, "the page as it opens")
+        }
+        let last = await swipe(rig, .nav(.right))
+        XCTAssertEqual(last, .nothingToDo, "nothing after the last page, no wrap")
+        let back = await swipe(rig, .nav(.left))
+        XCTAssertEqual(back, .sent(.previousPageAsOpened))
+        XCTAssertEqual(rig.session.pageIndex, 1)
+        XCTAssertEqual(rig.session.shownState?.view, .whole)
+
+        let stats = rig.session.stats["metaRayBan"]
+        XCTAssertEqual(stats.bandSwipes, 3)
+        XCTAssertEqual(stats.bandPages, 3)
+        XCTAssertEqual(stats.bandNothingToDo, 2)
+        XCTAssertEqual(stats.presses, 0, "a swipe is counted on its own, not as a press")
+    }
+
+    /// 2026-11-26: in reading mode right and left turn the text pages, as Next › and ‹ Back do;
+    /// past the last the next staged page opens as it opens, and past the first the one before.
+    func testInReadingModeLeftAndRightTurnTheTextThenThePages() async throws {
+        let rig = makeRig(marked: true, reading: true)
+        rig.session.stage([cited(page: 3), cited(page: 4)])
+        await drain(rig)
+        XCTAssertTrue(rig.session.handle(.readIt))
+        await drain(rig)
+        rig.clock.advance()
+        let count = try XCTUnwrap(rig.session.shownState?.readingPages.count)
+        XCTAssertEqual(rig.session.shownState?.view, .reading)
+        XCTAssertGreaterThanOrEqual(count, 2, "the invented passage runs to more than one text page")
+
+        let atStart = await swipe(rig, .nav(.left))
+        XCTAssertEqual(atStart, .nothingToDo, "the first text page of the first page")
+        let next = await swipe(rig, .nav(.right))
+        XCTAssertEqual(next, .sent(.nextText))
+        XCTAssertEqual(rig.session.shownState?.readingIndex, 1)
+        let previous = await swipe(rig, .nav(.left))
+        XCTAssertEqual(previous, .sent(.previousText))
+        XCTAssertEqual(rig.session.shownState?.readingIndex, 0)
+        for index in 1..<count {
+            let outcome = await swipe(rig, .nav(.right))
+            XCTAssertEqual(outcome, .sent(.nextText))
+            XCTAssertEqual(rig.session.shownState?.readingIndex, index)
+        }
         XCTAssertEqual(rig.session.pageIndex, 0)
-        XCTAssertEqual(rig.session.stats["metaRayBan"].bandPages, 2)
+
+        let onward = await swipe(rig, .nav(.right))
+        XCTAssertEqual(onward, .sent(.nextPageAsOpened), "past the last text page: the next page")
+        XCTAssertEqual(rig.session.pageIndex, 1)
+        XCTAssertEqual(rig.session.shownState?.view, .whole, "as Next page › opens it")
+
+        XCTAssertTrue(rig.session.handle(.readIt))
+        await drain(rig)
+        rig.clock.advance()
+        XCTAssertEqual(rig.session.shownState?.view, .reading)
+        XCTAssertEqual(rig.session.shownState?.readingIndex, 0)
+        let backward = await swipe(rig, .nav(.left))
+        XCTAssertEqual(backward, .sent(.previousPageAsOpened), "before the first text page: the page before")
+        XCTAssertEqual(rig.session.pageIndex, 0)
+        XCTAssertEqual(rig.session.shownState?.view, .whole)
+
+        let stats = rig.session.stats["metaRayBan"]
+        XCTAssertEqual(stats.bandTexts, 2 + (count - 1))
+        XCTAssertEqual(stats.bandPages, 2)
+        XCTAssertEqual(stats.bandSwipes, stats.bandTexts + stats.bandPages)
+        XCTAssertEqual(stats.readingPages, stats.bandTexts, "each text page turned is drawn as one")
+        XCTAssertEqual(stats.presses, 2, "only the two Read it words were presses")
     }
 
     /// Plan NB §1: in a spoken zoom left and right move half a crop, one send each, counted as
