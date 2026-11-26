@@ -109,6 +109,9 @@ enum CompanyVaultCatalog {
         var frozen: Bool? = nil
         /// A company layer: the vault id (in this catalog) it adds files and prompt rules to.
         var extends: String? = nil
+        /// Plan NF: the company's crew experience for this vault, a sealed set of its own. Never on
+        /// a layer; a pointer the phone can't use is left out (`screen`) and the vault kept.
+        var experience: Experience? = nil
 
         var isSealedCore: Bool { sealedCore == true }
         var isFrozen: Bool { frozen == true }
@@ -120,6 +123,21 @@ enum CompanyVaultCatalog {
                                   author: author, minAppBuild: minAppBuild, sizeBytes: sizeBytes,
                                   downloadURL: downloadURL, sha256: sha256, packSignature: packSignature)
         }
+    }
+
+    /// Plan NF: where a vault's crew experience set is (`CompanyVaultContract.Experience`). The
+    /// catalog's signature covers the pointer; the seal and `sealedSha256` cover the file.
+    struct Experience: Codable, Equatable, Sendable {
+        /// Rises with every publish for the vault; a phone refuses a set not newer than the one it holds.
+        let sequence: Int
+        let count: Int
+        /// The plaintext set's length.
+        let sizeBytes: Int
+        /// SHA-256 (lowercase hex) of the plaintext set.
+        let revision: String
+        /// SHA-256 (lowercase hex) of the sealed file as served.
+        let sealedSha256: String
+        let downloadURL: String
     }
 
     /// Plan LV: the partner a published vault belongs to (`CompanyVaultContract.Publisher`).
@@ -166,6 +184,9 @@ enum CompanyVaultCatalog {
         let manuals: [Manual]
         /// Rows left out, by vault id: the reason, in words for the managed row.
         let problems: [String: String]
+        /// Plan NF: crew experience pointers left out, by vault id (the vault itself kept): a log
+        /// token, never shown as the vault's failure.
+        var experienceProblems: [String: String] = [:]
 
         func vault(_ vaultId: String) -> Vault? { vaults.first { $0.vaultId == vaultId } }
         func manuals(in vaultId: String) -> [Manual] { manuals.filter { $0.vaultId == vaultId } }
@@ -230,6 +251,7 @@ enum CompanyVaultCatalog {
     /// size: a row that fails is left out and named on its vault's row, and the rest is used.
     static func screen(_ catalog: Payload) -> Verified {
         var problems: [String: String] = [:]
+        var experienceProblems: [String: String] = [:]
         var vaults: [Vault] = []
         var seen = Set<String>(), seenPacks = Set<String>()
         for vault in catalog.vaults.prefix(CompanyVaultLimits.vaultsPerCatalog) {
@@ -238,7 +260,12 @@ enum CompanyVaultCatalog {
                 continue
             }
             guard seen.insert(vault.vaultId).inserted, seenPacks.insert(vault.id).inserted else { continue }
-            vaults.append(vault)
+            var kept = vault
+            if let experience = vault.experience, let problem = experienceProblem(experience, in: vault) {
+                experienceProblems[vault.vaultId] = problem
+                kept.experience = nil
+            }
+            vaults.append(kept)
         }
         // Plan LV: a company layer is used only beside the vault it extends, which must be here and
         // not itself a layer. A layer whose base was left out is left out with it.
@@ -264,7 +291,20 @@ enum CompanyVaultCatalog {
         }
         return Verified(profileId: catalog.profileId, generation: catalog.generation, issued: catalog.issued,
                         manualsOnAnyNetwork: catalog.manualsOnAnyNetwork, vaults: vaults, manuals: manuals,
-                        problems: problems)
+                        problems: problems, experienceProblems: experienceProblems)
+    }
+
+    /// Plan NF: why a vault row's `experience` pointer can't be used, as a log token, or nil — the
+    /// licence core's `experienceProblem` restated: never on a layer, a sequence of 1 or more, a
+    /// count and size within a set's limits, digests and an HTTPS address.
+    static func experienceProblem(_ experience: Experience, in vault: Vault) -> String? {
+        if vault.isCompanyLayer { return "onLayer" }
+        guard experience.sequence >= 1,
+              (0...CrewExperienceSheet.Limits.rows).contains(experience.count),
+              (1...CrewExperienceSheet.Limits.bytes).contains(experience.sizeBytes),
+              isDigest(experience.revision), isDigest(experience.sealedSha256),
+              downloadURL(experience.downloadURL) != nil else { return "incomplete" }
+        return nil
     }
 
     static func problem(with vault: Vault) -> String? {
@@ -633,6 +673,62 @@ enum CompanyCoreSeal {
     /// As the licence service seals one. Tests and fixtures only on the phone.
     static func seal(_ pack: Data, context: Context, companySecret: Data) throws -> Data {
         try construction.seal(pack, fields: context.fields, companySecret: companySecret)
+    }
+}
+
+/// Plan NF — a vault's crew experience set, sealed for this company, opened on the phone.
+///
+/// The chunked seal under `openglasses.crew-experience-set.v1`, magic `OGCX`, each chunk
+/// authenticating the company, the vault, the pointer's `sequence` (decimal) and `revision`, so a
+/// set cannot be moved to another company or vault or replayed as another sequence. Mirrors
+/// `CompanyVaultContract.ExperienceSeal`; pinned by `CompanyExperienceContractTests` against the
+/// golden `set-v1.sealed`.
+enum CompanyExperienceSeal {
+    /// **Key-derivation and authentication domain, not a product name.** Never change it: every
+    /// set already sealed would stop opening.
+    static let sealingDomain = "openglasses.crew-experience-set.v1"
+
+    static let construction = CompanyChunkedSeal(domain: sealingDomain, magic: "OGCX")
+
+    typealias Failure = CompanyManualSeal.Failure
+
+    struct Context: Equatable, Sendable {
+        let profileId: String
+        let vaultId: String
+        let sequence: Int
+        /// The plaintext set's SHA-256: the pointer's `revision`.
+        let revision: String
+
+        init(profileId: String, vaultId: String, sequence: Int, revision: String) {
+            self.profileId = profileId
+            self.vaultId = vaultId
+            self.sequence = sequence
+            self.revision = revision
+        }
+
+        init(profileId: String, vaultId: String, experience: CompanyVaultCatalog.Experience) {
+            self.init(profileId: profileId, vaultId: vaultId, sequence: experience.sequence, revision: experience.revision)
+        }
+
+        var fields: [String] { [profileId, vaultId, String(sequence), revision] }
+    }
+
+    /// The sealed set's exact length for `plaintextBytes` (at least 1).
+    static func sealedLength(plaintextBytes: Int) -> Int { CompanyChunkedSeal.sealedLength(plaintextBytes: plaintextBytes) }
+
+    /// Open a sealed set in memory (a set is at most 2 MiB). A plaintext whose SHA-256 is not
+    /// `context.revision` throws `wrongRevision`.
+    static func open(_ sealed: Data, context: Context, companySecret: Data) throws -> Data {
+        var plain = Data()
+        let opened = try construction.open(length: sealed.count, read: { sealed.subdata(in: $0) }, fields: context.fields,
+                                           companySecret: companySecret) { plain.append($0) }
+        guard opened.digest == context.revision else { throw Failure.wrongRevision }
+        return plain
+    }
+
+    /// As the licence service seals one. Tests and fixtures only on the phone.
+    static func seal(_ plaintext: Data, context: Context, companySecret: Data) throws -> Data {
+        try construction.seal(plaintext, fields: context.fields, companySecret: companySecret)
     }
 }
 

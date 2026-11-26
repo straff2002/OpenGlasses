@@ -255,7 +255,9 @@ any newer version is (§6).
   catalog, bound to its `profileId` and one `vaultId`, under its own kind
   (`avenkin.crew-experience-set`) — the crew experience contract §6–7. No office key is needed.
 
-What is built (NF P0): the phone's `LearningEntry` and `LearningCandidate.Origin` carry all of this, and
-the shared core writes it. The phone does not yet apply a crew-experience set, cite `Crew experience`
-or open with its lead-in (NF P1), and no retrieval path reads a symptom subject (IM P0).
+What is built (NF P0, P1): the phone's `LearningEntry` and `LearningCandidate.Origin` carry all of this,
+and the shared core writes it. The phone applies a crew-experience set from the company-vault catalog,
+cites a `recollection` as `Crew experience` (`TeamLearningCitation`, `CitationLineParser`) and opens an
+answer resting on it alone with its lead-in (`TeamLearningDisclosure`). No retrieval path reads a
+symptom subject yet (IM P0).
 

@@ -18,6 +18,9 @@ final class LearningReviewService {
 
     let candidates: LearningCandidateStore
     let entries: LearningEntryStore
+    /// Plan NF: each company vault's crew experience set, reconciled with `entries` as one, so a
+    /// republish never forgets a set's documents.
+    var experience: CompanyExperienceStore
     /// Where the corpus documents go. Nil in a context with no document index: the entry is still
     /// approved and kept, and `republish()` puts it in place once there is one.
     var documentStore: DocumentStore?
@@ -38,9 +41,10 @@ final class LearningReviewService {
     var clock: () -> Date = Date.init
 
     init(candidates: LearningCandidateStore? = nil, entries: LearningEntryStore? = nil,
-         documentStore: DocumentStore? = nil) {
+         experience: CompanyExperienceStore? = nil, documentStore: DocumentStore? = nil) {
         self.candidates = candidates ?? .shared
         self.entries = entries ?? .shared
+        self.experience = experience ?? .shared
         self.documentStore = documentStore
     }
 
@@ -211,11 +215,15 @@ final class LearningReviewService {
         }
     }
 
-    /// Make the namespaces match the entries again — after an import, a vault install or a store
-    /// that arrived late. Idempotent. Refused under HIPAA mode, where nothing is published.
+    /// Make the namespaces match the entries again — after an import, a vault install, a crew
+    /// experience set (Plan NF) or a store that arrived late. Over the union of the phone-reviewed
+    /// entries and every company vault's set (`TeamLearningSources`), so neither source's documents
+    /// are forgotten for want of the other's. Idempotent. Refused under HIPAA mode, where nothing is
+    /// published.
     func republish() {
-        guard !hipaaMode(), let documentStore else { return }
-        LearningCorpus.reconcile(entries: entries.entries, vaults: vaults(), store: documentStore)
+        guard let documentStore else { return }
+        TeamLearningSources.reconcile(reviewed: entries, experience: experience, vaults: vaults(),
+                                      store: documentStore, hipaa: hipaaMode())
     }
 
     // MARK: - Parts

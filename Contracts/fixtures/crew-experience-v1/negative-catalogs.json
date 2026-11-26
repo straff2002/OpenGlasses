@@ -27,7 +27,7 @@
             "count" : 4,
             "downloadURL" : "https://licence.example.test/c/opaque/x/fixture-crew-units-1",
             "revision" : "cd33ceaff4d58afde5fbb29afb73b52df4751a5ee0478456faf7dea8c97f8db4",
-            "sealedSha256" : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "sealedSha256" : "cc62fefd20a6fa8054e263231069a47fd4cca13345d6ae47731f2f16e68d5305",
             "sequence" : 1,
             "sizeBytes" : 2345
           },
@@ -63,7 +63,7 @@
             "count" : 4,
             "downloadURL" : "https://licence.example.test/c/opaque/x/fixture-crew-units-1",
             "revision" : "cd33ceaff4d58afde5fbb29afb73b52df4751a5ee0478456faf7dea8c97f8db4",
-            "sealedSha256" : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "sealedSha256" : "cc62fefd20a6fa8054e263231069a47fd4cca13345d6ae47731f2f16e68d5305",
             "sequence" : 0,
             "sizeBytes" : 2345
           },
@@ -98,7 +98,7 @@
             "count" : 5001,
             "downloadURL" : "https://licence.example.test/c/opaque/x/fixture-crew-units-1",
             "revision" : "cd33ceaff4d58afde5fbb29afb73b52df4751a5ee0478456faf7dea8c97f8db4",
-            "sealedSha256" : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "sealedSha256" : "cc62fefd20a6fa8054e263231069a47fd4cca13345d6ae47731f2f16e68d5305",
             "sequence" : 1,
             "sizeBytes" : 2345
           },
@@ -133,7 +133,7 @@
             "count" : 4,
             "downloadURL" : "https://licence.example.test/c/opaque/x/fixture-crew-units-1",
             "revision" : "cd33ceaff4d58afde5fbb29afb73b52df4751a5ee0478456faf7dea8c97f8db4",
-            "sealedSha256" : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "sealedSha256" : "cc62fefd20a6fa8054e263231069a47fd4cca13345d6ae47731f2f16e68d5305",
             "sequence" : 1,
             "sizeBytes" : 2097153
           },
@@ -168,7 +168,7 @@
             "count" : 4,
             "downloadURL" : "https://licence.example.test/c/opaque/x/fixture-crew-units-1",
             "revision" : "ABC",
-            "sealedSha256" : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "sealedSha256" : "cc62fefd20a6fa8054e263231069a47fd4cca13345d6ae47731f2f16e68d5305",
             "sequence" : 1,
             "sizeBytes" : 2345
           },
@@ -203,7 +203,7 @@
             "count" : 4,
             "downloadURL" : "http://licence.example.test/x",
             "revision" : "cd33ceaff4d58afde5fbb29afb73b52df4751a5ee0478456faf7dea8c97f8db4",
-            "sealedSha256" : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "sealedSha256" : "cc62fefd20a6fa8054e263231069a47fd4cca13345d6ae47731f2f16e68d5305",
             "sequence" : 1,
             "sizeBytes" : 2345
           },

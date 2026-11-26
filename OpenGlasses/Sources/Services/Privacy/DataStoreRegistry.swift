@@ -115,6 +115,8 @@ enum SensitiveStore: String, CaseIterable {
     /// The My Manuals new-manual allowance (Plan JK §8): the iCloud copy of the history.
     case manualAdditionHistory
     case learningEntries
+    /// Each company vault's crew experience set (Plan NF P1).
+    case companyExperience
     case orgEnrolment
     case safetyAssessments
 
@@ -1016,6 +1018,23 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "LearningEntryStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/TeamLearning/LearningEntryStore.swift"],
                           location: "Application Support/FieldAssist/team-learning-entries.json and team-learning-bundle-ledger.json")
+
+        case .companyExperience:
+            // A company's crew experience (Plan NF P1): each company vault's last applied set,
+            // published from the company's sheet in the portal and delivered sealed on the
+            // company-vault catalog. Its documents answer from the `learning:` namespaces (inside
+            // `ragDocuments`). The portal redacts contact details and keys, but a customer's name
+            // can slip past, so it is treated as able to hold a third party: walked by the subject
+            // erasure, protected, kept out of backup, and cleared when the phone leaves its company
+            // or the company removes the vault. Replaced whole by each newer set.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .thirdPartySubject,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .none,
+                          deleteAll: .api("CompanyExperienceStore.removeAll()"),
+                          deleteSubject: .api("CompanyExperienceStore.deleteMatching(_:)"),
+                          owner: "CompanyExperienceStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/TeamLearning/CompanyExperienceStore.swift"],
+                          location: "Application Support/FieldAssist/company-experience-sets.json")
 
         case .officeTransportFolders:
             // The embedded engine's own home, in the opt-in office transport build: its

@@ -125,8 +125,14 @@ struct LearningEntry: Codable, Equatable, Identifiable {
     var isLive: Bool { supersededAt == nil && retractedAt == nil }
 
     /// The contract's §7.1 citation name, byte for byte:
-    /// `Team learning · <modelToken or topic> · <YYYY-MM-DD UTC of approvedAt> · approved by <role>`.
+    /// `Team learning · <modelToken or topic> · <YYYY-MM-DD UTC of approvedAt> · approved by <role>`,
+    /// or for a `recollection` (the crew-experience amendment, Plan NF)
+    /// `Crew experience · <subject> · <date> · approved by <role>`.
     var citationName: String { TeamLearningCitation.name(for: self) }
+
+    /// A company's crew experience (origin `recollection`): cited and introduced as the company's
+    /// experience, not as a finding seen on a job.
+    var isCrewExperience: Bool { origin == .recollection }
 
     /// Whether this entry applies to `vaultId` by its own scope (empty `vaultIDs` = every vault).
     func isScoped(to vaultId: String) -> Bool { vaultIDs.isEmpty || vaultIDs.contains(vaultId) }
@@ -188,13 +194,29 @@ enum TeamLearningCitation {
     /// What every team-learning citation begins with. A citation that begins this way is a team
     /// learning's, never a manual title — the parser, the chips and the export all key on it.
     static let prefix = "Team learning · "
+    /// What a crew-experience citation begins with (team-learning §11, Plan NF):
+    /// `CrewExperienceSheet.citationPrefix`, the portal's own spelling.
+    static let crewExperiencePrefix = CrewExperienceSheet.citationPrefix
+    /// Every prefix a learning's citation can begin with.
+    static let prefixes = [prefix, crewExperiencePrefix]
 
-    static func name(subject: String, approvedAt: Date, role: String) -> String {
-        "Team learning · \(subject) · \(utcDate(approvedAt)) · approved by \(role)"
+    static func name(subject: String, approvedAt: Date, role: String, crewExperience: Bool = false) -> String {
+        (crewExperience ? crewExperiencePrefix : prefix) + "\(subject) · \(utcDate(approvedAt)) · approved by \(role)"
     }
 
     static func name(for entry: LearningEntry) -> String {
-        name(subject: entry.subject.citationSubject, approvedAt: entry.approvedAt, role: entry.approvedByRole)
+        name(subject: entry.subject.citationSubject, approvedAt: entry.approvedAt, role: entry.approvedByRole,
+             crewExperience: entry.isCrewExperience)
+    }
+
+    /// Where in `text` the first learning citation (of either kind) begins, or nil.
+    static func firstCitationRange(in text: String) -> Range<String.Index>? {
+        prefixes.compactMap { text.range(of: $0) }.min { $0.lowerBound < $1.lowerBound }
+    }
+
+    /// Whether a citation name is a company's crew experience rather than a team learning.
+    static func isCrewExperience(_ source: String) -> Bool {
+        source.trimmingCharacters(in: .whitespaces).hasPrefix(crewExperiencePrefix)
     }
 
     /// `YYYY-MM-DD` in UTC, whatever the phone's own zone and calendar.
@@ -211,6 +233,7 @@ enum TeamLearningCitation {
 
     /// Whether a citation or source line names a team learning.
     static func isTeamLearning(_ source: String) -> Bool {
-        source.trimmingCharacters(in: .whitespaces).hasPrefix(prefix)
+        let trimmed = source.trimmingCharacters(in: .whitespaces)
+        return prefixes.contains { trimmed.hasPrefix($0) }
     }
 }

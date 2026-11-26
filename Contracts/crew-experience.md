@@ -14,8 +14,10 @@ so the service compiles it on Linux and the phone can compile it into its own ta
 Invented brands, models, codes and people only.
 
 **What exists.** The parser, the row rules, the mapping, the set and its checks, the `crew-models.md`
-writer, the experience-only vault and the catalog field with its checks (P0). Nothing seals or serves a
-set yet, and the phone does not apply one (P1); the portal's screens are the service's (S1).
+writer, the experience-only vault and the catalog field with its checks (P0); the seal
+(`CompanyVaultContract.ExperienceSeal`, with `sealSet` writing the vault row's pointer), and the phone
+fetching, opening, checking and applying a set (`CompanyExperienceSeal`, `CompanyExperienceStore`, the
+company vault pass; P1). Nothing serves a set yet: the portal's screens and storage are the service's (S1).
 
 ## 1. Roles
 
@@ -225,8 +227,24 @@ AADᵢ    = "openglasses.crew-experience-set.v1\n" + profileId + "\n" + vaultId 
           ‖ header ‖ i (UInt64 big-endian) ‖ (0x01 last chunk, else 0x00)
 ```
 
-`sequence` in decimal, `revision` the plaintext's SHA-256. The seal is not implemented yet (P1 opens
-it, S1 makes it); the domain is fixed here (`CrewExperienceSheet.sealDomain`).
+`sequence` in decimal, `revision` the plaintext's SHA-256, both the catalog pointer's. The reference is
+`CompanyVaultContract.ExperienceSeal` (the chunked seal of company-vaults §3 under this domain); the
+service seals with `ExperienceSeal.sealSet(_:downloadURL:companySecret:)`, which checks the set, encodes
+it with `CrewExperienceSet.encoder()` and returns the sealed bytes with the vault row's `experience`
+pointer. A set of n bytes seals to `sealedLength(plaintextBytes: n)`.
+
+**On the phone** (`CompanyVaultService`, every catalog pick-up): only for a vault it has installed, not
+while the open job uses that vault, and only on a team or enterprise licence. A pointer whose `sequence`
+is not above the held set's is not fetched. Otherwise it downloads at most the sealed length on any
+network through the same bounded client as a manual, checks the length and `sealedSha256`, opens it with
+the company secret for `[profileId, vaultId, sequence, revision]`, checks the plaintext's length and
+`revision`, decodes it, holds it to `CrewExperienceSet.check`, and refuses it unless its `profileId`,
+`vaultId`, `sequence` and entry count are the pointer's. A set that passes replaces the vault's set whole
+(`CompanyExperienceStore`); one that fails is logged by its case and the last good set keeps answering. A
+pointer the company removed removes the set; one the phone could not use (`screen`) does not. The
+documents are placed by a reconcile over the phone-reviewed entries and every set together, so neither
+source removes the other's. A lapsed licence keeps the held set; HIPAA mode publishes nothing and reads
+no learning namespace.
 
 ## 7. The `experience` catalog field
 
@@ -312,7 +330,9 @@ Written by `REGENERATE_CREW_EXPERIENCE_FIXTURES=1 swift test --package-path Tool
 `fixture-company`, sequence 1); `current-sheet.csv` (**Download current sheet**); `reupload.csv` (that
 sheet three weeks later: one fix changed, one row deleted, two rows added), `vault-reupload.json` and
 `reupload.expected.json` (its report, entries and diff: 2 new, 1 changed, 1 removed); `citations.json`;
-`experience-only-vault/` (`manifest.json` and `crew-models.md`); `catalog-experience-v1.json` (an
-unsigned catalog payload whose row carries `experience` for `set-v1.json`; its `sealedSha256` is a
-placeholder until the seal exists); `negative-catalogs.json` and `negative-advances.json` (each refusal
+`experience-only-vault/` (`manifest.json` and `crew-models.md`); `set-v1.sealed` (`set-v1.json` sealed
+for `fixture-company`, vault `fixture-crew-units`, sequence 1, with the company-vault fixtures' company
+secret and nonces derived from the chunk index, so it regenerates to the same bytes);
+`catalog-experience-v1.json` (an unsigned catalog payload whose row carries `experience` for
+`set-v1.sealed`); `negative-catalogs.json` and `negative-advances.json` (each refusal
 of §7 with its words).

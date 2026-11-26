@@ -170,6 +170,9 @@ targets:
       - path: Tools/LicenceIssuance/Sources/LicenceIssuance/TradeTemplate.swift
       - path: Tools/LicenceIssuance/Sources/LicenceIssuance/VaultStarter.swift
       - path: Tools/LicenceIssuance/Sources/LicenceIssuance/VaultDrafts.swift
+      # Plan NF: the crew experience set and its checks, so the phone holds an arriving set to the
+      # rules the portal sealed it under. Foundation only.
+      - path: Tools/LicenceIssuance/Sources/LicenceIssuance/CrewExperience.swift
     configFiles:
       Debug: Vendor/MediaPipeTasks/Frameworks/holistic-linker-flags.xcconfig
       Release: Vendor/MediaPipeTasks/Frameworks/holistic-linker-flags.xcconfig

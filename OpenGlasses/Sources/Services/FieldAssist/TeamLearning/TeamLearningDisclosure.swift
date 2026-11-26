@@ -23,6 +23,9 @@ struct TeamLearningDisclosure: Equatable {
         let citation: String
         let confirmedJobCount: Int?
         let contradictsSafetyNote: Bool
+        /// A company's crew experience (origin `recollection`, Plan NF): introduced as the
+        /// company's experience rather than a finding seen on a job.
+        var isCrewExperience: Bool = false
     }
 
     /// The answer rested on learnings alone: no manual passage cleared the gate.
@@ -35,8 +38,15 @@ struct TeamLearningDisclosure: Equatable {
 
     /// The sentence a learning-alone answer opens with; nil when a manual passage carried it.
     var leadIn: String? {
-        restsOnLearningAlone ? Self.leadIn(confirmedJobCount: entries.first?.confirmedJobCount) : nil
+        guard restsOnLearningAlone else { return nil }
+        if entries.first?.isCrewExperience == true { return Self.crewExperienceLeadIn }
+        return Self.leadIn(confirmedJobCount: entries.first?.confirmedJobCount)
     }
+
+    /// What an answer resting on the company's crew experience alone opens with (team-learning
+    /// §11): the portal's own words, `CrewExperienceSheet.leadIn`. An experience-only vault has no
+    /// manual, so every answer it gives opens with it.
+    static let crewExperienceLeadIn = CrewExperienceSheet.leadIn
 
     /// "The manual doesn't cover this. Your crew's own finding[, noted on <n> previous jobs]:" —
     /// the count only when the entry was filed on more than one job.
@@ -70,7 +80,9 @@ struct TeamLearningDisclosure: Equatable {
                          approvedByRole: found?.approvedByRole ?? role(fromCitation: passage.documentName),
                          citation: passage.documentName,
                          confirmedJobCount: found?.confirmedJobCount,
-                         contradictsSafetyNote: found?.contradictsSafetyNote ?? false)
+                         contradictsSafetyNote: found?.contradictsSafetyNote ?? false,
+                         isCrewExperience: found?.isCrewExperience
+                            ?? TeamLearningCitation.isCrewExperience(passage.documentName))
         }
         guard !entries.isEmpty else { return nil }
         return TeamLearningDisclosure(restsOnLearningAlone: outcome.isTeamLearningOnly, entries: entries)

@@ -385,6 +385,13 @@ struct VaultManagerView: View {
                 Text("Pack v\(pack.version)\(pack.author.map { " · by \($0)" } ?? "")")
                     .font(.caption2).foregroundStyle(.secondary)
             }
+            // A company vault's crew experience (Plan NF): a count and a date. Kept in the portal,
+            // so nothing here edits it.
+            if let experience = CompanyExperienceStore.shared.summaryLine(vaultId: manifest.id) {
+                Text(experience)
+                    .font(.caption2).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("vaults.experience.\(manifest.id)")
+            }
             if ownVaultsGate.allowsImport, VaultAuthoring.isOwned(manifest.id) {
                 Button("Build this vault") { authoring = manifest.id }
                     .font(.caption)

@@ -874,6 +874,84 @@ public enum CompanyVaultContract {
             return (sealedLength(plaintextBytes: sealed.sizeBytes), sealed.sealedSha256, sealed.revision)
         }
     }
+
+    // MARK: - The crew experience seal (Plan NF)
+
+    /// A vault's crew experience set (`Contracts/crew-experience.md` §6), sealed for one company's
+    /// phones: the chunked seal under `openglasses.crew-experience-set.v1`, magic `OGCX`.
+    ///
+    /// ```
+    /// key      = HKDF-SHA256(ikm: company secret, salt: none, info: "openglasses.crew-experience-set.v1"), 32 bytes
+    /// header   = "OGCX" ‖ 0x01 ‖ chunkSize (UInt32, big-endian; 1 MiB)
+    /// AADᵢ     = UTF-8("openglasses.crew-experience-set.v1\n" + profileId + "\n" + vaultId + "\n" + sequence + "\n" + revision + "\n")
+    ///            ‖ header ‖ i (UInt64, big-endian) ‖ (0x01 for the last chunk, else 0x00)
+    /// ```
+    ///
+    /// `sequence` in decimal and `revision` the plaintext's SHA-256, both the catalog pointer's, so a
+    /// sealed set cannot be moved to another company or vault, or replayed as another sequence. A set
+    /// is at most 2 MiB, so it is sealed and opened in memory.
+    public enum ExperienceSeal {
+        /// **Key-derivation and authentication domain.** Never change it: every set already sealed
+        /// would stop opening.
+        public static let domain = CrewExperienceSheet.sealDomain
+        public static let magic = Data("OGCX".utf8)
+
+        static let construction = ChunkedSeal(domain: domain, magic: magic)
+
+        public typealias Problem = ManualSeal.Problem
+
+        public struct Context: Equatable, Sendable {
+            public let profileId: String
+            public let vaultId: String
+            public let sequence: Int
+            /// The plaintext set's SHA-256, lowercase hex: the pointer's `revision`.
+            public let revision: String
+            public init(profileId: String, vaultId: String, sequence: Int, revision: String) {
+                self.profileId = profileId; self.vaultId = vaultId; self.sequence = sequence; self.revision = revision
+            }
+
+            var fields: [String] { [profileId, vaultId, String(sequence), revision] }
+        }
+
+        public static func header() -> Data { construction.header() }
+
+        /// The sealed set's exact length for `plaintextBytes` (at least 1).
+        public static func sealedLength(plaintextBytes: Int) -> Int { ChunkedSeal.sealedLength(plaintextBytes: plaintextBytes) }
+
+        /// Seal set bytes already encoded (`CrewExperienceSet.encoder()`). `nonce` exists for the
+        /// golden fixtures only; leave it out.
+        public static func seal(_ plaintext: Data, context: Context, companySecret: Data,
+                                nonce: ((UInt64) throws -> AES.GCM.Nonce)? = nil) throws -> Data {
+            guard companySecret.count == ProfileContract.Credential.secretLength else { throw Problem.invalidSecret }
+            guard !plaintext.isEmpty else { throw Problem.empty }
+            guard ManualSeal.digest(plaintext) == context.revision else { throw Problem.wrongRevision }
+            return try construction.seal(plaintext, fields: context.fields, companySecret: companySecret, nonce: nonce)
+        }
+
+        /// Open a sealed set, checking the plaintext against `context.revision`.
+        public static func open(_ sealed: Data, context: Context, companySecret: Data) throws -> Data {
+            var plain = Data()
+            try construction.open(length: sealed.count, read: { sealed.subdata(in: $0) }, fields: context.fields,
+                                  companySecret: companySecret) { plain.append($0) }
+            guard ManualSeal.digest(plain) == context.revision else { throw Problem.wrongRevision }
+            return plain
+        }
+
+        /// The portal's publish step: check the set (`CrewExperienceSet.check`), encode it, seal it for
+        /// `set.profileId`, and return the sealed bytes with the vault row's `experience` pointer for
+        /// the address the sealed file will be served from.
+        public static func sealSet(_ set: CrewExperienceSet, downloadURL: String, companySecret: Data,
+                                   nonce: ((UInt64) throws -> AES.GCM.Nonce)? = nil) throws -> (sealed: Data, experience: Experience) {
+            try CrewExperienceSet.check(set)
+            let plain = try CrewExperienceSet.encoder().encode(set)
+            let revision = ManualSeal.digest(plain)
+            let sealed = try seal(plain, context: .init(profileId: set.profileId, vaultId: set.vaultId,
+                                                        sequence: set.sequence, revision: revision),
+                                  companySecret: companySecret, nonce: nonce)
+            return (sealed, Experience(sequence: set.sequence, count: set.entries.count, sizeBytes: plain.count,
+                                       revision: revision, sealedSha256: ManualSeal.digest(sealed), downloadURL: downloadURL))
+        }
+    }
 }
 
 // MARK: - The seat renewal's installed vaults (Plan LR P2)
