@@ -1,6 +1,6 @@
 # Avenkin at work: information for organisations
 
-*Avenkin · for an employer, clinic or other organisation that gives Avenkin to its staff · October 2026*
+*Avenkin · for an employer, clinic or other organisation that gives Avenkin to its staff · November 2026*
 
 This sheet is for an organisation that puts Avenkin in the hands of its staff, in the EU or anywhere else. It says what the assistant is, where data can go, what the EU AI Act asks of you today, and how to set the phones up. It describes the app as it is; it is not legal advice.
 
@@ -43,7 +43,9 @@ Everything below goes only to addresses and systems you set up.
 | Live expert call | Camera and sound to the expert, through your signalling server, only while the call runs. Never in Medical Compliance mode: a help request still goes out, and the expert gets the job record. |
 | First-aid triage | Never. Camera triage is for personal use and is not offered in Field Assist editions or on a phone your profile manages. First-aid coaching, the spoken protocols, is, and it keeps no record. |
 
-What you never receive, because nothing collects it: a continuous feed of location, camera or captions; a productivity score, ranking or activity log; the person's conversation history, memories or AI request records, which stay on the phone. We run no server and no account system, so nothing passes through us and we keep no copy.
+What you never receive, because nothing collects it: a continuous feed of location, camera or captions; a productivity score, ranking or activity log; the person's conversation history, memories or AI request records, which stay on the phone. None of the records above passes through us, and we keep no copy of them.
+
+**The one service we run is the licence service.** It holds your licence and its seats, the settings and vaults you publish to your phones, the manuals you upload (published encrypted, so only your phones can open them), your invoices, and the sign-ins of the people who manage your organisation in the portal. Each phone fetches your licence, settings and vaults from it when the app opens. If your licence counts seats, the phone also checks its seat about once a day. That check sends an enrolment id, a key made for that phone, the app build, your profile id, and which of your vaults and which version of your settings the phone has. It never sends a name, device model, location or anything from the person's work. The service keeps no IP addresses. Connections to it pass through Cloudflare.
 
 ## 5. Pinning settings with an organisation profile
 
