@@ -668,6 +668,7 @@ final class LensPageSessionTests: XCTestCase {
         XCTAssertNotNil(wholePicture(rig))
         XCTAssertEqual(itemIDs(rig), [ID.readIt, ID.close])
 
+        _ = rig.session.handleBand(.nav(.down))     // the wearer moves focus to Read it
         await press(rig, ID.readIt)
         let state = try XCTUnwrap(rig.session.shownState)
         XCTAssertTrue(state.isReading)
@@ -693,6 +694,7 @@ final class LensPageSessionTests: XCTestCase {
         rig.session.stage([LensPageFixtures.staged(origin: .requested)])
         await drain(rig)
 
+        _ = rig.session.handleBand(.nav(.down))     // the wearer moves focus to Read it
         await press(rig, ID.readIt)
         await press(rig, ID.nextText)
         XCTAssertEqual(rig.session.shownState?.readingIndex, 1)
@@ -888,5 +890,67 @@ private final class StubTaskSource: HUDTaskSource {
     func skip() async { steps += 1 }
     func back() async { steps += 1 }
     func choose(_ id: String) async {}
+
+    // MARK: - A stray first press (build 770)
+
+    /// Build 770: on a Ray-Ban Display "show me the page" opened on the passage's words, as if the
+    /// first pinch had landed on **Read it**. A press from the lens on Read it on the opening frame
+    /// opens the close-up, as a press on the picture does; from there Back and Read it read it.
+    func testAFirstPressOnReadItFromTheLensOpensTheCloseUp() async throws {
+        let rig = makeReadingRig()
+        rig.session.stage([LensPageFixtures.staged(origin: .requested)])
+        await drain(rig)
+        XCTAssertEqual(rig.session.shownState?.view, .whole)
+
+        await press(rig, ID.readIt)
+        XCTAssertEqual(rig.session.shownState?.view, .closeUp, "the page read closely, not its words")
+        XCTAssertEqual(rig.session.stats["metaRayBan"].openingPressesTaken, 1)
+        XCTAssertEqual(rig.session.stats["metaRayBan"].readingViews, 0)
+
+        await press(rig, ID.back)
+        XCTAssertEqual(rig.session.shownState?.view, .whole)
+        XCTAssertFalse(try XCTUnwrap(rig.session.shownState).isFirstFrame)
+        await press(rig, ID.readIt)
+        XCTAssertEqual(rig.session.shownState?.view, .reading, "past the opening frame, Read it reads")
+        XCTAssertEqual(rig.session.stats["metaRayBan"].openingPressesTaken, 1)
+        let lines = LensPageReport.lines(for: rig.session.stats)
+        XCTAssertTrue(lines.contains { $0.contains("first presses taken to the close-up 1") }, "\(lines)")
+    }
+
+    /// A tap on the phone preview is the one the wearer meant, opening frame or not.
+    func testTheOpeningPressFromThePhoneIsKept() async throws {
+        let rig = makeReadingRig()
+        rig.session.stage([LensPageFixtures.staged(origin: .requested)])
+        await drain(rig)
+
+        XCTAssertTrue(rig.session.press(itemID: ID.readIt, fromLens: false))
+        await drain(rig)
+        XCTAssertEqual(rig.session.shownState?.view, .reading)
+        XCTAssertEqual(rig.session.stats["metaRayBan"].openingPressesTaken, 0)
+    }
+
+    /// Once the wearer has moved focus on the opening frame (the band, flagged builds), the press
+    /// is on the button they chose; a new frame forgets it.
+    func testAPressAfterTheWearerMovedFocusIsKept() async throws {
+        let rig = makeReadingRig()
+        rig.session.stage([LensPageFixtures.staged(origin: .requested)])
+        await drain(rig)
+
+        _ = rig.session.handleBand(.nav(.down))
+        await press(rig, ID.readIt)
+        XCTAssertEqual(rig.session.shownState?.view, .reading)
+        XCTAssertEqual(rig.session.stats["metaRayBan"].openingPressesTaken, 0)
+    }
+
+    /// The spoken "read it" is never taken: only a pinch can land on the wrong button.
+    func testTheSpokenReadItReadsFromTheOpeningFrame() async throws {
+        let rig = makeReadingRig()
+        rig.session.stage([LensPageFixtures.staged(origin: .requested)])
+        await drain(rig)
+
+        XCTAssertTrue(rig.session.handle(.readIt))
+        await drain(rig)
+        XCTAssertEqual(rig.session.shownState?.view, .reading)
+    }
 }
 #endif

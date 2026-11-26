@@ -2396,6 +2396,14 @@ enum PrivacyLog {
         /// `render`, `send` — handed over but the glasses never took it); `lensPageClosed` the route in `state`. Case names only — never the page, its
         /// text or its pixels.
         case lensPageOpened, lensPageRefused, lensPageClosed
+        /// Build 770, how the wearer moved through the page view. `lensPagePressed` is one press:
+        /// the button or block's name in `state` (`read`, `rows`, `whole`, `back`, `row`…), where it
+        /// came from in `command` (`lens`, `phone`), the view it was made on in `detail` (`whole`,
+        /// `closeUp`, `zoomed`, `rows`, `reading`, `cue`), and `reason` = `openingPress` when a
+        /// stray first press on Rows or Read it opened the close-up instead (`LensOpeningPress`).
+        /// `lensPageShown` is a frame handed to the lens: its view in `state`, `detail` = `band`
+        /// for one a band swipe drew. Case names only — never a label, the page or its text.
+        case lensPagePressed, lensPageShown
         /// Plan JV P1, voice invocations (flagged TestFlight builds only). `voiceInvocationStream`
         /// is a per-device stream starting, failing to start or stopping (`state`: `started`,
         /// `startFailed`, `stopped`; `reason`: why it stopped or the failure's case). A request is

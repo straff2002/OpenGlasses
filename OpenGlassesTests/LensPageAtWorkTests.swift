@@ -339,6 +339,21 @@ final class LensPageAtWorkTests: XCTestCase {
         XCTAssertFalse(try XCTUnwrap(rig.session.shownScreen).trailingFlow.isEmpty)
     }
 
+    /// Build 770: a page with a table opened on its rows, as if the first pinch had landed on
+    /// **Rows**. A press from the lens on Rows on the opening frame reads the page closely instead.
+    func testAFirstPressOnRowsFromTheLensOpensTheCloseUp() async throws {
+        let rig = makeRig()
+        rig.session.stage([staged()])
+        await drain(rig)
+        XCTAssertTrue(rig.session.shownScreen?.items.contains { $0.id == ID.rows } ?? false)
+        await press(rig, ID.rows)
+        XCTAssertEqual(rig.session.shownState?.view, .closeUp)
+        XCTAssertEqual(rig.session.stats["metaRayBan"].openingPressesTaken, 1)
+        await press(rig, ID.back)
+        await press(rig, ID.rows)
+        XCTAssertEqual(rig.session.shownState?.view, .rows, "past the opening frame, Rows shows the rows")
+    }
+
     /// Any cell is reached by scrolling plus at most one press: every cell of the page's table is on
     /// the Rows view (one press), and on a page with nothing highlighted fit width (one press) holds
     /// the whole page.
@@ -346,6 +361,7 @@ final class LensPageAtWorkTests: XCTestCase {
         let rig = makeRig()
         rig.session.stage([staged()])
         await drain(rig)
+        _ = rig.session.handleBand(.nav(.down))     // the wearer moves focus to Rows
         await press(rig, ID.rows)
         let texts = try XCTUnwrap(rig.session.shownScreen).trailingFlow.flatMap(\.lines).map(\.text)
         let table = Self.faultTable()

@@ -105,6 +105,9 @@ struct LensPageStats: Equatable {
         var rowsSpoken = 0
         /// Back to the whole page.
         var backs = 0
+        /// Build 770: stray first presses on Rows or Read it that opened the close-up instead
+        /// (`LensOpeningPress`).
+        var openingPressesTaken = 0
         /// What each view opened highlighting (`LensPageHighlight.Reason`), counted.
         var highlights: [String: Int] = [:]
         /// Plan MU §0: each picture handed to the lens, at the size it was sent ("576×426").
@@ -194,7 +197,10 @@ enum LensPageReport {
             let highlights = entry.highlights.keys.sorted().map { "\($0) \(entry.highlights[$0] ?? 0)" }
             lines.append("    Highlighted: " + (highlights.isEmpty ? "none" : highlights.joined(separator: ", ")))
             lines.append("    Presses: \(entry.presses) (close-ups \(entry.closeUps), fit width \(entry.fitWidths),"
-                         + " back \(entry.backs), rows \(entry.rowsViews), rows spoken \(entry.rowsSpoken));"
+                         + " back \(entry.backs), rows \(entry.rowsViews), rows spoken \(entry.rowsSpoken)"
+                         + (entry.openingPressesTaken > 0
+                            ? ", first presses taken to the close-up \(entry.openingPressesTaken)" : "")
+                         + ");"
                          + " per view " + summary(entry.pressesPerView, unit: "presses"))
             lines.append("    Pictures sent: " + LensPictureScale.sizesSummary(entry.pictureSizes)
                          + "; factor " + LensPictureScale.factorText(CGFloat(entry.pictureFactor)))
