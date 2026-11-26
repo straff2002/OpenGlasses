@@ -46,31 +46,41 @@ struct VanStockLog: Codable, Equatable, Sendable {
     private(set) var movements: [VanStockMovement]
     /// Every line's lots (Plan MY §1). Empty, and not written, for a list that has none.
     private(set) var lots: [StockLot]
+    /// Lines deleted in the most recent deletion, kept so an undo of it can put them back.
+    /// Empty, and not written, for a list that has none.
+    private(set) var deletedLines: [DeletedLine]
 
-    init(items: [VanStockItem] = [], movements: [VanStockMovement] = [], lots: [StockLot] = []) {
+    init(items: [VanStockItem] = [], movements: [VanStockMovement] = [], lots: [StockLot] = [],
+         deletedLines: [DeletedLine] = []) {
         self.items = items
         self.movements = movements
         self.lots = lots
+        self.deletedLines = deletedLines
     }
 
     enum CodingKeys: String, CodingKey {
         case items, movements, lots
+        case deletedLines = "deleted_lines"
     }
 
-    /// A list written before lots existed has none.
+    /// A list written before lots, or before lines could be deleted, has none.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         items = try container.decode([VanStockItem].self, forKey: .items)
         movements = try container.decode([VanStockMovement].self, forKey: .movements)
         lots = try container.decodeIfPresent([StockLot].self, forKey: .lots) ?? []
+        deletedLines = try container.decodeIfPresent([DeletedLine].self, forKey: .deletedLines) ?? []
     }
 
-    /// `lots` only when there are some, so a list without them is written exactly as before.
+    /// `lots` and `deleted_lines` only when there are some, so a list without them is written
+    /// exactly as before. An older build ignores `deleted_lines` and reads the list without the
+    /// deleted line, which is what it is.
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(items, forKey: .items)
         try container.encode(movements, forKey: .movements)
         if !lots.isEmpty { try container.encode(lots, forKey: .lots) }
+        if !deletedLines.isEmpty { try container.encode(deletedLines, forKey: .deletedLines) }
     }
 
     // MARK: - Lots (Plan MY §1)
@@ -161,6 +171,47 @@ struct VanStockLog: Codable, Equatable, Sendable {
                                 createdBatch: batch)
         items.append(item)
         return item
+    }
+
+    /// A line taken off the list, with what an undo needs to put it back where it was.
+    struct DeletedLine: Codable, Equatable, Sendable {
+        let item: VanStockItem
+        /// The line's lots, which go with it.
+        let lots: [StockLot]
+        /// Where the line stood in the list.
+        let position: Int
+        /// The batch that deleted it.
+        let batch: String
+    }
+
+    /// Take a line off the list, with its lots; nil, and nothing changed, for a line the list
+    /// does not have. Its movements stay in the log as history, which the fold already passes
+    /// over for a line that is not on the list, so its count and anything asked for go with it.
+    ///
+    /// The deletion is noted as an `edited` movement that changes nothing, as `appendNote` does,
+    /// so the batch has an entry for an undo to find and an older build still reads the log. The
+    /// line is kept in `deletedLines` until a later deletion replaces it; only an undo of the
+    /// deletion, while it is still the last batch, puts it back.
+    @discardableResult
+    mutating func deleteItem(_ itemID: String, at: Date, batch: String, source: VanStockMovement.Source,
+                             id: String = UUID().uuidString) -> VanStockItem? {
+        guard let position = items.firstIndex(where: { $0.id == itemID }) else { return nil }
+        let item = items.remove(at: position)
+        let itsLots = lots.filter { $0.itemID == itemID }
+        lots.removeAll { $0.itemID == itemID }
+        deletedLines = [DeletedLine(item: item, lots: itsLots, position: position, batch: batch)]
+        movements.append(VanStockMovement(id: id, itemID: itemID, kind: .edited, at: at, batch: batch,
+                                          source: source, attribute: .description,
+                                          oldValue: item.description, newValue: item.description))
+        return item
+    }
+
+    /// Whether anything was used from the line, or wasted from it, that has not been taken back.
+    func hasGivenOrWasted(_ itemID: String) -> Bool {
+        let reversed = Self.reversedIDs(in: movements)
+        return movements.contains {
+            $0.itemID == itemID && ($0.kind == .used || $0.kind == .wasted) && !reversed.contains($0.id)
+        }
     }
 
     // MARK: - Movements
@@ -361,6 +412,8 @@ struct VanStockLog: Codable, Equatable, Sendable {
         let removedItems: [VanStockItem]
         /// Lots the batch had added, and the lots of lines it took away, now gone again.
         var removedLots: [StockLot] = []
+        /// Lines the batch had deleted, now back on the list.
+        var restoredItems: [VanStockItem] = []
     }
 
     /// Take back the most recent batch — the whole spoken sentence, or the whole imported sheet.
@@ -385,7 +438,15 @@ struct VanStockLog: Codable, Equatable, Sendable {
         let goneItems = Set(removed.map(\.id))
         let removedLots = lots.filter { $0.createdBatch == last.batch || goneItems.contains($0.itemID) }
         lots.removeAll { $0.createdBatch == last.batch || goneItems.contains($0.itemID) }
-        return Undone(batch: last.batch, movements: target, removedItems: removed, removedLots: removedLots)
+        // A deletion puts its lines back where they stood, with their lots.
+        let back = deletedLines.filter { $0.batch == last.batch }.sorted { $0.position < $1.position }
+        for line in back where item(id: line.item.id) == nil {
+            items.insert(line.item, at: min(line.position, items.count))
+            lots.append(contentsOf: line.lots)
+        }
+        deletedLines.removeAll { $0.batch == last.batch }
+        return Undone(batch: last.batch, movements: target, removedItems: removed, removedLots: removedLots,
+                      restoredItems: back.map(\.item))
     }
 
     /// Put an edited attribute back to what it was.
@@ -448,7 +509,10 @@ struct VanStockLog: Codable, Equatable, Sendable {
             }
         }
         carried.sort { $0.at < $1.at }
-        return VanStockLog(items: items, movements: carried + recent, lots: lots)
+        // A deletion folded away can no longer be undone, so its line is not kept for one.
+        let batches = Set(recent.map(\.batch))
+        return VanStockLog(items: items, movements: carried + recent, lots: lots,
+                           deletedLines: deletedLines.filter { batches.contains($0.batch) })
     }
 
     static let openingBatch = "opening"

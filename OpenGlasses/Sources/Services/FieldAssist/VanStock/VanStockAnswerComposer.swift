@@ -184,7 +184,11 @@ struct VanStockAnswerComposer {
 
     func undone(_ undone: VanStockLog.Undone, items: [VanStockItem]) -> String {
         let names = Dictionary((items + undone.removedItems).map { ($0.id, $0) }) { first, _ in first }
+        let restored = Set(undone.restoredItems.map(\.id))
         let taken = undone.movements.map { movement -> String in
+            if movement.kind == .edited, restored.contains(movement.itemID) {
+                return "the deletion of \(names[movement.itemID]?.name ?? "a line")"
+            }
             let item = names[movement.itemID]
             let name = item?.name ?? "a line"
             switch movement.kind {
