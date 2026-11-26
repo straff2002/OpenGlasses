@@ -193,6 +193,11 @@ class GeminiLiveService: ObservableObject {
             connectionState = .error(MedicalEgressRefusal.userMessage)
             return false
         }
+        // Plan NH: no socket opens on a used allowance. A session already metered reconnects.
+        if let line = LiveAllowanceGate.check() {
+            connectionState = .error(line)
+            return false
+        }
         // Plan FF P1/PR5: a scripted attempt stands in for the socket only; everything the outcome
         // then drives — the ladder, the handle bookkeeping, the callbacks — is the production path.
         if scriptedTransportEnabled { return await runScriptedConnect() }

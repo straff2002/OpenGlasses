@@ -1,6 +1,10 @@
 import Foundation
 
 /// Doubao full duplex 3.0 uses X-Api-Key, session.create and batches of tool results.
+///
+/// The daily allowance (Plan NH) is not the adapter's: a Doubao session opens through
+/// `RealtimeJSONSessionService.connect()`, which asks `LiveAllowanceGate` before any socket, and
+/// `RealtimeSessionManager` meters it like every other live session.
 final class DoubaoRealtimeAdapter: RealtimeProtocolAdapter {
     let profile = RealtimeProtocolProfile.doubaoDuplexV3
     let createsSessionOnOpen = true

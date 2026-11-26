@@ -91,6 +91,8 @@ final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegat
     /// Where a tap on the evening check-in's notification lands (Plan LE §5): My Day, and the
     /// check-in run if it is still owed tonight. The day key is the evening it was scheduled for.
     var openCheckIn: ((_ dayKey: String) -> Void)?
+    /// Where a tap on the daily allowance's notification lands (Plan NH): the subscription sheet.
+    var openSubscription: (() -> Void)?
     /// Where a button press goes (Plan LM P2) — the hub by default; injected for tests.
     private let routeAction: @MainActor (NotificationActionPress) -> Void
 
@@ -108,7 +110,9 @@ final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegat
         case .press(let press):
             routeAction(press)
         case .tap:
-            if let dayKey = CheckInNotificationPolicy.dayKey(from: userInfo), let openCheckIn {
+            if AllowanceNotification.opensSubscription(userInfo), let openSubscription {
+                openSubscription()
+            } else if let dayKey = CheckInNotificationPolicy.dayKey(from: userInfo), let openCheckIn {
                 openCheckIn(dayKey)
             } else if let card = PreparedCardNotificationPolicy.cardID(from: userInfo),
                PreparedCardStagingPolicy.isStaged(userInfo), let openStagedCard {

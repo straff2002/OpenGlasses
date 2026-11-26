@@ -177,6 +177,8 @@ final class StorageIdentifierGuardTests: XCTestCase {
             (StoreKitService.fieldAssistId, "com.\(Self.slug).field_assist"),
             (StoreKitService.fieldAssistMonthlyId, "com.\(Self.slug).field_assist_monthly"),
             (StoreKitService.fieldAssistAnnualId, "com.\(Self.slug).field_assist_annual"),
+            (StoreKitService.standardMonthlyId, "com.\(Self.slug).standard_monthly"),
+            (StoreKitService.standardAnnualId, "com.\(Self.slug).standard_annual"),
             (VaultPackManifest.productPrefix, "com.\(Self.slug).vault."),
         ]
         for (actual, pinned) in expected {

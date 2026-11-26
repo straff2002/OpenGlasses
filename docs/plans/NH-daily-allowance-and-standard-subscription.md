@@ -1,7 +1,12 @@
 # Plan NH — Daily Allowance and the Standard Subscription (15 minutes of the assistant a day for everyone, unlimited for subscribers)
 
-**Status:** 📝 Drafted 2026-11-25. Nothing is built. All 13 [decisions](#decisions-for-greig) taken as
-recommended the same day.
+**Status:** 🚧 P0–P1 built 2026-11-26 (headless): the allowance core (`DailyAllowancePolicy`,
+`AllowanceExemption`, `AssistantTimeLedger`, registered as `assistantTime`), the turn gate in `LLMService`,
+the Live gate and one-second meter in `RealtimeSessionManager` with backstops at each socket's `connect()`,
+the Standard products in `StoreKitService` and one subscription group in the `.storekit`, the paywall,
+Settings › Subscription, the Home line, the developer setting "Meter as a store build" and the review-notes
+line; owed: P2 catalog sync, P3 sandbox/device pass. All 13 [decisions](#decisions-for-greig) taken as
+recommended on 2026-11-25.
 **Track:** Consumer pricing. The phone-only App Store build first; the glasses build gets the same rules.
 **Builds on:** Plan [GB](GB-field-test-round-3.md) P5 (the spend cap: a pure policy and a gate in
 `LLMService` that answers a turn instead of sending it), Plan [JK](JK-my-manuals.md) (the My Manuals

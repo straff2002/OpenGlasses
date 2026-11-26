@@ -252,6 +252,11 @@ struct MainView: View {
         .sheet(isPresented: $appState.showManualPicker) {
             ManualPickerView(store: appState.conversationStore, threadID: appState.manualPickerThreadID)
         }
+        // Plan NH: the Standard subscription, from a refusal at zero, the Home line or the
+        // allowance notification, whichever tab is showing.
+        .sheet(isPresented: $appState.subscriptionSheetPresented) {
+            StandardSubscriptionSheet()
+        }
         .sheet(item: $appState.phoneCameraRequest) { request in
             PhoneCameraView(
                 prompt: request.prompt,

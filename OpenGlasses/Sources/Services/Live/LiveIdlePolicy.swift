@@ -96,12 +96,15 @@ enum LiveSessionEndReason: Equatable {
     case idleEnded(minutes: Int)
     /// The wearer said goodbye to the session.
     case saidGoodbye
+    /// Today's free allowance was used (Plan NH): the answer under way finished, then it closed.
+    case allowanceUsed
 
     /// The line the status card shows while no session is running, or `nil` for none.
     var notice: String? {
         switch self {
         case .stopped, .saidGoodbye: return nil
         case .idleEnded(let minutes): return LiveIdlePolicy.endedNotice(minutes: minutes)
+        case .allowanceUsed: return DailyAllowancePolicy.liveEndedNotice
         }
     }
 

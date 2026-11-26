@@ -74,6 +74,13 @@ class RealtimeJSONSessionService: ObservableObject {
         return try modelConfiguration.request()
     }
     func connect() async -> Bool {
+        // Plan NH: no socket opens on a used allowance — OpenAI, Doubao, Qwen and every other
+        // JSON protocol open here. A session already metered reconnects.
+        if let line = LiveAllowanceGate.check() {
+            connectionState = .error(line)
+            terminalFailure = true
+            return false
+        }
         let request: URLRequest
         do {
             guard let modelConfiguration else { throw RealtimeModelConfig.ConfigurationError.unknownProtocol }

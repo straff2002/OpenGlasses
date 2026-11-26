@@ -156,6 +156,20 @@ struct SettingsView: View {
                 }
             }
 
+            // Plan NH: Settings › Subscription — the plan, today's minutes and the plans above.
+            // Not a category: no profile names it, and a managed phone has no daily limit to show.
+            if !PolicyEnvelope.isManaged {
+                OGSection {
+                    NavigationLink {
+                        SubscriptionSettingsView(appState: appState)
+                    } label: {
+                        OGRow("Subscription", icon: "creditcard",
+                              subtitle: "Your plan, today's free minutes, and no daily limit")
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
             // The owner's hand-off switches are on Advanced & Support while Simple Mode is off, and
             // Simple Mode hides that page, so the way out is here while it is on. Under an
             // organisation's edition both are locked and the technician sees neither (Plan HA C4).
