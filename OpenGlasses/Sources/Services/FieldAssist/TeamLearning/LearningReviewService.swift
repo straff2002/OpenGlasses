@@ -81,9 +81,12 @@ final class LearningReviewService {
     func safetyCheck(candidateID: String, edits: LearningReview.Edits? = nil,
                      vaultIDs: [String]? = nil) -> LearningSafetyCheck.Finding? {
         guard let candidate = candidates.candidate(id: candidateID) else { return nil }
+        // As the approval reads it: what was checked with the fix.
+        let fix = [edits?.fix ?? candidate.fix, edits?.tried ?? candidate.tried].compactMap { $0 }
+            .joined(separator: " ")
         return LearningSafetyCheck.check(finding: edits?.finding ?? candidate.finding,
                                          symptom: edits?.symptom ?? candidate.symptom,
-                                         fix: edits?.fix ?? candidate.fix,
+                                         fix: fix.isEmpty ? nil : fix,
                                          coreFiles: safetyCore(for: vaultIDs ?? [candidate.vaultId]))
     }
 
@@ -131,6 +134,7 @@ final class LearningReviewService {
                                       vaultIDs: scope, supersedes: supersedes,
                                       safetyCore: safetyCore(for: scope),
                                       confirmsSafetyDeparture: confirmsSafetyDeparture,
+                                      equipmentTypes: equipmentTypes(for: scope),
                                       context: context(), now: now) {
         case .failure(let refusal): return .failure(refusal)
         case .success(let value): approval = value
@@ -240,11 +244,30 @@ final class LearningReviewService {
         return ids.flatMap { coreFiles($0) }
     }
 
-    /// Every vault this phone can answer from, with its model index.
+    /// The equipment types every vault in scope lists (Plan IM decision 4), in the first vault's
+    /// spelling; empty when any of them lists none. An empty scope is every installed vault.
+    func equipmentTypes(for vaultIDs: [String]) -> [String] {
+        let installed = vaults()
+        let targets: [LearningCorpus.VaultTarget]
+        if vaultIDs.isEmpty {
+            targets = installed
+        } else {
+            // A vault in scope that is not installed lists nothing this phone can read.
+            targets = vaultIDs.compactMap { id in installed.first { $0.id == id } }
+            guard targets.count == vaultIDs.count else { return [] }
+        }
+        guard let first = targets.first else { return [] }
+        return (first.equipmentTypes ?? []).filter { type in
+            targets.dropFirst().allSatisfy { VaultPackRules.listedEquipmentType(type, in: $0.equipmentTypes ?? []) != nil }
+        }
+    }
+
+    /// Every vault this phone can answer from, with its model index and its equipment types.
     static func installedVaults() -> [LearningCorpus.VaultTarget] {
         VaultRegistry.shared.allManifests.map { manifest in
             LearningCorpus.VaultTarget(id: manifest.id,
-                                       modelIndex: VaultModelIndex(store: VaultRegistry.shared.store(for: manifest)))
+                                       modelIndex: VaultModelIndex(store: VaultRegistry.shared.store(for: manifest)),
+                                       equipmentTypes: manifest.equipmentTypes)
         }
     }
 }

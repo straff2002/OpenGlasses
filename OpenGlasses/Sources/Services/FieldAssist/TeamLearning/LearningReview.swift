@@ -62,6 +62,9 @@ enum LearningReview {
         case unknownCandidate(String)
         case unknownEntry(String)
         case entryNotLive(String)
+        /// A symptom subject's equipment type is not on the closed list of every vault it is for
+        /// (Plan IM decision 4): equipment is named from the list, never in free text.
+        case equipmentTypeNotListed(String)
 
         var spoken: String {
             switch self {
@@ -91,6 +94,9 @@ enum LearningReview {
             case .unknownCandidate(let id): return "There's no candidate \(id) on this device."
             case .unknownEntry(let id): return "There's no team learning \(id) on this device."
             case .entryNotLive(let id): return "Team learning \(id) has been superseded or retracted."
+            case .equipmentTypeNotListed(let type):
+                return "Not approved: \u{201C}\(type)\u{201D} isn't one of the equipment types the vault lists. "
+                    + "Choose one from its list, or name the model it is about."
             }
         }
     }
@@ -167,11 +173,17 @@ enum LearningReview {
         var finding: String?
         var symptom: String?
         var fix: String?
+        /// What was checked, and how sure (Plan IM decision 3).
+        var tried: String?
+        var outcome: String?
 
-        init(finding: String? = nil, symptom: String? = nil, fix: String? = nil) {
+        init(finding: String? = nil, symptom: String? = nil, fix: String? = nil,
+             tried: String? = nil, outcome: String? = nil) {
             self.finding = finding
             self.symptom = symptom
             self.fix = fix
+            self.tried = tried
+            self.outcome = outcome
         }
     }
 
@@ -195,11 +207,15 @@ enum LearningReview {
     ///   - safetyCore: the core files of the vaults it is approved for — whose `safety` files the
     ///     check reads.
     ///   - confirmsSafetyDeparture: the second confirmation a safety collision needs.
+    ///   - equipmentTypes: the equipment types every vault it is approved for lists (Plan IM
+    ///     decision 4). A symptom subject must name one of them, and is stored in the list's own
+    ///     spelling; with none, a symptom subject is refused.
     static func approve(_ candidate: LearningCandidate, approver: Approver, edits: Edits? = nil,
                         subject: LearningEntry.Subject? = nil, vaultIDs: [String]? = nil,
                         supersedes: String? = nil,
                         safetyCore: [(filename: String, contents: String)] = [],
                         confirmsSafetyDeparture: Bool = false,
+                        equipmentTypes: [String] = [],
                         context: Context, now: Date,
                         entryID: String = LearningCandidate.newID()) -> Result<Approval, Refusal> {
         if let refusal = gate(context) { return .failure(refusal) }
@@ -217,12 +233,14 @@ enum LearningReview {
         let cleaned: LearningCandidateText.Cleaned
         switch LearningCandidateText.clean(finding: edits?.finding ?? candidate.finding,
                                            symptom: edits?.symptom ?? candidate.symptom,
-                                           fix: edits?.fix ?? candidate.fix) {
+                                           fix: edits?.fix ?? candidate.fix,
+                                           tried: edits?.tried ?? candidate.tried,
+                                           outcome: edits?.outcome ?? candidate.outcome) {
         case .failure(let refusal): return .failure(.text(refusal))
         case .success(let value): cleaned = value
         }
         let edited = cleaned.finding != captured.finding || cleaned.symptom != captured.symptom
-            || cleaned.fix != captured.fix
+            || cleaned.fix != captured.fix || cleaned.tried != candidate.tried || cleaned.outcome != candidate.outcome
         let action: Action = edited ? .editAndApprove(entryID: entryID) : .approve(entryID: entryID)
         let state: State
         switch next(Self.state(of: candidate), action) {
@@ -230,21 +248,34 @@ enum LearningReview {
         case .success(let value): state = value
         }
 
-        guard let resolvedSubject = subject.flatMap(cleanSubject) ?? defaultSubject(of: candidate) else {
+        guard var resolvedSubject = subject.flatMap(cleanSubject) ?? defaultSubject(of: candidate) else {
             return .failure(.subjectNeeded)
         }
+        if case .symptom(let type, let phrase) = resolvedSubject {
+            guard let listed = VaultPackRules.listedEquipmentType(type, in: equipmentTypes) else {
+                return .failure(.equipmentTypeNotListed(type))
+            }
+            resolvedSubject = .symptom(equipmentType: listed, phrase: phrase)
+        }
 
+        // What was checked is read with the fix: "tried bypassing the switch" departs from a
+        // safety note as surely as a fix that says so.
+        let checkedFix = [cleaned.fix, cleaned.tried].compactMap { $0 }.joined(separator: " ")
         let safety = LearningSafetyCheck.check(finding: cleaned.finding, symptom: cleaned.symptom,
-                                               fix: cleaned.fix, coreFiles: safetyCore)
+                                               fix: checkedFix.isEmpty ? nil : checkedFix, coreFiles: safetyCore)
         if safety.collides && !confirmsSafetyDeparture { return .failure(.safetyConfirmationNeeded(safety)) }
 
+        // A recollection was bound to no job (contract §11): it carries no jobs and no count, and
+        // so is never worded as seen on one until a job confirms it (FP's merge).
+        let recalled = candidate.origin == .recollection
         let entry = LearningEntry(
             id: entryID, subject: resolvedSubject, vaultIDs: vaultIDs ?? [candidate.vaultId],
             finding: cleaned.finding, symptom: cleaned.symptom, fix: cleaned.fix,
+            tried: cleaned.tried, outcome: cleaned.outcome,
             approvedAt: wholeSecond(now), approvedByRole: person.role, approvedByName: person.name,
             authorIsApprover: authorIsApprover, contradictsSafetyNote: safety.collides,
             supersedes: supersedes, candidateID: candidate.id, origin: candidate.origin,
-            sourceJobIDs: [candidate.sessionId], confirmedJobCount: 1,
+            sourceJobIDs: recalled ? nil : [candidate.sessionId], confirmedJobCount: recalled ? nil : 1,
             captured: edited ? captured : nil)
         return .success(Approval(entry: entry, state: state, safety: safety))
     }
@@ -274,6 +305,9 @@ enum LearningReview {
         case .failure(let refusal): return .failure(refusal)
         case .success(let value): state = value
         }
+        // A recollection was seen on no job, so it confirms none: merged, it is recorded on the
+        // candidate and the count stays as it was (Plan IM).
+        guard candidate.origin != .recollection else { return .success((entry, state)) }
         let jobs = CrewExperienceMerge.merge(
             jobSessionID: candidate.sessionId,
             into: CrewExperienceMerge.Jobs(origin: entry.origin.rawValue, sourceJobIDs: entry.sourceJobIDs,

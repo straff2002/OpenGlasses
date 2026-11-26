@@ -1,0 +1,104 @@
+{
+  "candidates": [],
+  "direction": "decisions",
+  "entries": [
+    {
+      "approvedAt": 1795566001,
+      "approvedByRole": "Service Manager",
+      "authorIsApprover": false,
+      "candidateID": "000000000000000000000000000000a1",
+      "confirmedJobCount": 1,
+      "contradictsSafetyNote": false,
+      "entryID": "000000000000000000000000000000e1",
+      "finding": "Fixture approved finding 1",
+      "origin": "spoken",
+      "sourceJobIDs": [
+        "fixture-job-1"
+      ],
+      "subject": {
+        "kind": "model",
+        "modelToken": "QXRT-990"
+      },
+      "vaultIDs": [
+        "fixture-crew-units"
+      ]
+    },
+    {
+      "approvedAt": 1795566002,
+      "approvedByRole": "Service Manager",
+      "authorIsApprover": false,
+      "confirmedJobCount": 1,
+      "contradictsSafetyNote": false,
+      "entryID": "000000000000000000000000000000e2",
+      "finding": "Fixture approved finding 2",
+      "origin": "report",
+      "sourceJobIDs": [
+        "fixture-job-2"
+      ],
+      "subject": {
+        "equipmentType": "rooftop unit",
+        "kind": "model",
+        "manufacturer": "Fixture Air",
+        "modelToken": "QXRT-990"
+      },
+      "vaultIDs": [
+        "fixture-crew-units"
+      ]
+    },
+    {
+      "approvedAt": 1795566003,
+      "approvedByRole": "Service Manager",
+      "authorIsApprover": false,
+      "confirmedJobCount": 2,
+      "contradictsSafetyNote": false,
+      "entryID": "000000000000000000000000000000e3",
+      "finding": "Fixture approved finding 3",
+      "origin": "reportReview",
+      "sourceJobIDs": [
+        "fixture-job-3",
+        "fixture-job-9"
+      ],
+      "subject": {
+        "kind": "practice",
+        "topic": "freeze stat checks"
+      },
+      "vaultIDs": [
+        "fixture-crew-units"
+      ]
+    },
+    {
+      "approvedAt": 1795566004,
+      "approvedByRole": "Service Manager",
+      "authorIsApprover": false,
+      "candidateID": "000000000000000000000000000000a4",
+      "contradictsSafetyNote": false,
+      "entryID": "000000000000000000000000000000e4",
+      "finding": "Fixture approved finding 4",
+      "origin": "recollection",
+      "outcome": "fixed it most times",
+      "subject": {
+        "kind": "model",
+        "modelToken": "QXRT-990"
+      },
+      "tried": "Checked the door gasket and the defrost timer first",
+      "vaultIDs": [
+        "fixture-crew-units"
+      ]
+    }
+  ],
+  "issuedAt": 1795567000,
+  "kind": "avenkin.learning-bundle",
+  "organisationLabel": "Fixture Crew",
+  "retracted": [],
+  "schemaVersion": 1,
+  "sequence": 4,
+  "statuses": [
+    {
+      "candidateID": "000000000000000000000000000000a1",
+      "entryID": "000000000000000000000000000000e1",
+      "issuedAt": 1795567000,
+      "revision": 1,
+      "status": "approved"
+    }
+  ]
+}

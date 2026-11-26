@@ -259,8 +259,8 @@ any newer version is (§6).
 What is built (NF P0, P1): the phone's `LearningEntry` and `LearningCandidate.Origin` carry all of this,
 and the shared core writes it. The phone applies a crew-experience set from the company-vault catalog,
 cites a `recollection` as `Crew experience` (`TeamLearningCitation`, `CitationLineParser`) and opens an
-answer resting on it alone with its lead-in (`TeamLearningDisclosure`). No retrieval path reads a
-symptom subject yet (IM P0).
+answer resting on it alone with its lead-in (`TeamLearningDisclosure`). Retrieval reads the symptom
+subject since IM P0 (§13).
 
 
 ## 12. Amendment — the portal binding (2026-11-26, Plan NG; additive to v1)
@@ -387,3 +387,72 @@ seat actions, queue item, status fetch, job status line and route choice; the se
 fields, the merge rule and the older-phone gate in the core, and the phone citing a `spoken` entry as a
 team learning (§12.5). Not built: the portal's endpoints, queue page and merge into the crew-experience
 set (S1).
+
+## 13. Amendment — experience recordings (2026-11-27, Plan IM P0; additive to v1)
+
+Plan [IM](../docs/plans/IM-experience-recordings.md). A technician records what they already know, one
+case per recording, and a candidate is drafted from part of it (IM P1–P3, not built). This section is
+the shape that candidate travels in, the closed list a symptom subject names its equipment from, and
+how the phone answers with both. Every addition is optional and encoded only when present: a
+candidate, bundle, set or manifest without them is the bytes it was, and reads exactly as before.
+
+**Candidate (§3)** gains three optional fields, plain text under §7.4 (no line feed):
+
+| Field | Meaning |
+|---|---|
+| `tried?` | What was checked or tried on the way to the fix; up to 500 characters |
+| `outcome?` | How sure the technician is, in their words ("worked once"), never a number; up to 120 characters, the entry's limit (§11), so an approval carries it as written |
+| `evidence.recording?` | `{ recordingID, segmentStart, segmentEnd }`: the experience recording it was drafted from (32 lowercase hex) and the part of it, as whole seconds from the recording's start, `segmentStart..<segmentEnd`, with `0 ≤ segmentStart < segmentEnd ≤ 86,400` |
+
+`recording` is a pointer, never the audio or its transcript, which stay where the recording is kept
+(IM decision 2). A withdrawal (`withdrawn: true`) has no `tried` and no `outcome`, as it has no
+`symptom` or `fix`. The phone redacts `tried` and `outcome` at capture and on intake, as it does the
+other text fields. FP's unsigned bundle carries all three for candidates, and `tried`/`outcome` for an
+entry (§11's limits: 1–500 and 1–120). The portal's candidate (§12.1) does not carry them yet: it gains
+them with IM's delivery (P3).
+
+**Approval.** An entry approved from a `recollection` candidate carries no `sourceJobIDs` and no
+`confirmedJobCount` (§11); merged into an entry, a recollection confirms no job, so the count stays.
+
+**Equipment types.** A vault's manifest may carry `equipment_types`, a closed list of names (each
+1–80 characters, no control character, none listed twice as compared below, 1–200 names). A malformed
+list refuses the manifest by name (`VaultPackRules.equipmentTypeIssues`, shared by the phone and the
+licence service). Two spellings are one type when they are equal trimmed, with every run of
+whitespace as one space, case-folded (`VaultPackRules.equipmentTypeKey`), and a subject is stored in
+the list's own spelling. A symptom subject's `equipmentType` comes from that list: the phone's review
+refuses one not on the list of every vault it is approved for, and a vault that declares a list holds
+back a symptom entry of another type when the set is placed (as an unknown model is, §7.2). A vault
+that declares no list takes the type its issuer checked against its own (the crew experience sheet,
+crew experience contract §4.3). A company layer adds to the publisher's list; it never removes a type.
+
+**Retrieval.** A symptom subject answers only within the turn's equipment type (decision 4). The type is
+resolved, in order, from the vault's list named in the turn (whole words, any case, a plural `s`/`es`),
+then named in the job's context, then the active unit's own types — what its approved, live model
+entries say it is (`subject.equipmentType`, matched to the unit by identity, §7.2). A symptom entry of
+another type is not retrieved at all. With no type resolved, it is treated as a model entry is with no
+unit identified: nothing scopes it, and its document's first line names its equipment.
+
+**Ranking** (decision 5). Among the learnings that clear the evidence floor, every learning seen on a job
+(a `confirmedJobCount`, or any origin but `recollection`) ranks ahead of a recollection no job has
+confirmed; each keeps its order otherwise, and manual passages keep their places.
+
+**Lead-in** (decision 5). An answer resting on recollections alone opens with §11's crew experience
+lead-in, *"From your company's experience (not the manufacturer's manual):"*: a recollection from a
+recording is crew experience like a sheet row, so it is introduced by the same sentence. An answer
+with a learning seen on a job among its learnings opens with FP's, with that learning's count.
+
+**Refusal by name.** The bundle's version stays 1. An older phone meeting a candidate, entry or evidence
+carrying a key it does not know refuses the whole bundle by that key's path (*"it carries
+candidates[0].tried, which a team-learning file doesn't have"*), as it refuses any newer shape.
+
+**Fixtures** (`fixtures/team-learning-v1/`): `candidates-four-origins-v1.json` (one candidate per
+origin, the recollection with `tried`, `outcome` and `recording`), `candidates-pre-amendment-v1.json`
+(an older bundle that must import unchanged), `decisions-four-origins-v1.json` (one entry per origin),
+`decisions-symptom-subject-v1.json` (a symptom entry, which FP's bundle refuses at
+`entries[0].subject.kind`), `negative-bundles-v1.json` (each refusal by case and path),
+`manifest-with-equipment-types-v1.json`, `manifest-without-equipment-types-v1.json`,
+`manifest-equipment-types-negative-v1.json` (each list refusal in its words) and
+`equipment-type-turns-v1.json` (the turn's type, and what a symptom of each type does with it).
+
+What is built (IM P0): all of the above on the phone, and the list's rules in the shared core. Not built:
+the recorder (P1), the drafting pass (P2) and delivery to a reviewer (P3).

@@ -26,16 +26,27 @@ enum LearningCorpus {
     struct VaultTarget: Equatable {
         let id: String
         let modelIndex: VaultModelIndex
+        /// The vault's manifest `equipment_types` (Plan IM decision 4); nil when it declares none.
+        let equipmentTypes: [String]?
 
-        init(id: String, modelIndex: VaultModelIndex) {
+        init(id: String, modelIndex: VaultModelIndex, equipmentTypes: [String]? = nil) {
             self.id = id
             self.modelIndex = modelIndex
+            self.equipmentTypes = equipmentTypes
         }
 
         /// Whether this vault knows the token as a model spelling.
         func knowsModel(_ token: String) -> Bool {
             guard let identity = VaultRetriever.ModelScope.identity(token) else { return false }
             return modelIndex.knownModelTokens.contains(identity)
+        }
+
+        /// Whether a symptom subject's equipment type may answer in this vault: a vault that lists
+        /// its equipment types takes only those; a vault that declares no list takes the type its
+        /// issuer checked against its own (the portal's sheet, a reviewer's approval).
+        func admitsEquipmentType(_ type: String) -> Bool {
+            guard let equipmentTypes else { return true }
+            return VaultPackRules.listedEquipmentType(type, in: equipmentTypes) != nil
         }
     }
 
@@ -48,6 +59,9 @@ enum LearningCorpus {
         var unknownModel: [String] = []
         /// Vaults the entry names that are not installed on this phone.
         var notInstalled: [String] = []
+        /// Vaults in the entry's scope whose `equipment_types` does not list its symptom subject's
+        /// equipment type (Plan IM decision 4): held back, like an unknown model.
+        var unknownEquipmentType: [String] = []
     }
 
     // MARK: - Ids
@@ -91,6 +105,15 @@ enum LearningCorpus {
         return lines.joined(separator: "\n")
     }
 
+    /// The equipment type a symptom learning's document's first line names (`Equipment: <type>`),
+    /// or nil for any other entry. Read only when the entry itself is not on this phone to ask.
+    nonisolated static func subjectEquipmentType(fromDocumentText text: String) -> String? {
+        guard let first = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true).first,
+              first.hasPrefix("Equipment: ") else { return nil }
+        let type = first.dropFirst("Equipment: ".count).trimmingCharacters(in: .whitespaces)
+        return type.isEmpty ? nil : type
+    }
+
     /// The model token a learning document's first line names (`Model: <token>`), or nil for a
     /// practice entry. The artefact's own structured line, not prose: used only when the entry
     /// itself is not on this phone to ask.
@@ -111,6 +134,8 @@ enum LearningCorpus {
         for vault in vaults where entry.isScoped(to: vault.id) {
             if let token = entry.subject.modelToken, !vault.knowsModel(token) {
                 placement.unknownModel.append(vault.id)
+            } else if case .symptom(let type, _) = entry.subject, !vault.admitsEquipmentType(type) {
+                placement.unknownEquipmentType.append(vault.id)
             } else {
                 placement.published.append(vault.id)
             }

@@ -1,0 +1,33 @@
+{
+  "candidates": [
+    {
+      "author": "Fixture Technician",
+      "candidateID": "000000000000000000000000000000a5",
+      "createdAt": 1795564805,
+      "evidence": {
+        "citationsOpened": [],
+        "pagesVerified": [],
+        "photos": 0,
+        "readings": 0
+      },
+      "finding": "Fixture finding 5",
+      "fix": "Cleaned the coil",
+      "jobNumber": "J-0950",
+      "jobSessionID": "fixture-job-5",
+      "modelToken": "QXRT-990",
+      "origin": "spoken",
+      "redactions": [],
+      "revision": 1,
+      "symptom": "Short cycles",
+      "vaultID": "fixture-crew-units",
+      "withdrawn": false
+    }
+  ],
+  "direction": "candidates",
+  "entries": [],
+  "issuedAt": 1790000000,
+  "kind": "avenkin.learning-bundle",
+  "retracted": [],
+  "schemaVersion": 1,
+  "statuses": []
+}

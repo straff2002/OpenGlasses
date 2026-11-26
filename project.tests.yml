@@ -54,6 +54,11 @@ targets:
       - path: Contracts/fixtures/team-learning-portal-v1
         type: folder
         buildPhase: resources
+      # Plan IM P0: the team-learning amendment's golden fixtures (§13): the four origins, the
+      # recording evidence, the symptom subject and the manifest's equipment types. Invented content.
+      - path: Contracts/fixtures/team-learning-v1
+        type: folder
+        buildPhase: resources
       # Shared FX1 public assignment/archive fixtures (no production keys or content).
       - path: Contracts/fixtures/manual-assignment-v1.json
         buildPhase: resources

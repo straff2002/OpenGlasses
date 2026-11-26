@@ -43,6 +43,14 @@ final class DocumentStore: ObservableObject {
         /// nil for a practice entry. Set by the same factory; `ModelScope` scores a learning by this
         /// rather than by scanning its prose (contract §7.2).
         var subjectModelToken: String?
+        /// For a team-learning passage whose entry has a symptom subject, its equipment type (Plan
+        /// IM decision 4); nil for every other passage. Set by the same factory: the retriever
+        /// answers with it only within the turn's equipment type (`EquipmentTypeScope`).
+        var subjectEquipmentType: String?
+        /// A team learning known from recollection that no recorded job has confirmed yet (origin
+        /// `recollection`, no `confirmedJobCount`). Set by the same factory; ranked below a
+        /// learning seen on a job (Plan IM decision 5).
+        var isUnconfirmedRecollection = false
         /// Supplemental label only; `page` remains the physical capture index.
         var printedPage: Int?
         /// The edition this passage's document is, set by the retrieval factory when a turn reaches

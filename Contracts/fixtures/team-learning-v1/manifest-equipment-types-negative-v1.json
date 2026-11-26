@@ -1,0 +1,45 @@
+[
+  {
+    "equipment_types": [
+      "Dryer",
+      "dryer"
+    ],
+    "issues": [
+      "equipment type 'dryer' is listed twice"
+    ],
+    "name": "a name listed twice"
+  },
+  {
+    "equipment_types": [
+      "dryer",
+      "  "
+    ],
+    "issues": [
+      "equipment_types has an empty name"
+    ],
+    "name": "an empty name"
+  },
+  {
+    "equipment_types": [],
+    "issues": [
+      "equipment_types lists nothing; leave it out instead"
+    ],
+    "name": "an empty list"
+  },
+  {
+    "equipment_types": "dryer",
+    "issues": [
+      "equipment_types must be a list of names"
+    ],
+    "name": "not a list of names"
+  },
+  {
+    "equipment_types": [
+      "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "issues": [
+      "equipment type 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' is longer than 80 characters"
+    ],
+    "name": "a name over 80"
+  }
+]

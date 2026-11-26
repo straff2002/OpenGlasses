@@ -232,7 +232,8 @@ final class LearningCandidateService {
         let cleaned: LearningCandidateText.Cleaned
         switch LearningCandidateText.clean(finding: pick(finding, candidate.finding),
                                            symptom: pick(symptom, candidate.symptom),
-                                           fix: pick(fix, candidate.fix)) {
+                                           fix: pick(fix, candidate.fix),
+                                           tried: candidate.tried, outcome: candidate.outcome) {
         case .failure(let refusal): return .failure(.text(refusal))
         case .success(let value): cleaned = value
         }
@@ -240,6 +241,8 @@ final class LearningCandidateService {
         updated.finding = cleaned.finding
         updated.symptom = cleaned.symptom
         updated.fix = cleaned.fix
+        updated.tried = cleaned.tried
+        updated.outcome = cleaned.outcome
         updated.redactions = cleaned.redactions
         updated.revision += 1
         updated.updatedAt = now()
@@ -267,6 +270,8 @@ final class LearningCandidateService {
         updated.finding = ""
         updated.symptom = nil
         updated.fix = nil
+        updated.tried = nil
+        updated.outcome = nil
         updated.redactions = []
         updated.revision += 1
         updated.updatedAt = now()

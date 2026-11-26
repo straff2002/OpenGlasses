@@ -33,12 +33,20 @@ public enum VaultPackRules {
         public var hasSites: Bool
         /// `procedures_dir`: the folder whose JSON files are the vault's procedures.
         public var proceduresDir: String?
+        /// `equipment_types` (Plan IM decision 4): the closed list a symptom subject's equipment type
+        /// comes from. Nil when the manifest does not declare one.
+        public var equipmentTypes: [String]?
+        /// `equipment_types` is present but is not a list of strings. Refused by `manifestIssues`,
+        /// as the phone's decoder refuses it: the list bounds what answers.
+        public var equipmentTypesUnreadable: Bool
 
         public init(id: String, name: String, files: [String], documentCount: Int = 0, promptRules: [String] = [],
-                    gatingIAP: String? = nil, hasSites: Bool = false, proceduresDir: String? = nil) {
+                    gatingIAP: String? = nil, hasSites: Bool = false, proceduresDir: String? = nil,
+                    equipmentTypes: [String]? = nil, equipmentTypesUnreadable: Bool = false) {
             self.id = id; self.name = name; self.files = files; self.documentCount = documentCount
             self.promptRules = promptRules; self.gatingIAP = gatingIAP; self.hasSites = hasSites
             self.proceduresDir = proceduresDir
+            self.equipmentTypes = equipmentTypes; self.equipmentTypesUnreadable = equipmentTypesUnreadable
         }
 
         /// Read from `manifest.json`'s bytes, for a vault that has not been through the app's own
@@ -57,6 +65,14 @@ public enum VaultPackRules {
             gatingIAP = (present("gating") as? [String: Any])?["iap"] as? String
             hasSites = present("sites") != nil
             proceduresDir = present("procedures_dir") as? String
+            // Unlike the keys above, a malformed `equipment_types` is reported, not read as absent.
+            if let raw = present("equipment_types") {
+                equipmentTypes = raw as? [String]
+                equipmentTypesUnreadable = equipmentTypes == nil
+            } else {
+                equipmentTypes = nil
+                equipmentTypesUnreadable = false
+            }
         }
     }
 
@@ -78,6 +94,60 @@ public enum VaultPackRules {
             for theme in requiredRuleThemes where !joined.contains(theme) {
                 issues.append("prompt_rules should address '\(theme)' (anti-fabrication / source citation)")
             }
+        }
+        if manifest.equipmentTypesUnreadable {
+            issues.append("equipment_types must be a list of names")
+        } else if let types = manifest.equipmentTypes {
+            issues += equipmentTypeIssues(types)
+        }
+        return issues
+    }
+
+    // MARK: - Equipment types (Plan IM decision 4)
+
+    /// The most characters (Unicode scalars) one equipment type may have: the crew experience
+    /// sheet's `equipment_type` limit.
+    public static let equipmentTypeLimit = 80
+    /// The most equipment types one manifest may list.
+    public static let equipmentTypesLimit = 200
+
+    /// How two spellings of an equipment type compare: trimmed, every run of whitespace one space,
+    /// case-folded. "Walk-in  Cooler" and "walk-in cooler" are one type. The crew experience sheet
+    /// compares a row's type to the vault's list the same way (crew experience contract §4.3).
+    public static func equipmentTypeKey(_ type: String) -> String {
+        type.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+            .folding(options: [.caseInsensitive, .widthInsensitive], locale: nil).lowercased()
+    }
+
+    /// The list's own spelling of `type`, or nil when the list does not hold it.
+    public static func listedEquipmentType(_ type: String, in list: [String]) -> String? {
+        let wanted = equipmentTypeKey(type)
+        guard !wanted.isEmpty else { return nil }
+        return list.first { equipmentTypeKey($0) == wanted }
+    }
+
+    /// What is wrong with a manifest's `equipment_types`, item by item in list order: an empty name,
+    /// a control character or line break, a name over the limit, a name listed twice (as
+    /// `equipmentTypeKey` compares them), then a list that is empty or too long.
+    public static func equipmentTypeIssues(_ types: [String]) -> [String] {
+        var issues: [String] = []
+        var seen = Set<String>()
+        for type in types {
+            let key = equipmentTypeKey(type)
+            if key.isEmpty { issues.append("equipment_types has an empty name"); continue }
+            if type.unicodeScalars.contains(where: { $0.properties.generalCategory == .control
+                || (0x202A...0x202E).contains($0.value) || (0x2066...0x2069).contains($0.value) }) {
+                issues.append("equipment type '\(key)' contains a control character")
+                continue
+            }
+            if type.trimmingCharacters(in: .whitespaces).unicodeScalars.count > equipmentTypeLimit {
+                issues.append("equipment type '\(key)' is longer than \(equipmentTypeLimit) characters")
+            }
+            if !seen.insert(key).inserted { issues.append("equipment type '\(key)' is listed twice") }
+        }
+        if types.isEmpty { issues.append("equipment_types lists nothing; leave it out instead") }
+        if types.count > equipmentTypesLimit {
+            issues.append("equipment_types lists \(types.count) types; the most is \(equipmentTypesLimit)")
         }
         return issues
     }

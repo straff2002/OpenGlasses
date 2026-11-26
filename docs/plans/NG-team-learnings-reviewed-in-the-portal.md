@@ -1,6 +1,6 @@
 # Plan NG — Team Learnings Reviewed in the Portal (what a technician files on the job reaches the company's administrator, not a reviewer phone)
 
-**Status:** 🚧 P0 and P1 merged 2026-11-27 (PR 1249, build 778); P2 catalog built 2026-11-27, PR pending. **P0:** `Contracts/team-learning.md` §12 (the
+**Status:** 🚧 P0 and P1 merged 2026-11-27 (PR 1249, build 778); P2 catalog and P0b merged 2026-11-27 (PR 1254, build 779); S1 merged 2026-11-27 in the private service repository (its PR 30). **P0:** `Contracts/team-learning.md` §12 (the
 portal binding `profileId` + `seatID`, the job session id sent only as a per-company hash, the two seat
 actions `/seats/learning-candidate` and `/seats/learning-status` with their requests, replies, paging and
 every refusal by name, and the route rule), golden fixtures in `Contracts/fixtures/team-learning-portal-v1/`,
@@ -11,7 +11,7 @@ value, on unless false) in the profile contract. **P1:** `DeviceSeatServer.sendL
 `teamLearningPortal` queue item (id and revision only), `sent` only on `received`, the status fetch after a
 foreground with its paging, the job's status line (refusals named via `send_refusal`), the route choice
 (`TeamLearningRoute`), and the new egress disclosed (route `teamLearningPortal`, manifest, both Privacy
-footers). **P2:** the four new strings (the sync label, the profile switch, both Privacy footers) in all 13 languages, add-only. **P0b** built 2026-11-27, PR pending ([below](#p0b--the-core-holds-what-the-portal-publishes-headless-found-2026-11-27-starting-s1)). Not built: S1 (the portal), P3 (device pass). Drafted 2026-11-25. All 10
+footers). **P2:** the four new strings (the sync label, the profile switch, both Privacy footers) in all 13 languages, add-only. **P0b** merged 2026-11-27 (PR 1254, build 779; [below](#p0b--the-core-holds-what-the-portal-publishes-headless-found-2026-11-27-starting-s1)). **S1** (the portal) merged 2026-11-27 in the private service repository (its PR 30). Not built: P3 (device pass). Drafted 2026-11-25. All 10
 [decisions](#decisions-for-greig) taken as recommended the same day.
 **Track:** Field Assist — company knowledge. The licence portal, device seats, the team-learning corpus.
 **Builds on:** Plan [FP](FP-team-learnings.md) P1–P3 (the candidate filed on the job, its statuses, the merge
@@ -149,7 +149,7 @@ FP's merge rule lives only in the app (`LearningReview.merge`).
 - **Exit tests:** the check admits both origins and still refuses any other; old sets decode unchanged; the
   merge rule's fixtures agree between the app and the core; a spoken entry is cited as a team learning.
 
-**Built 2026-11-27, PR pending.** Crew experience contract §11 and team-learning §12.5. Core:
+**Built 2026-11-27, merged in PR 1254 (build 779).** Crew experience contract §11 and team-learning §12.5. Core:
 `CrewExperienceSheet.spokenOrigin`, `CrewExperienceSet.origins`, the entry's `candidateID?`/`sourceJobIDs?`/
 `confirmedJobCount?` (encoded only when present: `set-v1.json` and the sealed fixture unchanged), the
 provenance rules in `check` (a `spoken` entry carries its candidate and jobs; a recollection no candidate;
@@ -165,11 +165,11 @@ merge is its jobs (0 for a sheet row), not FP's `max(1, jobs)`, so its first job
 ### S1 — The portal (private service repository)
 
 The two seat endpoints, the queue page, approve / same as / not taken up, the merge into NF's set, and retention
-(decision 7).
+(decision 7). **Merged 2026-11-27** in the private service repository (its PR 30).
 
 ### P2 — String catalog sync
 
-The job status lines and the refusal wording in all 13 languages, add-only.
+The job status lines and the refusal wording in all 13 languages, add-only. **Merged 2026-11-27** (PR 1254).
 
 ### P3 — Device pass (owed)
 

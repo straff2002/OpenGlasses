@@ -166,6 +166,6 @@ extension VaultManifest {
                       documentsDir: documentsDir, documents: documents, documentsIncluded: true,
                       gating: gating, promptRules: promptRules, sourceAttributionFormat: sourceAttributionFormat,
                       sourceAttributionRequired: sourceAttributionRequired, trades: trades, sites: sites,
-                      vaultOnly: vaultOnly)
+                      vaultOnly: vaultOnly, equipmentTypes: equipmentTypes)
     }
 }

@@ -1,6 +1,6 @@
 # Plan IM — Experience Recordings (what the crew already knows, one case per recording)
 
-**Status:** 📝 Drafted 2026-10-16. Part of P0 built by Plan NF P0 (2026-11-25): `LearningCandidate.Origin.recollection`, the entry fields `tried`/`outcome` (on `LearningEntry`, not yet on the candidate), `LearningEntry.Subject.symptom(equipmentType:phrase:)` decoded additively, and the team-learning contract amendment (§11). Not built: `recording` evidence, the `equipment_types` manifest list, the retriever's symptom matching, the recalled lead-in and ranking.
+**Status:** 🚧 P0 built 2026-11-27, PR pending ([below](#p0--contract-amendment-and-the-model-headless)): team-learning §13, the candidate's `tried`/`outcome` and `recording` evidence, the manifest's `equipment_types`, symptom matching in retrieval, recollections ranked below job-confirmed learnings, and the recalled lead-in. Part of P0 was built by Plan NF P0 (2026-11-25): `LearningCandidate.Origin.recollection`, the entry fields `tried`/`outcome`, `LearningEntry.Subject.symptom(equipmentType:phrase:)` and §11. P1–P4 not built. Drafted 2026-10-16.
 **Track:** Field Assist (B2B).
 **Depends on:** Plan [FP](FP-team-learnings.md) P0–P3 (shipped: candidate, review, entry, corpus,
 bundle) and FP P4 (the review queue on a screen) before anything here is usable by a supervisor.
@@ -142,6 +142,21 @@ brain dump that is all-or-nothing.
 - **Exit tests:** codec round trips; an old-shape bundle still imports; a dryer-symptom entry is not
   retrieved for a dishwasher turn; a recollection-only answer opens with the recalled lead-in; the
   existing FP suite is green.
+
+**Built 2026-11-27, PR pending.** Team-learning §13. The candidate gains `tried` (≤ 500), `outcome` (≤ 120,
+the entry's limit from NF rather than decision 3's 500, so an approval carries it as written) and
+`evidence.recording` (`recordingID`, `segmentStart..<segmentEnd` whole seconds, within a day), validated
+and redacted like the other fields, carried by FP's bundle (and `tried`/`outcome` on its entries). An
+approved recollection carries no jobs, and merging one confirms none. `VaultManifest.equipment_types`,
+with its rules in the shared core (`VaultPackRules.equipmentTypeIssues`, `equipmentTypeKey`), so the
+portal reads the same list for the crew experience sheet; a company layer adds to it. Review refuses a
+symptom subject whose type is not on every in-scope vault's list; a vault that lists its types holds back
+a symptom entry of another type. Retrieval (`VaultRetriever.EquipmentTypeScope`) resolves the turn's type
+from the list named in the turn, then in the job, then the unit's own types from its model entries, and
+drops a symptom learning of another type; with no type, nothing scopes it, as a model learning with no
+unit. `learningsBySeenOnAJob` puts job-confirmed learnings ahead of unconfirmed recollections. The recalled
+lead-in is NF's crew experience lead-in, not a second sentence: decision 5's wording is an owner question.
+Fixtures in `Contracts/fixtures/team-learning-v1/`; tests in `TeamLearningRecollectionTests`.
 
 ### P1 — The recorder: "Record experience" (phone and CarPlay)
 

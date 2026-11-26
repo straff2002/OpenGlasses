@@ -1,0 +1,32 @@
+{
+  "candidates": [],
+  "direction": "decisions",
+  "entries": [
+    {
+      "approvedAt": 1795566005,
+      "approvedByRole": "Service Manager",
+      "authorIsApprover": false,
+      "contradictsSafetyNote": false,
+      "entryID": "000000000000000000000000000000e5",
+      "finding": "Fixture approved finding 5",
+      "origin": "recollection",
+      "outcome": "fixed it every time",
+      "subject": {
+        "equipmentType": "walk-in cooler",
+        "kind": "symptom",
+        "phrase": "Door frame sweats"
+      },
+      "tried": "Checked the door gasket",
+      "vaultIDs": [
+        "fixture-crew-units"
+      ]
+    }
+  ],
+  "issuedAt": 1795567000,
+  "kind": "avenkin.learning-bundle",
+  "organisationLabel": "Fixture Crew",
+  "retracted": [],
+  "schemaVersion": 1,
+  "sequence": 4,
+  "statuses": []
+}

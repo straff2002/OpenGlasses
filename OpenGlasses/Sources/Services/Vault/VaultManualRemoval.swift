@@ -421,7 +421,7 @@ enum VaultManualRemoval {
                       sourceAttributionFormat: manifest.sourceAttributionFormat,
                       sourceAttributionRequired: manifest.sourceAttributionRequired,
                       trades: manifest.trades, sites: manifest.sites,
-                      vaultOnly: manifest.vaultOnly)
+                      vaultOnly: manifest.vaultOnly, equipmentTypes: manifest.equipmentTypes)
     }
 
     private static func saveInstalledManifest(_ manifest: VaultManifest) throws {

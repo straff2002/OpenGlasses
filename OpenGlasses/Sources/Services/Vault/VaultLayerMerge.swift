@@ -87,9 +87,22 @@ enum VaultLayerMerge {
         return .success(Merged(files: files, promptRules: rules, companyFiles: added, sources: sources))
     }
 
+    /// The publisher's equipment types, then the company's that it does not already list (as
+    /// `VaultPackRules.equipmentTypeKey` compares them). Nil when neither declares a list.
+    static func mergedEquipmentTypes(publisher: [String]?, company: [String]?) -> [String]? {
+        guard publisher != nil || company != nil else { return nil }
+        var merged: [String] = []
+        var seen = Set<String>()
+        for type in (publisher ?? []) + (company ?? []) where seen.insert(VaultPackRules.equipmentTypeKey(type)).inserted {
+            merged.append(type)
+        }
+        return merged
+    }
+
     /// The vault's manifest with the company layer laid over it: the publisher's manifest in every
-    /// field but `files` and `prompt_rules`, which are merged. Refuses a layer that would replace a
-    /// publisher file or that carries documents or site documents.
+    /// field but `files`, `prompt_rules` and `equipment_types`, which are merged (add-only, like the
+    /// files: a company names the equipment it services beside the publisher's). Refuses a layer
+    /// that would replace a publisher file or that carries documents or site documents.
     static func manifest(publisher: VaultManifest, company: VaultManifest?) -> Result<VaultManifest, Refusal> {
         if let company {
             let issues = VaultPackRules.layerIssues(VaultPackRules.Manifest(company), baseFiles: publisher.files)
@@ -104,7 +117,9 @@ enum VaultLayerMerge {
                           gating: publisher.gating, promptRules: merged.promptRules,
                           sourceAttributionFormat: publisher.sourceAttributionFormat,
                           sourceAttributionRequired: publisher.sourceAttributionRequired, trades: publisher.trades,
-                          sites: publisher.sites, vaultOnly: publisher.vaultOnly)
+                          sites: publisher.sites, vaultOnly: publisher.vaultOnly,
+                          equipmentTypes: mergedEquipmentTypes(publisher: publisher.equipmentTypes,
+                                                               company: company?.equipmentTypes))
         }
     }
 }

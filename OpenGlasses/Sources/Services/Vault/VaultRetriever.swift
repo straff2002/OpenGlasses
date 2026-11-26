@@ -106,6 +106,9 @@ struct VaultRetriever {
         var pageBreaks: [DocumentChunker.PageBreak] = []
         /// What is printed on those pages, by physical page, where the manual's labels say.
         var printedLabels: [Int: String] = [:]
+        /// A team learning known from recollection that no recorded job has confirmed (Plan IM
+        /// decision 5): it gives way to any learning seen on a job (`learningsBySeenOnAJob`).
+        var isUnconfirmedRecollection = false
 
         typealias Source = RetrievalSource
 
@@ -322,6 +325,69 @@ struct VaultRetriever {
         }
     }
 
+    /// The equipment a turn is about, for team learnings with a symptom subject (Plan IM decision
+    /// 4): a symptom recorded on a dryer never answers a dishwasher turn.
+    ///
+    /// The turn's type is resolved, in order, from the vault's closed list (`equipment_types`)
+    /// named in the turn, else named in the job's context, else the active unit's types — what its
+    /// approved model entries say it is. A symptom learning then answers only within one of them,
+    /// and is dropped otherwise, never ranked down: unlike another model's figure, another
+    /// equipment type's fix has nothing to say about this machine. With no type resolved, a
+    /// symptom learning is treated as a model learning is with no unit active: nothing scopes it,
+    /// and its passage names its equipment (`Equipment: …`) for the answer to say.
+    struct EquipmentTypeScope: Equatable {
+        /// The vault's `equipment_types`, as it spells them.
+        var vocabulary: [String]
+        /// The active unit's equipment types, from its approved model entries; empty when none say.
+        var activeTypes: [String]
+
+        init(vocabulary: [String] = [], activeTypes: [String] = []) {
+            self.vocabulary = vocabulary
+            self.activeTypes = activeTypes
+        }
+
+        /// The turn's equipment types, as `VaultPackRules.equipmentTypeKey` compares them; nil when
+        /// nothing resolves one.
+        func resolved(turn: String?, jobContext: String? = nil) -> Set<String>? {
+            for text in [turn, jobContext] {
+                let named = Set(vocabulary.filter { Self.names($0, in: text ?? "") }.map(VaultPackRules.equipmentTypeKey))
+                if !named.isEmpty { return named }
+            }
+            let active = Set(activeTypes.map(VaultPackRules.equipmentTypeKey).filter { !$0.isEmpty })
+            return active.isEmpty ? nil : active
+        }
+
+        /// Whether a learning with this symptom equipment type (nil: not a symptom learning) may
+        /// answer a turn about `resolved`.
+        static func admits(_ subjectEquipmentType: String?, resolved: Set<String>?) -> Bool {
+            guard let subjectEquipmentType, let resolved else { return true }
+            return resolved.contains(VaultPackRules.equipmentTypeKey(subjectEquipmentType))
+        }
+
+        /// The text names the type as whole words, any case, any spacing, a plural `s`/`es` allowed:
+        /// "the Dryers", "walk-in  cooler", not "dryerless".
+        static func names(_ type: String, in text: String) -> Bool {
+            let words = type.split(whereSeparator: \.isWhitespace).map { NSRegularExpression.escapedPattern(for: String($0)) }
+            guard !words.isEmpty, !text.isEmpty else { return false }
+            let pattern = #"(?<![\p{L}\p{N}])"# + words.joined(separator: #"\s+"#) + #"(?:e?s)?(?![\p{L}\p{N}])"#
+            return text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+        }
+    }
+
+    /// Plan IM decision 5: within the slots team learnings hold, every learning seen on a job
+    /// (a `confirmedJobCount`, or any origin but `recollection`) goes ahead of a recollection no
+    /// job has confirmed, each group keeping its order; manual passages keep their places. Applied
+    /// before the gate, which judges each passage on its own, so of two learnings that both clear
+    /// the floor the job-confirmed one is the one a limit keeps.
+    static func learningsBySeenOnAJob(_ ranked: [Passage]) -> [Passage] {
+        let slots = ranked.indices.filter { ranked[$0].source == .teamLearning }
+        let learnings = slots.map { ranked[$0] }
+        let ordered = learnings.filter { !$0.isUnconfirmedRecollection } + learnings.filter(\.isUnconfirmedRecollection)
+        var out = ranked
+        for (slot, passage) in zip(slots, ordered) { out[slot] = passage }
+        return out
+    }
+
     var query: QueryFunction
     var tokenSearch: TokenSearch?
     var clauseSearch: ClauseSearch?
@@ -333,6 +399,9 @@ struct VaultRetriever {
     var availability: Availability?
     var policy = RetrievalEvidencePolicy()
     var modelScope: ModelScope?
+    /// Bounds symptom learnings to the turn's equipment type (Plan IM decision 4). Nil scopes
+    /// nothing, as before.
+    var equipmentTypes: EquipmentTypeScope?
     var modelNames: ModelNames?
     var assignedSearch: AssignedSearch?
     /// Set by the session's factory; nil carries no section on (`continuingSection`).
@@ -496,7 +565,7 @@ struct VaultRetriever {
     }
 
     private func decide(_ ranking: Ranking, limit: Int) -> RetrievalOutcome {
-        let ranked = ranking.ranked
+        let ranked = Self.learningsBySeenOnAJob(ranking.ranked)
         let outcome = policy.decide(ranked, limit: limit, question: ranking.gateQuestion)
         if case .insufficient = outcome, ranked.contains(where: { !$0.matchedModels.isEmpty && $0.source.isReference }) {
             return .insufficient(reason: RetrievalEvidencePolicy.modelPageOnlySentence)
@@ -636,8 +705,12 @@ struct VaultRetriever {
         // The routes that reached each candidate (Plan KN P1), keyed like `merged`; recorded only
         // for the features.
         var routes: [String: RankingFeatures.Routes] = [:]
+        // A symptom learning answers only within the turn's equipment type (Plan IM decision 4).
+        let turnTypes = equipmentTypes?.resolved(turn: request.turn, jobContext: request.jobContext)
         func consider(_ raw: DocumentStore.Passage, via route: RankingFeatures.Routes,
                       foundForClause searched: String? = nil, foundForTable table: String? = nil) {
+            if raw.source == .teamLearning,
+               !EquipmentTypeScope.admits(raw.subjectEquipmentType, resolved: turnTypes) { return }
             let key = "\(raw.documentId)#\(raw.chunkIndex)"
             if withFeatures { routes[key, default: []].insert(route) }
             var matched = boostTokens.filter { CodeTokenizer.contains(raw.text, token: $0) }
@@ -919,7 +992,8 @@ struct VaultRetriever {
                        recognisedFromScan: raw.source.isReference && (provenance?(raw.documentId) ?? false),
                        kind: raw.kind, figure: raw.figure, source: raw.source, printedPage:raw.printedPage,
                        editionLabel: raw.editionLabel, termRule: raw.termRule, vectorPending: raw.vectorPending,
-                       pageBreaks: raw.pageBreaks, printedLabels: raw.printedLabels)
+                       pageBreaks: raw.pageBreaks, printedLabels: raw.printedLabels,
+                       isUnconfirmedRecollection: raw.source == .teamLearning && raw.isUnconfirmedRecollection)
     }
 
     // MARK: - Rendering
