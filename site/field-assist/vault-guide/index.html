@@ -10,7 +10,7 @@
 <meta name="description" content="How to build a Field Assist vault from your own manuals, import it on the iPhone, test it and share it.">
 <!-- Converted from docs/field-assist-vault-guide.md by Scripts/build-vault-guide-page.py. That file
      is the source: change the guide there and run the script again, rather than editing this page.
-     source-sha256: a389558204290c7daa76937c969c2314174eb94f0b992ace25ba325fb0eaf482 -->
+     source-sha256: 829c16d6f789e0607670b91c7d6ae891c538b31afa5a29be8f83325331ef4956 -->
 <link rel="stylesheet" href="/assets/site.css">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 </head>
@@ -355,6 +355,10 @@ is the honest answer.</p>
 <tr>
 <td><code>vault_only</code></td>
 <td>Optional. <code>true</code> seals a job on this vault to the vault's own content: no web search and no other outside source — see <strong>Sealing a vault to its own content</strong> below. Omit it to leave things as they are; a vault without it imports exactly as before.</td>
+</tr>
+<tr>
+<td><code>equipment_types</code></td>
+<td>Optional. The kinds of equipment this vault covers, as a list of names: <code>["dryer", "dishwasher", "walk-in cooler"]</code>. A crew fix recorded for a kind of equipment rather than a model (a dryer that won't heat, whatever its model) must name one of these, and answers only when the job is about that kind: named in the question or the job, or what the crew's own notes say the unit is. So a dryer fix never answers for a dishwasher. Each name up to 80 characters, each listed once (case and spacing aside), at most 200. A list that is empty or not a list of names is refused. Omit it if your crew's fixes are all for named models; a vault without it imports exactly as before, and an older build of the app ignores it.</td>
 </tr>
 <tr>
 <td><code>trades</code></td>
