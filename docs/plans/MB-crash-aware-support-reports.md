@@ -1,6 +1,7 @@
 # Plan MB — Crash-Aware Support Reports (the phone notes where a crash happened, and the report says so)
 
-**Status:** 📝 Drafted 2026-11-16 — nothing implemented.
+**Status:** 🚧 P0–P2 built 2026-11-26 (one branch); P3 device pass owed. All six decisions taken
+(five as recommended, the sixth by the owner). See *Built* at the end.
 **Track:** Diagnostics, every build and every channel (store, TestFlight, phone-only).
 **Builds on:**
 - Plan [DC](DC-diagnostics-and-bug-reporting.md): `DiagnosticsReportBuilder`, `DiagnosticsRedactor`
@@ -139,7 +140,37 @@ P1 adds the modifier to each, or records why not.
   constant, logs `listRowsRepeated` with the screen token and the count — never the ids. It never
   changes what is shown.
 
+### 6 · Where the crash report goes (the owner's rule, 2026-11-26)
+
+Every other support report keeps the rule commit `5ee295030` made (`SupportReportRecipient`): on
+an organisation phone it never reaches the developer — the support address, else the office that
+receives job reports, else no address and share only. The crash report, the one the banner after a
+crash opens, has its own rule, built as one pure policy (`CrashReportRoute`) that chooses the
+recipient and the contents together:
+
+- **an organisational support email is set** (`Config.supportReportEmail`, when it is shaped like
+  an address) → it goes there, with the report's normal contents under the existing rules — the day
+  of the crash with the troubleshooting layer, as Settings' report sends it;
+- **otherwise → the developer, on every phone**: a personal phone, and an organisation phone with
+  no support email. Never the job-report office (`organizationReportRecipients`), never "no
+  address": a crash is the developer's to fix, and the office cannot.
+- When an **organisation** phone's crash report goes to the developer it carries **only the
+  technical layer** (`JobTranscriptExporter.Options.technicalOnly`): the crash note and its frames,
+  the last screens, the app's event log, the build identity and the phone, OS and glasses state as
+  the report already prints them. No conversation text, job content, transcript, document or manual
+  title, From line, debug log, activity trail, company, technician, licence or enrolment line, open
+  job number, saved model name or glasses name. The exporter reads no store in that mode, so
+  nothing else can reach it. A personal phone's crash report to the developer has the normal
+  contents.
+
+The review sheet shows the recipient before Send, as it does for every report; on the technical
+layer it says what is in it and offers no way to widen it. A crash is rare and the banner offers
+each one once, so this does not reopen the flood the general rule closed.
+
 ## Decisions for Greig
+
+**All five decisions taken 2026-11-26 as recommended.** A sixth, on where the crash report goes,
+was taken by the owner the same day (6 below).
 
 1. **MetricKit, on by default.** *Recommended:* yes; it is an OS delivery to the app, nothing is
    transmitted, and the note leaves only inside a report the person sends. *Alternative:* a
@@ -155,6 +186,9 @@ P1 adds the modifier to each, or records why not.
    device.
 5. **The source guard.** *Recommended:* yes, failing the build on a new unrostered site.
    *Alternative:* a warning only.
+6. **Where a crash report goes** — taken by the owner: the organisation's support email when one
+   is set, otherwise the developer, never the job-report office; an organisation phone's report to
+   the developer carries only the technical layer. See Design §6.
 
 ## Phases
 
@@ -206,3 +240,66 @@ symbolicated frames against the archive. No deliberate-crash control is added to
 - **Hang, CPU and disk diagnostics** from the same payloads. Kept for a later plan if crashes prove
   the shape works.
 - **Symbolicating on the phone.** Release builds carry no symbols; the Mac does it.
+
+## Built (2026-11-26, P0–P2)
+
+**P0 — pure cores, headless.**
+- `CrashNote` (`Services/Diagnostics/CrashNote.swift`): from an `MXDiagnosticPayload`'s JSON (iOS
+  26) and from the newer `CrashDiagnostic` struct (behind `#available(iOS 27.0, *)`), both to one
+  value; the numeric-argument filter (`numericOnly`); a stable fingerprint so a crash delivered
+  twice is one note; the one-line summary.
+- `CrashNoteStore` + `LastScreens` + `LastScreensStore` (`CrashNoteStore.swift`): ≤10 notes, 7
+  days, first-unlock class, out of backup, cleared with the ring (`DiagnosticRing.clear()` now
+  clears both); registered as `.crashNotes` (`.operationalAudit`). `LastScreens` keeps 8 screens per
+  run and the last 8 runs, each with its build.
+- `CrashRunMatcher` + `CrashReportSection` (`CrashRunMatcher.swift`); `DiagnosticExportBuilder`
+  prints each earlier run under its own heading — *"… ended in a crash after its last event at …"*
+  with the summary, frames and last screens for a matched run, *"exit reason unknown"* for every
+  other, and an unmatched note under *"A crash the phone recorded (run not identified)"*. The
+  support report gains a *"Crashes the phone recorded"* section.
+- `CrashReportRoute` and `CrashBannerPolicy` (`CrashReportRoute.swift`).
+- `RowIdentity.repeats(in:)` + `.uniqueRowsCheck()` (`App/Views/Components/RowIdentity.swift`),
+  `RowIdentityRoster` (`Services/Diagnostics/RowIdentityRoster.swift`) and `RowIdentityGuardTests`.
+- Tests: `CrashNoteTests`, `CrashNoteStoreTests`, `CrashReportRouteTests`, `RowIdentityGuardTests`.
+
+**P1 — live.** `CrashDiagnosticsSubscriber` subscribes at launch (`MXMetricManager`, past payloads
+on first subscribe; on iOS 27 also `MetricManager.diagnosticReports`; the store de-duplicates). The
+crash banner goes through `SupportPrompt` (`crashNoteID`) and the existing review sheet; dismissal
+is final for that note and does not quiet the failed-turn offer. `LastScreens` is written from
+`.diagnosticScreen` at once on a utility queue. The privacy sentence is in the three in-app privacy
+texts (`SettingsView`), `privacy.html`, and the crash-report exception in `privacy.html`, the
+support reports guide and Plan FV.
+
+**P2.** `Scripts/symbolicate-crash-report.sh <report> <xcarchive>`: reads every frame line, matches
+its UUID to an archive dSYM (`dwarfdump --uuid`), adds the `__TEXT` load address (`otool -l`) and
+runs `atos`. Tested on a synthetic report against an archive-shaped folder holding a locally built
+arm64 binary's dSYM; not yet run on a real app archive and a device report (P3).
+
+**Where it differs from the design, and why.**
+- *iOS 27, not 27.3.* The Xcode 27 SDK marks the new `CrashDiagnostic` API `iOS 27.0`, so that is
+  the `#available` check. Its fixture is decoded into the real struct on the simulator.
+- *Matching has no leading slack.* MetricKit stamps a crash to the minute, so a run that started and
+  crashed inside the same minute reads as unidentified rather than risk matching the relaunch.
+- *Last screens are printed for every matched run*, not only when the ring's tail stops short: eight
+  lines at most, and the summary helps even when the ring has them.
+- *The scrape skips loops that are distinct by construction* (`allCases`, `indices`, ranges, a
+  dictionary's keys) as well as `\.id`/`\.offset`/`\.rawValue`, so the roster holds the sites that
+  need an argument: 95 of them, each with a reason read from its code. Seven verdict kinds;
+  `menuOptionsMayRepeat` records four Picker/Menu sites whose options can repeat (not list rows),
+  and `watched` one site (`VaultAuthoringView`'s procedures) whose distinctness the code could not
+  show, which runs `.uniqueRowsCheck()` and fails the guard if it stops.
+- *Three loops fixed instead of rostered:* `ProcedureRulesView`'s issues, warnings and suggestion
+  warnings could repeat a sentence in a list section (two tests reading the same answer); they are
+  keyed by position now.
+- *`.uniqueRowsCheck()` sits on the sweep's ten position-keyed sites* (Memory ×4, assisting handover
+  ×2, expert card licences, org profile dropped lines, playbook variables, vault files) and the
+  watched one. The sweep's two de-duplicated sites (model tier providers, skill pack settings) have
+  data that cannot repeat, so they carry none.
+- *Breadcrumbs.* The scan found 43 `List`/`Form` bodies with no `.ogFormStyle()` or
+  `.diagnosticScreen()` in their view; 41 now carry `.diagnosticScreen()`, and the other two
+  (`ConversationPageHeader.list`, `GoalsView.content`) are sub-views of a body that already logs.
+  No gap is left.
+
+**Owed (P3, device):** Xcode's *Debug › Simulate MetricKit Payloads* for the banner, the review
+sheet (both routes) and the crashed-run section; that iOS 27 delivers through both APIs without a
+second banner; then the next real crash a tester sends, symbolicated against its archive.

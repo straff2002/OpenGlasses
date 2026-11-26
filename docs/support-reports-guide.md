@@ -11,6 +11,8 @@ Do this once on each phone, so reports come to you.
 
 On a company phone, reports only ever go to your company. If the support email is empty, they go to the office address that receives job reports. If that's empty too, the email button is hidden and the report can only be shared, so a technician can't send it to the app's makers by mistake. Your company's setup can fill the address in for you.
 
+One report is different: the one the app offers after it closes unexpectedly. It goes to your company's support email when one is set. Otherwise it goes to the app's makers, never to the job-report office, and from a company phone it then carries only the technical record: where the app closed, the screens last open, the app's events and the phone's details. No conversations, jobs or names.
+
 ## What's new
 
 1. **Transcripts.** Save everything said on a job, or on every job in a day, as a text file.
