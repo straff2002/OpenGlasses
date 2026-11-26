@@ -27,7 +27,9 @@ line. The line is kept in `deleted_lines` until the next deletion, and Undo puts
 stood while the deletion is still the last entry. The line's movements stay as history, which
 the fold already passes over, and the exported History sheet still names it. Not offered while
 a business's own system holds the count; on a clinic's list, a line with a dose given or wasted
-is not deleted, so the stock report keeps it. Not by voice: `van_stock` has no delete.
+is not deleted, so the stock report keeps it (owner confirmed 2026-11-27). Not by voice:
+`van_stock` has no delete. Built in PR 1243; its six screen strings were translated into the 13
+complete languages on 2026-11-27.
 **Track:** Field Assist (B2B).
 **Depends on:** Plan [EM](EM-work-record-and-parts.md) P1 (shipped: `PartsVerifier`,
 `VaultPartsIndex`, `parts_request`, the work record). Nothing here waits on the office connection.
