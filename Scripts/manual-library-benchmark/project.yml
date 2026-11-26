@@ -20,6 +20,7 @@ targets:
       - ../../OpenGlasses/Sources/Services/Vault/ManualStructure.swift
       - ../../OpenGlasses/Sources/Services/Vault/ScannedPageReader.swift
       - ../../OpenGlasses/Sources/Services/Vault/VaultRetriever.swift
+      - ../../Tools/LicenceIssuance/Sources/LicenceIssuance/VaultPackRules.swift
       - ../../OpenGlasses/Sources/Services/Vault/ClauseReference.swift
       - ../../OpenGlasses/Sources/Services/Vault/CodeTokenizer.swift
       - ../../OpenGlasses/Sources/Services/Vault/LexicalSupport.swift
