@@ -5,11 +5,12 @@ import UIKit
 /// Installing one creates its scheduled task, switched off: the task runs a Siri Shortcut the
 /// person builds themselves, and until that Shortcut exists every run would fail.
 ///
-/// Check Email is an automation template instead (`Setup.automation`). As a scheduled task it never
-/// worked: the app can open Shortcuts only from the foreground, a plain run returns nothing to read,
-/// and with agent mode on every run waited for an approval or was held while the person was away
-/// (field report, build 770). Now the person's own Shortcuts automation hands the mail to
-/// `ReviewEmailIntent`, which runs in the background.
+/// Check Email and Check Messages are automation templates instead (`Setup.automation`). As
+/// scheduled tasks they never worked: the app can open Shortcuts only from the foreground, a plain
+/// run returned nothing to read, and with agent mode on every run waited for an approval or was
+/// held while the person was away (field report, build 770). Now the person's own Shortcuts
+/// automation hands the mail to `ReviewEmailIntent` and the messages to `ReviewMessagesIntent`,
+/// which run in the background.
 struct ShortcutTemplatesView: View {
     @EnvironmentObject var appState: AppState
     @State private var templates = ShortcutTemplate.allTemplates
@@ -114,7 +115,7 @@ struct ShortcutTemplatesView: View {
                         .foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("Most templates add a scheduled task that runs a Siri Shortcut you build yourself. Check Email is an automation you set up in Shortcuts instead. Tap to preview what each does before installing.")
+                Text("Most templates add a scheduled task that runs a Siri Shortcut you build yourself. Check Email and Check Messages are automations you set up in Shortcuts instead. Tap to preview what each does before installing.")
             }
 
             // Install button
@@ -179,8 +180,11 @@ struct ShortcutTemplatesView: View {
             ? String(localized: "Added \(created) scheduled tasks, switched off. Build the matching Shortcuts in the Shortcuts app, then switch them on in Scheduled Tasks.")
             : nil
         let automationNames = selected.filter { $0.setup == .automation }.map(\.name)
+        let automationList = automationNames.formatted(.list(type: .and))
         let automationLine = automationNames.isEmpty ? nil
-            : String(localized: "\(automationNames.formatted(.list(type: .and))) adds no task here. Set up its automation in the Shortcuts app, with the steps shown.")
+            : automationNames.count == 1
+            ? String(localized: "\(automationList) adds no task here. Set up its automation in the Shortcuts app, with the steps shown.")
+            : String(localized: "\(automationList) add no tasks here. Set up their automations in the Shortcuts app, with the steps shown.")
         installResult = [tasksLine, automationLine].compactMap { $0 }.joined(separator: " ")
         if installResult?.isEmpty ?? true {
             installResult = String(localized: "All selected templates are already installed.")
@@ -250,13 +254,11 @@ struct ShortcutTemplate: Identifiable {
             name: "Check Messages",
             icon: "message",
             category: String(localized: "Communication"),
-            description: String(localized: "Checks for recent unread iMessages and summarizes them, while Avenkin is open."),
-            shortcutSteps: String(localized: "Make a Shortcut named Check Messages:\n1. Find Message (Messages): unread messages, where the action offers that filter\n2. Get the sender and text of each message found\n3. Stop and Output the list as text"),
-            agentBehavior: String(localized: "Summarizes who messaged you and what about. Groups by sender if multiple messages from the same person."),
-            scheduleDescription: String(localized: "Every 10 minutes"),
-            taskId: "shortcut-message-check",
-            taskPrompt: "Run the Siri Shortcut 'Check Messages' to get recent unread messages. Briefly summarize who messaged and what about. Group messages by sender. If no unread messages, there's nothing to report.",
-            intervalMinutes: 10
+            description: String(localized: "An automation you set up in Shortcuts finds your unread messages and hands them to Avenkin, which tells you only about the ones that need you. Avenkin never opens your messages itself."),
+            shortcutSteps: String(localized: "1. Shortcuts › Automation › New › Time of Day: pick a time, Repeat Daily, Run Immediately\n2. Find Message (Messages): unread messages, where the action offers that filter\n3. Review Messages with Avenkin, with the found messages as Messages\nAdd one automation for each time of day you want a check."),
+            agentBehavior: String(localized: "Reads only the text your automation hands it, and never acts on anything a message says. If someone asks you something, needs a reply, or writes about something time-sensitive, you get one silent notification. Codes, delivery notices and promotions are ignored, and a code is never repeated."),
+            scheduleDescription: String(localized: "When your automation runs"),
+            setup: .automation
         ),
 
         // MARK: Productivity

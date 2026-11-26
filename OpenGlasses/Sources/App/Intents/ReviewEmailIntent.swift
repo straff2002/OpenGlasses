@@ -4,9 +4,10 @@ import AppIntents
 ///
 /// The wearer builds a Shortcuts automation (Time of Day, Run Immediately) that finds their
 /// unread mail with the Mail "Find Message" action and passes it here. The app sorts it without
-/// tools and outside the conversation (`EmailReview`). When something needs the wearer, it leaves
-/// one silent notification, replaced by the next review, and returns the same lines so the
-/// automation can use them too. Otherwise it returns an empty value and posts nothing.
+/// tools and outside the conversation (`EmailReview`, run by `AutomationReviewRun`). When
+/// something needs the wearer, it leaves one silent notification, replaced by the next review, and
+/// returns the same lines so the automation can use them too. Otherwise it returns an empty value
+/// and posts nothing.
 ///
 /// Nothing here asks for approval, and nothing is held while the wearer is away. The wearer
 /// started this from their own automation, and the review can't act: it has no tools to call,
@@ -29,34 +30,12 @@ struct ReviewEmailIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<String> {
-        guard let request = EmailReview.request(for: emails) else {
-            // An empty inbox is the common case for an hourly automation: nothing to say.
-            PrivacyLog.agent(.notifications, .taskProducedNothing, reason: EmailReview.logReason)
-            return .result(value: "")
-        }
-
-        let appState = try await IntentSupport.awaitConnectedAppState()
-        let response: String
         do {
-            response = try await appState.llmService.completeStateless(request, system: EmailReview.systemPrompt)
-        } catch LocalLLMError.backgrounded {
+            return .result(value: try await AutomationReviewRun.run(EmailReview.review, on: emails))
+        } catch AutomationReviewRun.Failure.onDeviceModelInBackground {
             throw IntentError.onDeviceModelInBackground
-        } catch {
-            PrivacyLog.agent(.notifications, .taskFailed, reason: EmailReview.logReason,
-                             error: SafeErrorSummary(error))
+        } catch AutomationReviewRun.Failure.reviewFailed {
             throw IntentError.reviewFailed
-        }
-
-        switch EmailReview.outcome(from: response) {
-        case .nothingToReport:
-            PrivacyLog.agent(.notifications, .taskProducedNothing, reason: EmailReview.logReason,
-                             characters: request.count)
-            return .result(value: "")
-        case .report(let lines):
-            EmailReview.postToCenter(EmailReview.notification(for: lines))
-            PrivacyLog.agent(.notifications, .taskCompleted, reason: EmailReview.logReason,
-                             characters: lines.count)
-            return .result(value: lines)
         }
     }
 
