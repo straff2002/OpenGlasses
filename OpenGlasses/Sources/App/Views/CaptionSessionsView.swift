@@ -79,6 +79,7 @@ struct CaptionSessionsView: View {
                 }
             }
         }
+        .diagnosticScreen()
         .navigationTitle(String(localized: "Caption Sessions"))
         .onAppear {
             store.pruneExpired()
@@ -140,6 +141,7 @@ struct CaptionSessionTranscriptView: View {
                 .accessibilityElement(children: .combine)
             }
         }
+        .diagnosticScreen()
         .navigationTitle(session.startedAt.formatted(date: .abbreviated, time: .shortened))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

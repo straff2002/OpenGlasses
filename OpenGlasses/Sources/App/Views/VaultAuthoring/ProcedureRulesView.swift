@@ -134,8 +134,10 @@ private struct MessageLines: View {
     let messages: ProcedureEditing.Messages
 
     var body: some View {
-        ForEach(messages.issues, id: \.self) { OGStatusLabel($0, kind: .error).font(.caption) }
-        ForEach(messages.warnings, id: \.self) { OGStatusLabel($0, kind: .warn).font(.caption) }
+        // Keyed by position: two tests reading the same answer give the same sentence twice, and a
+        // repeated id in a list section crashes UIKit's update.
+        ForEach(Array(messages.issues.enumerated()), id: \.offset) { OGStatusLabel($0.element, kind: .error).font(.caption) }
+        ForEach(Array(messages.warnings.enumerated()), id: \.offset) { OGStatusLabel($0.element, kind: .warn).font(.caption) }
     }
 }
 
@@ -347,7 +349,7 @@ private struct SuggestionRow: View {
             }
             .font(.caption)
             .foregroundStyle(OGTheme.warnLabel)
-            ForEach(suggestion.warnings, id: \.self) { OGStatusLabel($0, kind: .warn).font(.caption2) }
+            ForEach(Array(suggestion.warnings.enumerated()), id: \.offset) { OGStatusLabel($0.element, kind: .warn).font(.caption2) }
             if let blocked {
                 Text(verbatim: blocked).font(.caption2).foregroundStyle(.secondary)
             }
@@ -424,6 +426,7 @@ private struct StepAnswerEditor: View {
                     Text("Check")
                 }
             }
+            .diagnosticScreen()
             .navigationTitle(step.answer == nil ? Text("Add an answer") : Text("Edit answer"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -574,6 +577,7 @@ private struct BranchRuleEditor: View {
                     }
                 }
             }
+            .diagnosticScreen()
             .navigationTitle(branch.when == nil ? Text("Add a rule") : Text("Edit rule"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

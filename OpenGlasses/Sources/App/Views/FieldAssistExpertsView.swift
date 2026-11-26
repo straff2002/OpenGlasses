@@ -53,6 +53,7 @@ struct FieldAssistExpertsView: View {
                 }
             }
         }
+        .diagnosticScreen()
         .navigationTitle("Experts")
         .navigationBarTitleDisplayMode(.inline)
         .background(ContactPickerPresenter(isPresented: Binding(
@@ -436,6 +437,7 @@ private struct ExpertEditorView: View {
                 }
             }
         }
+        .diagnosticScreen()
         .navigationTitle(draft.name.isEmpty ? String(localized: "Expert") : draft.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

@@ -226,6 +226,7 @@ struct AdminUnlockSheet: View {
                     Text("A forgotten passcode or a lost card is replaced by your organisation, and this phone picks it up at its next renewal. There is no reset on the phone.")
                 }
             }
+            .diagnosticScreen()
             .navigationTitle("Administrator Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

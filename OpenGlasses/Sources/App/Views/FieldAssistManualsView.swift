@@ -133,6 +133,7 @@ struct ManualAskSheet: View {
                     Text("Answered from this manual with the page cited, on the Avenkin tab.")
                 }
             }
+            .diagnosticScreen()
             .navigationTitle("Ask the manual")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

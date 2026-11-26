@@ -304,11 +304,13 @@ struct AssistingHandoverView: View {
             } footer: {
                 Text("In the technician's words.")
             }
+            .uniqueRowsCheck(work.ruledOut)
         }
         if !work.deviations.isEmpty {
             Section(header: header("Done differently", .deviations, held)) {
                 ForEach(Array(work.deviations.enumerated()), id: \.offset) { Text($0.element) }
             }
+            .uniqueRowsCheck(work.deviations)
         }
     }
 

@@ -94,6 +94,7 @@ struct PreparedCardSettingsView: View {
                 }
             }
         }
+        .diagnosticScreen()
         .navigationTitle("Ready-to-send cards")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingGoogleHelp) { GoogleCalendarHelpSheet() }

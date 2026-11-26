@@ -9,6 +9,9 @@ struct SupportPrompt: Identifiable, Equatable {
     let reason: String
     /// The conversation the failed turn belonged to, when it had one.
     var threadId: String? = nil
+    /// The crash note this offer is about (Plan MB), when the app closed unexpectedly rather than
+    /// a turn failing. The banner then reads as the crash offer.
+    var crashNoteID: String? = nil
 }
 
 /// A support report on its way to the review sheet.
@@ -71,6 +74,22 @@ struct SupportReportRequest: Identifiable {
             widerThreadId: threadId)
     }
 
+    /// After a crash (Plan MB): the day of the crash with the troubleshooting layer, to the
+    /// address `CrashReportRoute` chose — or, on an organisation phone going to the developer,
+    /// the technical layer only, with no way on the sheet to widen it.
+    static func afterCrash(at: Date, route: CrashReportRoute) -> SupportReportRequest {
+        let time = at.formatted(date: .omitted, time: .shortened)
+        let options: JobTranscriptExporter.Options
+        switch route.contents {
+        case .normal: options = .init(troubleshooting: true, otherConversations: true)
+        case .technicalOnly: options = .init(troubleshooting: true, otherConversations: false, technicalOnly: true)
+        }
+        return SupportReportRequest(
+            scope: .day(at), options: options,
+            reason: String(localized: "Avenkin closed unexpectedly at \(time). This report says where."),
+            recipients: [route.recipient])
+    }
+
     /// The most recent conversation on the phone, or nil when nothing has been said yet.
     static func lastConversation(in threads: [ConversationThread]) -> SupportReportRequest? {
         JobTranscriptExport.lastConversation(in: threads).map {
@@ -102,6 +121,11 @@ extension AppState {
             TurnTraceStore.shared.append(trace)
             if trace.outcome == .failed { self?.offerSupportReport(after: trace) }
         }
+        // Plan MB: the system's crash diagnostics become crash notes; a new one is offered once.
+        // The callback is @Sendable and runs on MetricKit's thread, so it hops to the main actor.
+        CrashDiagnosticsSubscriber.shared.start { [weak self] in
+            Task { @MainActor in self?.offerCrashReportIfDue() }
+        }
     }
 
     /// Put the banner up for a failed turn, unless the wearer waved it away a moment ago.
@@ -116,14 +140,38 @@ extension AppState {
     }
 
     func dismissSupportPrompt() {
+        // A crash offer's dismissal is final for its note, which is already marked offered; it
+        // does not quiet the failed-turn offer.
+        if supportPrompt?.crashNoteID == nil { supportPromptDismissedAt = Date() }
         supportPrompt = nil
-        supportPromptDismissedAt = Date()
+    }
+
+    /// Plan MB: after a crash, the banner offers a report once per note. Called when MetricKit
+    /// delivers notes and when the app becomes active; waits while another offer or a report is
+    /// up rather than replacing it.
+    func offerCrashReportIfDue() {
+        guard supportPrompt == nil, supportReportRequest == nil, !Config.needsOnboarding,
+              let note = CrashBannerPolicy.noteToOffer(CrashNoteStore.shared.all) else { return }
+        CrashNoteStore.shared.markOffered(note.id)
+        supportPrompt = SupportPrompt(at: note.at, reason: CrashBannerPolicy.message(for: note),
+                                      crashNoteID: note.id)
+    }
+
+    /// Where the crash report goes from this phone, and what it carries (`CrashReportRoute`).
+    var crashReportRoute: CrashReportRoute {
+        CrashReportRoute.resolve(configured: Config.supportReportEmail,
+                                 organisationPhone: isOrganisationPhone)
     }
 
     /// From the banner: the conversation the failure happened in, ready to review, with the whole
-    /// day one switch away (`SupportReportRequest.afterFailedTurn`).
+    /// day one switch away (`SupportReportRequest.afterFailedTurn`). For a crash, the crash
+    /// report (`SupportReportRequest.afterCrash`).
     func openSupportReport(from prompt: SupportPrompt) {
         supportPrompt = nil
+        if prompt.crashNoteID != nil {
+            supportReportRequest = .afterCrash(at: prompt.at, route: crashReportRoute)
+            return
+        }
         let time = prompt.at.formatted(date: .omitted, time: .shortened)
         supportReportRequest = .afterFailedTurn(
             at: prompt.at, threadId: prompt.threadId,
@@ -174,7 +222,7 @@ extension AppState {
                   request.pilotEnrolment == OrgProfileManager.shared.record?.enrolmentId,
                   request.recipients == PilotReportStore.shared.recipients else { return .failure(.nothingToExport) }
         }
-        if conversationStore.isLocked {
+        if conversationStore.isLocked && !request.options.technicalOnly {
             _ = await conversationStore.unlock()
         }
         let storefront = await StoreKitStorefrontReader().countryCode()
@@ -188,7 +236,9 @@ extension AppState {
         return JobTranscriptExporter.document(request.scope, options: request.options,
                                               sessions: FieldSessionService.shared,
                                               store: conversationStore,
-                                              environment: supportEnvironment(storefront: storefront))
+                                              environment: supportEnvironment(
+                                                storefront: storefront,
+                                                technicalOnly: request.options.technicalOnly))
     }
 
     /// Whether this phone belongs to an organisation: set up by a profile, or running on an
@@ -210,7 +260,12 @@ extension AppState {
     ///
     /// `storefront` is the App Store country as alpha-2 (`StorefrontReader`), read by the caller
     /// because StoreKit answers asynchronously. A country code, not personal data.
-    func supportEnvironment(storefront: String? = nil) -> JobTranscriptExporter.Environment {
+    ///
+    /// `technicalOnly` is the crash report an organisation phone sends the developer
+    /// (`CrashReportRoute`): the company, technician, licence and enrolment lines, the open job's
+    /// number and the saved model's name are left out, and there is no From line or debug log.
+    func supportEnvironment(storefront: String? = nil,
+                            technicalOnly: Bool = false) -> JobTranscriptExporter.Environment {
         let app = AppBuildIdentity.current
         var phone = [
             "App: \(app.version) (\(app.build))",
@@ -231,15 +286,18 @@ extension AppState {
             "Mode: \(currentMode.rawValue)",
             // The setting when the report was made, not a description of the turns above it: each
             // turn names the model that answered it, and the setting may have changed since.
-            Self.activeModelReportLine(Config.activeModel),
+            technicalOnly
+                ? "AI model set now: " + (Config.activeModel.map { $0.llmProvider.displayName } ?? "none")
+                : Self.activeModelReportLine(Config.activeModel),
             "Transcription preference: \(Config.asrEnginePreference.rawValue)",
         ]
-        phone += Config.reportSupportLines
+        if !technicalOnly { phone += Config.reportSupportLines }
         #if !AVENKIN_PHONE_ONLY
         if isConnected {
             var glasses = "Glasses: connected"
             // A pair the SDK has not named yet reports an empty name, not a missing one.
-            if let name = glassesService.deviceName?.trimmingCharacters(in: .whitespaces),
+            // Left out of the technical layer: a pair can be named after its wearer.
+            if !technicalOnly, let name = glassesService.deviceName?.trimmingCharacters(in: .whitespaces),
                !name.isEmpty {
                 glasses += " — \(name)"
             }
@@ -310,7 +368,7 @@ extension AppState {
         // Plan KH P1: how many of the scenarios were tried. A count, from the catalogue; no content.
         phone.append(ScenarioReportLine.line(progress: ScenarioProgressStore.shared.progress,
                                              catalogIDs: ScenarioCatalog.all.map(\.id)))
-        if let job = FieldSessionService.shared.activeSession, job.endedAt == nil {
+        if !technicalOnly, let job = FieldSessionService.shared.activeSession, job.endedAt == nil {
             phone.append("Job open: \(job.jobReference.map { "Job \($0)" } ?? JobTabModel.noJobNumber)")
         }
         // Earlier runs, then this one, with a line wherever events were not kept and wherever one
@@ -318,9 +376,21 @@ extension AppState {
         let events = DiagnosticRing.shared.timeline.map {
             JobTranscriptExport.AppEvent(at: $0.at, line: $0.line)
         }
+        // Plan MB: the crash notes, the earlier runs they are matched against and those runs' last
+        // screens. The export keeps the notes dated inside its window.
+        let ring = DiagnosticRing.shared
+        let lastScreens = LastScreensStore.shared.all
+        let runs = CrashRunMatcher.runs(history: ring.previousEntries, lastScreens: lastScreens,
+                                        excluding: ring.runID)
+        if technicalOnly {
+            return .init(phone: phone, app: app.summary, appEvents: events,
+                         secrets: Config.knownSecretValues, crashNotes: CrashNoteStore.shared.notes,
+                         crashRuns: runs, lastScreens: lastScreens)
+        }
         return .init(from: Config.reportIdentity?.fromLine, activity: ActivityStore.shared.entries,
                      phone: phone, app: app.summary, appEvents: events, debugLog: Array(debugEvents.suffix(60)),
-                     secrets: Config.knownSecretValues)
+                     secrets: Config.knownSecretValues, crashNotes: CrashNoteStore.shared.notes,
+                     crashRuns: runs, lastScreens: lastScreens)
     }
 
     /// The phone section's model line: what the AI model is set to as the report is made. A field

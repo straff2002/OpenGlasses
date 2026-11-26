@@ -78,6 +78,7 @@ struct OrgKeyEntrySheet: View {
                     .disabled(isLookingUp || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
+            .diagnosticScreen()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

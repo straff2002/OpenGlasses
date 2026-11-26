@@ -96,6 +96,7 @@ struct OrgEnrolmentSheet: View {
                     }
                 }
             }
+            .diagnosticScreen()
 
         case .fetching(let host):
             VStack(spacing: 12) {
@@ -135,6 +136,7 @@ struct OrgEnrolmentSheet: View {
                     Text("This phone is now managed by this organisation. Settings it locks aren't shown; Settings › Organisation lists what it sets, and that is also where the profile can be removed.")
                 }
             }
+            .diagnosticScreen()
 
         case .failed(let message):
             List {
@@ -146,6 +148,7 @@ struct OrgEnrolmentSheet: View {
                     }
                 }
             }
+            .diagnosticScreen()
         }
     }
 }
@@ -247,6 +250,7 @@ struct OrgProfileReviewList: View {
                 } footer: {
                     Text("This version of the app could not use these entries, so they are left out.")
                 }
+                .uniqueRowsCheck(review.dropLines)
             }
 
             if let problem {
@@ -269,6 +273,7 @@ struct OrgProfileReviewList: View {
                 }
             }
         }
+        .diagnosticScreen()
     }
 
     /// A move (another organisation's profile is in force): what leaving it does — Remove Profile's
@@ -950,5 +955,6 @@ struct OrgModelKeyPage: View {
                 Text("Field Assist will say the administrator needs to finish setting up this phone until the key is in.")
             }
         }
+        .diagnosticScreen()
     }
 }

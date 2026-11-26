@@ -97,7 +97,13 @@ The selection, the period and the debug-log cut are pure functions over values
   (`organizationReportRecipients`), and with neither there is no address: the sheet hides *Email to
   Support*, says to ask a manager, and offers the share sheet;
 - a personal phone falls back to `DiagnosticsReportBuilder.supportEmail`, so a typo never sends a
-  report nowhere. An organisation profile
+  report nowhere;
+- **the crash report is the one exception** (Plan [MB](MB-crash-aware-support-reports.md), owner
+  2026-11-26): the report the banner after a crash opens goes to the configured support address
+  when one is set, and otherwise to the developer on every phone — never the job-report office,
+  never "no address". From an organisation phone it then carries the technical layer only
+  (`CrashReportRoute`, `JobTranscriptExporter.Options.technicalOnly`). A crash is rare and offered
+  once, so this does not reopen the flood. An organisation profile
 can set it as a starting value (`SettingKey.supportReportEmail`, checked for shape, shown on the
 enrolment review as "Support reports are emailed to …"); the person can still change it. *Report a
 Problem* (Plan DC) still goes to the developer: it reports the app, not a job.

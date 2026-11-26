@@ -52,6 +52,7 @@ struct ExpertStatementView: View {
                 }
             }
         }
+        .diagnosticScreen()
         .navigationTitle("Statements")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $sharing) { item in

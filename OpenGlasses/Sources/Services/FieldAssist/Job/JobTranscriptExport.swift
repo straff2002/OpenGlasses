@@ -139,6 +139,15 @@ enum JobTranscriptExport {
         var appEvents: [AppEvent] = []
         /// The newest lines of the in-app debug log.
         var debugLog: [String] = []
+        /// Crash notes dated inside the scope's window (Plan MB), the earlier runs they are
+        /// matched against, and those runs' last screens.
+        var crashNotes: [CrashNote] = []
+        var crashRuns: [CrashRunMatcher.Run] = []
+        var lastScreens: [LastScreens] = []
+        /// The crash report an organisation phone sends the developer (`CrashReportRoute`): the
+        /// crash, the phone and the app's events only — no job, conversation, activity, debug log
+        /// or name.
+        var technicalOnly = false
     }
 
     struct AppEvent: Equatable {
@@ -512,6 +521,14 @@ enum JobTranscriptExport {
         including source URLs when returned; long contents are marked as truncated.
         """
 
+    /// The opening of the crash report an organisation phone sends the developer.
+    static let technicalPreamble = """
+        This is a crash report with the technical record only: the crash the phone recorded and \
+        where in the app it happened, the screens last opened, the app's event log, the build and \
+        this phone's state. It contains no conversations, jobs, transcripts, documents or names. \
+        Keys and tokens are masked.
+        """
+
     static let jobLogOnlyNote = """
         The assistant's replies for this job are no longer on the phone. Below are the \
         technician's words from the job log only.
@@ -594,6 +611,10 @@ enum JobTranscriptExport {
             let date = job.map { format.date($0.startedAt) } ?? format.date(exportedAt)
             title = "\(name) \(kind) — \(date)"
             displayName = "\(name) \(kind) \(date).txt"
+        case .day(let day) where details?.technicalOnly == true:
+            let date = format.date(day)
+            title = "Crash report — \(date)"
+            displayName = "Crash report \(date).txt"
         case .day(let day):
             let date = format.date(day)
             let count = jobs.count == 1 ? "1 job" : "\(jobs.count) jobs"
@@ -627,7 +648,8 @@ enum JobTranscriptExport {
         case .conversation, .reply: aboutOneConversation = true
         case .job, .day: aboutOneConversation = false
         }
-        let opening = aboutOneReply ? replyPreamble
+        let technicalOnly = details?.technicalOnly == true
+        let opening = technicalOnly ? technicalPreamble : aboutOneReply ? replyPreamble
             : aboutOneConversation ? conversationPreamble : preamble
         let troubleshootingOpening = aboutOneReply ? replyTroubleshootingPreamble
             : aboutOneConversation ? conversationTroubleshootingPreamble : troubleshootingPreamble
@@ -636,10 +658,10 @@ enum JobTranscriptExport {
             "Avenkin — \(title)",
             "Exported \(format.dateTime(exportedAt)) (\(format.offset(exportedAt)))",
         ]
-        if let from = from ?? details?.from { out.append("From: " + from) }
+        if !technicalOnly, let from = from ?? details?.from { out.append("From: " + from) }
         if let app = details?.app { out.append("App \(app)") }
         out += ["", opening]
-        if troubleshooting {
+        if troubleshooting && !technicalOnly {
             out += ["", troubleshootingOpening]
         }
 
@@ -652,7 +674,7 @@ enum JobTranscriptExport {
             return mine
         }
 
-        if jobs.isEmpty && conversations.isEmpty {
+        if jobs.isEmpty && conversations.isEmpty && !technicalOnly {
             out += ["", aboutOneReply ? "This reply is not on the phone any more."
                         : aboutOneConversation ? "Nothing from this conversation is on the phone." : "No jobs."]
         }
@@ -735,6 +757,13 @@ enum JobTranscriptExport {
             out += ["", rule("="), "This phone", rule("-")]
             out += details.phone.isEmpty ? ["(not available)"] : details.phone
 
+            if !details.crashNotes.isEmpty {
+                out += ["", rule("="), "Crashes the phone recorded (\(details.crashNotes.count))", rule("-")]
+                out += CrashReportSection.lines(notes: details.crashNotes, runs: details.crashRuns,
+                                                lastScreens: details.lastScreens,
+                                                time: { format.time($0, seconds: true) })
+            }
+
             out += ["", rule("="), "App events (\(details.appEvents.count))", rule("-")]
             if details.appEvents.isEmpty {
                 out.append("None in this period — the app keeps its own events for up to \(DiagnosticRing.retentionDays) days; the \(DiagnosticRing.defaultCapacity)-event capacity may be reached sooner.")
@@ -743,13 +772,13 @@ enum JobTranscriptExport {
                 out.append("\(format.time(event.at, seconds: true))  \(event.line)")
             }
 
-            if !details.activity.isEmpty {
+            if !details.activity.isEmpty && !technicalOnly {
                 out += ["", rule("="), "Activity trail (\(details.activity.count))", rule("-")]
                 for entry in details.activity {
                     out.append("\(format.time(entry.at, seconds: true))  \(entry.title)" + (entry.detail.map { " — " + $0 } ?? ""))
                 }
             }
-            if !details.debugLog.isEmpty {
+            if !details.debugLog.isEmpty && !technicalOnly {
                 let which = aboutOneConversation
                     ? "\(details.debugLog.count) from this period"
                     : "newest \(details.debugLog.count)"
@@ -1058,6 +1087,9 @@ enum JobTranscriptExporter {
         var troubleshooting = false
         /// On a day, also include conversations held outside any job.
         var otherConversations = false
+        /// The crash report to the developer from an organisation phone (`CrashReportRoute`):
+        /// the technical layer and nothing else. Implies the troubleshooting layer.
+        var technicalOnly = false
     }
 
     /// What only the app can supply: the phone and glasses, the app's event log, the debug log and
@@ -1070,6 +1102,11 @@ enum JobTranscriptExporter {
         var appEvents: [JobTranscriptExport.AppEvent] = []
         var debugLog: [String] = []
         var secrets: [String] = []
+        /// Every crash note on the phone, the earlier runs, and their last screens (Plan MB). The
+        /// export keeps the notes dated inside its window.
+        var crashNotes: [CrashNote] = []
+        var crashRuns: [CrashRunMatcher.Run] = []
+        var lastScreens: [LastScreens] = []
     }
 
     enum Failure: Error, Equatable {
@@ -1100,6 +1137,9 @@ enum JobTranscriptExporter {
                          now: Date = Date(),
                          calendar: Calendar = .current) -> Result<JobTranscriptExport.Document, Failure> {
         let traces = traces ?? .shared
+        if options.technicalOnly {
+            return .success(technicalDocument(scope, environment: environment, now: now, calendar: calendar))
+        }
         guard !store.isLocked else { return .failure(.conversationsLocked) }
         let chosen = JobTranscriptExport.sessions(for: scope, in: sessions.history, calendar: calendar)
         let jobs = chosen.map { session in
@@ -1207,7 +1247,10 @@ enum JobTranscriptExporter {
                 phone: environment.phone,
                 app: environment.app,
                 appEvents: environment.appEvents.filter { $0.at >= window.start && $0.at < window.end },
-                debugLog: debugLog)
+                debugLog: debugLog,
+                crashNotes: environment.crashNotes.filter { $0.at >= window.start && $0.at < window.end },
+                crashRuns: environment.crashRuns,
+                lastScreens: environment.lastScreens)
         }
 
         if jobs.isEmpty && conversations.isEmpty && (details?.traces.isEmpty ?? true) {
@@ -1223,6 +1266,27 @@ enum JobTranscriptExporter {
             scope: scope, jobs: jobs, exportedAt: now, timeZone: calendar.timeZone,
             conversations: conversations, details: details, secrets: environment.secrets, from: environment.from,
             answeredBy: answeredBy))
+    }
+
+    /// The crash report an organisation phone sends the developer: the day of the crash with the
+    /// technical layer only. No store is read — no job, conversation or turn can reach it — and the
+    /// environment it is given has already left the names out (`AppState.supportEnvironment`).
+    static func technicalDocument(_ scope: JobTranscriptExport.Scope, environment: Environment,
+                                  now: Date, calendar: Calendar) -> JobTranscriptExport.Document {
+        let day: Date
+        if case .day(let chosen) = scope { day = chosen } else { day = now }
+        let window = JobTranscriptExport.window(of: day, calendar: calendar)
+        let details = JobTranscriptExport.Details(
+            phone: environment.phone,
+            app: environment.app,
+            appEvents: environment.appEvents.filter { $0.at >= window.start && $0.at < window.end },
+            crashNotes: environment.crashNotes.filter { $0.at >= window.start && $0.at < window.end },
+            crashRuns: environment.crashRuns,
+            lastScreens: environment.lastScreens,
+            technicalOnly: true)
+        return JobTranscriptExport.document(scope: .day(day), jobs: [], exportedAt: now,
+                                            timeZone: calendar.timeZone, details: details,
+                                            secrets: environment.secrets)
     }
 
     /// Write the document to a protected, short-lived file. The lease is released when the share

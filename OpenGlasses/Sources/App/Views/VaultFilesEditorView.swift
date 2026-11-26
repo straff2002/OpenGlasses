@@ -57,6 +57,7 @@ struct VaultFilesEditorView: View {
                             OGStatusLabel(addFileError, kind: .error)
                         }
                     }
+                    .uniqueRowsCheck(store.manifest.files)
                     .id(revision)
                     // Read-only: the vault's own manifest decides it, and nothing on the phone
                     // changes it (Plan KR P6, owner decision 6). The job report says the same.

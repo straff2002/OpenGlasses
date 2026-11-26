@@ -1064,9 +1064,12 @@ extension View {
         let token = PrivacyToken(String(name))
         return onAppear {
             PrivacyLog.app(.screenAppeared, detail: token)
+            // Plan MB: written at once, so the last screen survives a crash.
+            LastScreensStore.shared.record(String(name), appeared: true)
         }
         .onDisappear {
             PrivacyLog.app(.screenDisappeared, detail: token)
+            LastScreensStore.shared.record(String(name), appeared: false)
         }
     }
 }

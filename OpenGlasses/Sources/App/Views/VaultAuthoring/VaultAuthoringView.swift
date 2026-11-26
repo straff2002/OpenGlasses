@@ -118,6 +118,7 @@ struct VaultAuthoringView: View {
         } footer: {
             Text("Give a step a typed answer and its routes rules, and the app decides the route itself, on this phone, with no assistant.")
         }
+        .uniqueRowsCheck(procedures.map(\.file))
     }
 
     private var manualsSection: some View {
@@ -221,6 +222,7 @@ struct PublishingCheckSheet: View {
                     Button("Export anyway") { onExport() }
                 }
             }
+            .diagnosticScreen()
             .navigationTitle("Before you publish")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

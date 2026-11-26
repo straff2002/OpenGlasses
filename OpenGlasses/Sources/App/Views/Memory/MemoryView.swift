@@ -20,6 +20,7 @@ struct MemoryView: View {
                             .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
                     }
                 }
+                .uniqueRowsCheck(model.statusMessages)
             }
 
             if model.showsSensitiveReviewPrompt {
@@ -249,6 +250,7 @@ struct MemoryFactDetailView: View {
                         } footer: {
                             Text("Written by the AI after the conversation ended. It can be wrong: open the conversation to check.")
                         }
+                        .uniqueRowsCheck(fact.details)
                     }
                     if let thread = fact.conversationThreadID {
                         Section {
@@ -328,6 +330,7 @@ struct MemoryForgetSheet: View {
                     } footer: {
                         Text("These lines were found by matching words, so check them first.")
                     }
+                    .uniqueRowsCheck(plan.noteLines)
                 }
                 if !plan.digestPoints.isEmpty {
                     Section {
@@ -341,6 +344,7 @@ struct MemoryForgetSheet: View {
                     } footer: {
                         Text("These were found by matching words, so check them first.")
                     }
+                    .uniqueRowsCheck(plan.digestPoints.map(\.text))
                 }
                 if plan.gatewayCopyPossible {
                     Section {
@@ -360,6 +364,7 @@ struct MemoryForgetSheet: View {
                     }
                 }
             }
+            .diagnosticScreen()
             .navigationTitle("Forget this?")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

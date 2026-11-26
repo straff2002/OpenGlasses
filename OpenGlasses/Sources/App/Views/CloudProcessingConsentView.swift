@@ -157,6 +157,7 @@ struct CloudProcessingSettingsView: View {
                 }
             }
         }
+        .diagnosticScreen()
         .navigationTitle("Cloud AI Sharing")
         .onAppear { services = CloudServiceFactsProvider.current() }
     }
