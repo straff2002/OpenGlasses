@@ -441,6 +441,8 @@ final class VanStockServiceAuthorityTests: XCTestCase {
         _ = h.vanStock.loadToStandard()
         XCTAssertFalse(h.vanStock.setCount(itemID: item.id, to: .whole(40)))
         XCTAssertFalse(h.vanStock.edit(itemID: item.id, [.description("Renamed")]))
+        XCTAssertEqual(h.vanStock.deletionBlock(itemID: item.id), .systemHolds)
+        XCTAssertFalse(h.vanStock.deleteLine(itemID: item.id))
         XCTAssertNil(h.vanStock.noteOrdered(number: "ZX-455", quantity: 2, requestID: "R1"))
         XCTAssertFalse(h.vanStock.canUndo, "the screen's undo would touch the previous list")
         XCTAssertEqual(h.vanStore.log, before, "the previous list is read-only")

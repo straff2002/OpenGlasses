@@ -603,6 +603,39 @@ final class VanStockService {
         return changed ?? false
     }
 
+    /// What stops a line being deleted from the screen.
+    enum DeletionBlock: Equatable {
+        /// A business's own system holds the count, so the phone's list is not written.
+        case systemHolds
+        /// The list can't be read, or has no such line.
+        case unavailable
+        /// A clinic's line with doses given or wasted from it: they belong in the stock report,
+        /// which reads only lines on the list.
+        case clinicalRecord
+    }
+
+    /// Why the line can't be deleted now, or nil when it can.
+    func deletionBlock(itemID: String) -> DeletionBlock? {
+        if authority.isSystem { return .systemHolds }
+        guard !store.isUnreadable, store.log.item(id: itemID) != nil else { return .unavailable }
+        if isClinical && store.log.hasGivenOrWasted(itemID) { return .clinicalRecord }
+        return nil
+    }
+
+    /// Delete one line from the Van Stock screen, as its own batch, so Undo puts it back. False
+    /// when nothing was deleted (`deletionBlock`).
+    @discardableResult
+    func deleteLine(itemID: String) -> Bool {
+        guard deletionBlock(itemID: itemID) == nil else { return false }
+        lastWrite = nil
+        let at = now()
+        let batch = makeID()
+        let deleted = store.update { log in
+            log.deleteItem(itemID, at: at, batch: batch, source: .typed, id: self.makeID()) != nil
+        }
+        return deleted ?? false
+    }
+
     // MARK: - The shift (Plan IH P5)
 
     /// Why a line cannot be counted in `unit` now, or nil when it can: a unit counted whole while

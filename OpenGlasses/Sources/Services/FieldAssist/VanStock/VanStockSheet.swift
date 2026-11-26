@@ -142,7 +142,15 @@ enum VanStockSheet {
             })
         }
 
-        let names = Dictionary(log.items.map { ($0.id, $0.name) }) { first, _ in first }
+        var names = Dictionary(log.items.map { ($0.id, $0.name) }) { first, _ in first }
+        // A line no longer on the list, deleted or taken back, is named by the last description
+        // its history noted, so its rows are not left nameless.
+        for movement in log.movements where movement.kind == .edited && movement.attribute == .description
+            && log.item(id: movement.itemID) == nil {
+            if let description = movement.newValue ?? movement.oldValue, !description.isEmpty {
+                names[movement.itemID] = description
+            }
+        }
         var history: [[XLSX.Cell]] = [["When", "Line", "What", "Quantity", "Job", "How"].map { .text($0) }]
         let reversed = Set(log.movements.compactMap { $0.kind == .reversed ? $0.reverses : nil })
         let lots = Dictionary(log.lots.map { ($0.id, $0.code) }) { first, _ in first }

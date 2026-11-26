@@ -408,6 +408,8 @@ struct VanStockItemView: View {
     @State private var minimum = ""
     @State private var unit = VanStockUnit.each
     @State private var loaded = false
+    @State private var confirmingDelete = false
+    @Environment(\.dismiss) private var dismiss
 
     private var item: VanStockItem? { store.log.item(id: itemID) }
 
@@ -425,10 +427,19 @@ struct VanStockItemView: View {
                     }
                     detailsSection(item)
                     historySection
+                    deleteSection
                 }
                 .ogFormStyle()
                 .navigationTitle(item.description.isEmpty ? (item.number ?? "") : item.description)
                 .onAppear { if !loaded { fill(from: item, level); loaded = true } }
+                .confirmationDialog("Delete this line?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+                    Button("Delete line", role: .destructive) {
+                        if service.deleteLine(itemID: itemID) { dismiss() }
+                    }
+                    Button("Keep it", role: .cancel) {}
+                } message: {
+                    Text("It comes off the list with its count, its lots and anything asked for. Undo on the Stock screen puts it back.")
+                }
             } else {
                 Text("This line is no longer on the list.")
                     .foregroundStyle(.secondary)
@@ -613,6 +624,25 @@ struct VanStockItemView: View {
                 }
             } header: {
                 Text("History")
+            }
+        }
+    }
+
+    /// Taking the line off the list, behind a confirmation. Not offered while a business's own
+    /// system holds the count; on a clinic's list, held back once a dose was given or wasted.
+    @ViewBuilder
+    private var deleteSection: some View {
+        let block = service.deletionBlock(itemID: itemID)
+        if block != .systemHolds {
+            Section {
+                Button("Delete this line", role: .destructive) { confirmingDelete = true }
+                    .disabled(block != nil)
+            } footer: {
+                if block == .clinicalRecord {
+                    Text("Doses given or wasted from this line stay in the stock report, so it can't be deleted.")
+                } else {
+                    Text("Takes the line off the list. Undo on the Stock screen puts it back.")
+                }
             }
         }
     }
