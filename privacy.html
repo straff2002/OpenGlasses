@@ -64,7 +64,7 @@
 <main>
 
 <h1>Avenkin Privacy Policy</h1>
-<p class="meta">Effective 13 November 2026</p>
+<p class="meta">Effective 26 November 2026</p>
 
 <div class="summary">
 <p><strong>The short version</strong></p>
@@ -100,7 +100,7 @@
 
 <h2 id="who">1. Who we are</h2>
 <p>Avenkin is an iPhone app: a private AI assistant you use on your phone, from your watch, or with compatible smart glasses. It is made by SKUNKWORKS NZ LIMITED, a company in New Zealand ("we", "us"). Avenkin is source-available software, licensed under the Business Source License 1.1. This policy explains what the app does with personal information, and it applies to the iPhone app together with its Apple Watch app, widgets and share extension.</p>
-<p>We don't run an account system and we don't have a server that collects your conversations or usage data. Section 3 describes the services the app can talk to.</p>
+<p>We don't run an account system for the people who use the app, and no server of ours receives your conversations, recordings or usage data. The one service we run is for organisations: the licence service, which a phone talks to only when it uses an organisation's licence. Section 3 describes it, together with the other services the app can talk to.</p>
 
 <h2 id="device">2. What stays on your device</h2>
 <p>The following is stored in the app's own storage on your iPhone. None of it is sent to us.</p>
@@ -207,6 +207,11 @@
   <td>When you download a model, language pack or skill, or browse a catalogue.</td>
 </tr>
 <tr>
+  <td>Avenkin licence service (organisation licences only)</td>
+  <td>We run this service at licence.avenkin.com. A phone on an organisation's licence asks it for the organisation's signed licence and settings, by the organisation's profile id, and downloads the vaults and manuals the organisation published to its phones. Entering an activation key asks it for the file that key opens. If the organisation's licence counts seats, the phone also checks its seat: it sends an enrolment id, a key made for this phone (its private half never leaves the phone), the app build and the profile id, and, when it renews, the ids and versions of the organisation's vaults on the phone and the version of the organisation's settings it has applied. Nothing else: never your name, device model, location, conversations, recordings or anything you added. The service keeps no IP addresses. Connections to it pass through Cloudflare, which may also hold copies of the files phones download so they stay available.</td>
+  <td>Only on a phone that joined an organisation or entered an activation key: when the app opens or comes back to the foreground, with the seat checked about once a day.</td>
+</tr>
+<tr>
   <td>Meta (glasses connection)</td>
   <td>What the Meta Wearables SDK needs to pair with your glasses and check that the app is allowed to talk to them. The SDK's own analytics and crash reporting are switched off in the app, and the app also blocks those uploads if the SDK tries to send them anyway.</td>
   <td>When you pair and connect your glasses.</td>
@@ -277,7 +282,7 @@
 <p>Information from these sources is only sent to an AI provider when it is part of answering your request.</p>
 
 <h2 id="children">8. Children</h2>
-<p>Avenkin is not directed at children under 13, and we don't knowingly collect personal information from children. We don't collect personal information through the app from anyone. If you believe a child's information has reached us some other way, for example by email, contact us and we will delete it.</p>
+<p>Avenkin is not directed at children under 13, and we don't knowingly collect personal information from children. Apart from the seat check of an organisation's licence, described in section 3, we don't collect personal information through the app from anyone. If you believe a child's information has reached us some other way, for example by email, contact us and we will delete it.</p>
 
 <h2 id="retention">9. Retention and deletion</h2>
 <p>Because your data is on your phone, you control how long it's kept.</p>
@@ -325,6 +330,7 @@
   <li><a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub</a></li>
   <li><a href="https://www.meta.com/legal/privacy-policy/">Meta</a></li>
   <li><a href="https://www.apple.com/legal/privacy/">Apple</a></li>
+  <li><a href="https://www.cloudflare.com/privacypolicy/">Cloudflare</a> (carries connections to our licence service)</li>
 </ul>
 <p>The aircraft, defibrillator and exchange-rate look-ups (adsb.fi, the Overpass API, Frankfurter and its fallback AllRatesToday) are public data services that receive only the look-up described in section 3. Servers you configure yourself (a self-hosted AI, an agent gateway, an MCP server, Home Assistant, a streaming server, a browser-streaming relay or your organisation's systems) are governed by whoever runs them.</p>
 
@@ -334,6 +340,7 @@
 <ul>
   <li><strong>Your own decision.</strong> The app only uses a feature, and only sends anything to a service, because you turned the feature on, used it, or connected that service yourself. Nothing reaches us when you do.</li>
   <li><strong>The subscription you bought.</strong> We provide what you paid for. Purchases are handled by Apple, and the app checks what you're entitled to on your phone.</li>
+  <li><strong>The licence your organisation bought.</strong> To provide an organisation's licence, the licence service holds the organisation's name and billing contact, its invoices and payments, the sign-ins of the people who manage it in our portal (their email, a hashed password and an authenticator), the settings and vaults it publishes, the manuals it uploads, and the seat records described in section 3. A manual an organisation uploads is handled for that organisation, and is published encrypted so that only its phones can open it.</li>
   <li><strong>Our legitimate interest in fixing problems.</strong> When you choose to send us a diagnostics or support report, or email us, we use it to look into the problem and answer you, and for nothing else.</li>
 </ul>
 <p>If your employer or another organisation gave you Avenkin, that organisation decides which job records, reports and transcripts its own systems receive, and it is responsible for what it does with them.</p>
@@ -351,7 +358,7 @@
 <p>Some things are not marked: spoken answers, because no file is made; messages the assistant drafts, because you read, change and send them yourself; live broadcasts, because there is no file to carry a mark; and camera photos, because nothing in them was made by AI.</p>
 
 <h2 id="rights">13. Your rights</h2>
-<p>Under the New Zealand Privacy Act 2020 you have the right to ask for access to personal information we hold about you and to ask us to correct it. We hold very little: usually just what's in any email you send us. Contact us at the address below. For information on your phone, you can view, change and delete it in the app. For information held by a service you chose, contact that service.</p>
+<p>Under the New Zealand Privacy Act 2020 you have the right to ask for access to personal information we hold about you and to ask us to correct it. We hold very little: usually just what's in any email you send us, and, if you use the app on an organisation's licence, your phone's seat record. Contact us at the address below. For information on your phone, you can view, change and delete it in the app. For information held by a service you chose, contact that service.</p>
 <p>If you are in the EU, the EEA or the UK, you also have the right to ask us to delete the personal information we hold about you, to restrict how we use it, to have it in a portable form, and to object to our using it for our legitimate interest. Ask at the same address.</p>
 <p>If you are not satisfied with how we handle a privacy concern, you can complain to the Office of the Privacy Commissioner at <a href="https://www.privacy.org.nz/">privacy.org.nz</a>. In the EU or the EEA you can also complain to the <a href="https://www.edpb.europa.eu/about-edpb/about-edpb/members_en">data protection authority</a> where you live or work, and in the UK to the <a href="https://ico.org.uk/">Information Commissioner's Office</a>.</p>
 
