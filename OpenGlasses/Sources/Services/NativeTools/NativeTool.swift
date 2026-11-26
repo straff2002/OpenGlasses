@@ -16,6 +16,12 @@ protocol NativeTool {
     /// that declares one is screened by `NativeToolRouter` like an MCP call, and its outbound text
     /// is checked for copied private spans. `nil` — the default — sends nothing model-written.
     var egressProfile: NativeEgressProfile? { get }
+    /// Whether the wearer defined this tool rather than the app shipping it: a custom tool runs a
+    /// Shortcut or a link the wearer chose, so what it hands back is outside text this app never
+    /// wrote. `NativeToolRegistry.isKnownNativeTool(named:)` counts such a tool as not ours, so its
+    /// output is framed as untrusted data like an MCP server's. `false` — the default — for every
+    /// tool the app ships.
+    var isUserDefined: Bool { get }
     func execute(args: [String: Any]) async throws -> String
 }
 
@@ -27,4 +33,5 @@ extension NativeTool {
     /// Sends nothing the model wrote. `NativeEgressProfileGuardTests` holds every networked tool to
     /// a profile or a written-down exemption.
     var egressProfile: NativeEgressProfile? { nil }
+    var isUserDefined: Bool { false }
 }

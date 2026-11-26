@@ -2,8 +2,18 @@ import UIKit
 
 /// Wraps a user-defined CustomToolDefinition to conform to the NativeTool protocol.
 /// Executes by opening a Siri Shortcut or URL scheme.
+///
+/// The wearer defined it, so it is not one of the app's own tools (`isUserDefined`): whatever it
+/// returns reaches the model framed as untrusted data. A Shortcut's output is outside text — mail,
+/// messages, a page. A link's reply is only this file's fixed words with the model's own
+/// arguments in them, which needs no framing; it is framed anyway, since one rule for every
+/// custom tool is the rule a new kind of custom tool can't slip past.
 struct CustomToolWrapper: NativeTool {
     let definition: CustomToolDefinition
+    /// Whether the app is in front, where iOS lets it open Shortcuts; tests pass their own.
+    var isAppActive: @MainActor () -> Bool = { ShortcutRunner.appIsActive() }
+
+    var isUserDefined: Bool { true }
 
     var name: String { definition.name }
     var description: String { definition.description }
@@ -40,55 +50,11 @@ struct CustomToolWrapper: NativeTool {
         guard let shortcutName = definition.shortcutName, !shortcutName.isEmpty else {
             return "No shortcut name configured for tool '\(name)'."
         }
-
-        guard let encodedName = shortcutName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-            return "Invalid shortcut name."
-        }
-
-        // Use x-callback-url to get the shortcut's result back
-        var urlString = "shortcuts://x-callback-url/run-shortcut?name=\(encodedName)"
-
-        // Pass the first string argument as input text
-        if let firstValue = args.values.first {
-            let inputText = "\(firstValue)"
-            if let encoded = inputText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-                urlString += "&input=text&text=\(encoded)"
-            }
-        }
-
-        // Callback URLs — the shortcut will redirect back to OpenGlasses with results. Each
-        // carries a one-shot token so another app can't answer this call with output of its own
-        // (the return leg is an openglasses:// link anyone can open). The token rides unencoded,
-        // as these callback values already do: `?` and `=` are legal inside a query value, and the
-        // token's base64url alphabet contains no `&` to break out of it.
-        let callbackToken = ShortcutCallbackManager.makeCallbackToken()
-        let cb = "\(ShortcutCallbackManager.queryName)=\(callbackToken)"
-        urlString += "&x-success=openglasses://shortcut-result?\(cb)"
-        urlString += "&x-cancel=openglasses://shortcut-cancel?\(cb)"
-        urlString += "&x-error=openglasses://shortcut-error?\(cb)"
-
-        guard let url = URL(string: urlString) else {
-            return "Couldn't build URL for shortcut '\(shortcutName)'."
-        }
-
-        let canOpen = await MainActor.run {
-            UIApplication.shared.canOpenURL(url)
-        }
-
-        guard canOpen else {
-            return "Can't open Shortcuts app. Is '\(shortcutName)' installed?"
-        }
-
-        // Store a pending callback so the URL handler can resolve it
-        ShortcutCallbackManager.shared.setPending(toolName: name, callbackToken: callbackToken)
-
-        await MainActor.run {
-            UIApplication.shared.open(url)
-        }
-
-        // Wait for the callback (up to 30 seconds)
-        let result = await ShortcutCallbackManager.shared.waitForResult(timeout: 30)
-        return result ?? "Shortcut '\(shortcutName)' completed (no output returned)."
+        // The first argument rides as the Shortcut's text input. The run, its token-checked
+        // callback and the foreground rule are `ShortcutRunner`'s, shared with `run_shortcut`.
+        let input = args.values.first.map { "\($0)" }
+        return await ShortcutRunner.run(shortcutName: shortcutName, input: input, toolName: name,
+                                        isAppActive: isAppActive)
     }
 
     private func executeURLScheme(args: [String: Any]) async -> String {

@@ -192,7 +192,7 @@ class ToolCallRouter {
         let responseValue: [String: Any]
         switch result {
         case .success(let text):
-            let isKnownNative = nativeToolRouter?.registry.tool(named: name) != nil
+            let isKnownNative = nativeToolRouter?.registry.isKnownNativeTool(named: name) == true
             let framed = PromptInjectionPolicy.isUntrustedOutput(toolName: name, isKnownNativeTool: isKnownNative)
                 ? PromptInjectionPolicy.wrap(toolName: name, content: text)
                 : text

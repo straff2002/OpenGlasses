@@ -30,12 +30,17 @@ extension PromptInjectionPolicy {
         // The office's service history (Plan HU): signed by the organisation, but written from
         // its field service records — other people's notes about other visits. Data, never orders.
         "service_history",
+        // A Shortcut's output (Plan Z): whatever the wearer's Shortcut found — mail, messages, a
+        // web page — handed back over x-callback-url. Custom Shortcut tools are caught by the
+        // registry instead (`NativeTool.isUserDefined`), however they are named.
+        "run_shortcut",
     ]
 
-    /// Whether a tool's output must be treated as untrusted data. Native tools not in the
-    /// allow-listed-as-trusted set, the OpenClaw `execute` gateway tool, and any tool the local
-    /// registry doesn't recognize (i.e. it came from an external MCP server) are all untrusted.
-    /// - Parameter isKnownNativeTool: whether the local `NativeToolRegistry` owns this tool.
+    /// Whether a tool's output must be treated as untrusted data. The named tools above, the
+    /// OpenClaw `execute` gateway tool, and any tool that is not one the app ships (an external
+    /// MCP server's, or one the wearer defined) are all untrusted.
+    /// - Parameter isKnownNativeTool: `NativeToolRegistry.isKnownNativeTool(named:)` — the registry
+    ///   owns this tool and the app ships it. A custom tool is registered but not known.
     static func isUntrustedOutput(toolName: String, isKnownNativeTool: Bool) -> Bool {
         if untrustedOutputTools.contains(toolName) { return true }
         if toolName == "execute" { return true }      // OpenClaw gateway — external world

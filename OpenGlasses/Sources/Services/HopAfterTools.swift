@@ -147,8 +147,9 @@ struct AttemptToolLedger: Equatable {
         var ran = true
         /// The tool's output when it completed; nil while it runs and for any other outcome.
         var result: String?
-        /// Plan LA: a tool this app ships (the registry holds it), not an MCP server's or the
-        /// gateway's. Only a native tool can vouch for what it did.
+        /// Plan LA: a tool this app ships (`NativeToolRegistry.isKnownNativeTool(named:)`), not an
+        /// MCP server's, the gateway's or one the wearer defined. Only a native tool can vouch for
+        /// what it did.
         var isNative = false
         /// Plan LA: how the call ended, by class; `.running` until it finishes.
         var outcome: QuietTurnCall.Outcome = .running

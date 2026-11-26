@@ -217,7 +217,13 @@ extension InstantReplayTool {
 extension SendMessageTool { var executionSemantics: ToolExecutionSemantics { .external(.bestEffort) } }
 extension MultiChannelMessageTool { var executionSemantics: ToolExecutionSemantics { .external(.bestEffort) } }
 extension PhoneCallTool { var executionSemantics: ToolExecutionSemantics { .external(.bestEffort) } }
-extension SiriShortcutsTool { var executionSemantics: ToolExecutionSemantics { .external(.bestEffort) } }
+// Waits up to `ShortcutRunner.callbackTimeout` for the Shortcut's reply, so its own budget is a
+// little longer: the runner's honest "sent nothing back" then wins over the router's timeout.
+extension SiriShortcutsTool {
+    var executionSemantics: ToolExecutionSemantics {
+        .external(.bestEffort, timeout: .seconds(ShortcutRunner.callbackTimeout + 5))
+    }
+}
 extension EscalateToExpertTool { var executionSemantics: ToolExecutionSemantics { .external(.bestEffort) } }
 extension FieldSessionTool { var executionSemantics: ToolExecutionSemantics { .external(.bestEffort) } }
 extension FirstAidTool { var executionSemantics: ToolExecutionSemantics { .external(.bestEffort) } }

@@ -1042,7 +1042,7 @@ class LLMService: ObservableObject {
     /// untrusted external content (web, OCR, captions, gateway, MCP, …) is wrapped in a labelled
     /// envelope so injected instructions inside it are visibly framed as data, not commands.
     private func wrapToolResultForModel(toolName: String, content: String) -> String {
-        let isKnownNative = nativeToolRouter?.registry.tool(named: toolName) != nil
+        let isKnownNative = nativeToolRouter?.registry.isKnownNativeTool(named: toolName) == true
         return PromptInjectionPolicy.resultForModel(toolName: toolName, content: content, isKnownNativeTool: isKnownNative)
     }
 
@@ -1972,7 +1972,7 @@ class LLMService: ObservableObject {
     private func ledgerDispatched(_ name: String, args: [String: Any], arguments: String? = nil) -> Int {
         turnToolLedger.dispatched(tool: name, arguments: arguments ?? AttemptToolLedger.canonicalArguments(args),
                                   effect: callEffect(ofTool: name, args: args),
-                                  isNative: nativeToolRouter?.registry.tool(named: name) != nil)
+                                  isNative: nativeToolRouter?.registry.isKnownNativeTool(named: name) == true)
     }
 
     /// The decision for a hop the chain is about to make (Plan KL P2). Returns normally to hop —
@@ -1992,7 +1992,7 @@ class LLMService: ObservableObject {
         let registry = nativeToolRouter?.registry
         for ran in ledger.ranTools {
             PrivacyLog.model(.hopToolRan,
-                             detail: PrivacyToken(registry?.tool(named: ran.tool) != nil ? ran.tool : "other"),
+                             detail: PrivacyToken(registry?.isKnownNativeTool(named: ran.tool) == true ? ran.tool : "other"),
                              reason: PrivacyToken(ran.effect.rawValue))
         }
         switch decision {
@@ -2005,7 +2005,7 @@ class LLMService: ObservableObject {
             if overflow { throw error }
             throw HopAfterTools.TurnEnded(
                 tools: ledger.changingTools.map {
-                    HopAfterTools.spokenToolName($0, isNative: registry?.tool(named: $0) != nil)
+                    HopAfterTools.spokenToolName($0, isNative: registry?.isKnownNativeTool(named: $0) == true)
                 },
                 underlying: SafeErrorSummary(error))
         }
@@ -2520,7 +2520,7 @@ class LLMService: ObservableObject {
             guard let self else { return false }
             let call = QuietTurnCall(tool: step.tool, effect: self.callEffect(ofTool: step.tool, args: step.args),
                                      outcome: .running, completion: nil,
-                                     isNative: router.registry.tool(named: step.tool) != nil)
+                                     isNative: router.registry.isKnownNativeTool(named: step.tool))
             return QuietTurnJudge.holdsPreamble(forRound: [call])
         }
 

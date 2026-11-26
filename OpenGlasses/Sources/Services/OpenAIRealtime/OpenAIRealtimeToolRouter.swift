@@ -105,7 +105,7 @@ final class OpenAIRealtimeToolRouter {
     }
 
     private func respond(callId: String, name: String, result: ToolResult) {
-        let isKnownNative = nativeToolRouter?.registry.tool(named: name) != nil
+        let isKnownNative = nativeToolRouter?.registry.isKnownNativeTool(named: name) == true
         let output: String
         switch result {
         case .success(let text):

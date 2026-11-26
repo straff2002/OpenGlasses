@@ -38,7 +38,8 @@ enum StepActionRun: Equatable {
                 "action": .text("create"), "task_name": .text(step.title), "task_prompt": .text(prompt),
                 // `manage_schedule` reads 0 as once a day.
                 "interval_minutes": .number(every == .daily ? 0 : 7 * 24 * 60),
-                "speak_result": .flag(true),
+                // No `speak_result`: like any new task, it starts silent and its results arrive
+                // as a notification (`ScheduledTask.speakResultDefault`).
             ])
         case .draft(let kind, let prompt):
             return .draft(request: "Draft a \(kind.rawValue) for my goal \u{201C}\(goal.title)\u{201D}, "

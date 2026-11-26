@@ -1,12 +1,10 @@
 import Foundation
-import Intents
-import UIKit
 
-/// Runs Siri Shortcuts (Apple Shortcuts app) by name.
-/// Allows the user to trigger any shortcut they've created hands-free.
+/// Runs Siri Shortcuts (Apple Shortcuts app) by name and returns their output.
+/// Allows the user to trigger any shortcut they've created hands-free, while the app is open.
 struct SiriShortcutsTool: NativeTool {
     let name = "run_shortcut"
-    let description = "Run an Apple Shortcut by name. Triggers shortcuts from the Shortcuts app. Great for custom automations like 'start focus mode', 'log water', or any shortcut the user has created."
+    let description = "Run an Apple Shortcut by name and get back what it outputs. Works only while the app is open. Great for custom automations like 'start focus mode', 'log water', or any shortcut the user has created."
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
@@ -22,36 +20,19 @@ struct SiriShortcutsTool: NativeTool {
         "required": ["shortcut_name"]
     ]
 
+    /// Whether the app is in front, where iOS lets it open Shortcuts; tests pass their own.
+    var isAppActive: @MainActor () -> Bool = { ShortcutRunner.appIsActive() }
+
+    /// Runs the Shortcut and returns what it hands back over x-callback-url, through the same
+    /// token-checked round trip as a custom Shortcut tool (`ShortcutRunner`). The output is the
+    /// Shortcut's, so `PromptInjectionPolicy` frames it as untrusted data. Outside the foreground
+    /// nothing is opened, and the reply says so rather than claiming a run.
     func execute(args: [String: Any]) async throws -> String {
-        guard let shortcutName = args["shortcut_name"] as? String, !shortcutName.isEmpty else {
+        guard let shortcutName = (args["shortcut_name"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !shortcutName.isEmpty else {
             return "No shortcut name provided."
         }
-
-        let input = args["input"] as? String
-
-        // Build the shortcuts:// URL to run a shortcut
-        var urlString = "shortcuts://run-shortcut?name=\(shortcutName)"
-        if let input = input {
-            urlString += "&input=text&text=\(input)"
-        }
-
-        guard let encoded = urlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: encoded) else {
-            return "Couldn't build URL for shortcut '\(shortcutName)'."
-        }
-
-        let canOpen = await MainActor.run {
-            UIApplication.shared.canOpenURL(url)
-        }
-
-        guard canOpen else {
-            return "The Shortcuts app doesn't appear to be available. Make sure it's installed."
-        }
-
-        await MainActor.run {
-            UIApplication.shared.open(url, options: [:], completionHandler: nil)
-        }
-
-        return "Running shortcut '\(shortcutName)'..."
+        return await ShortcutRunner.run(shortcutName: shortcutName, input: args["input"] as? String,
+                                        toolName: name, isAppActive: isAppActive)
     }
 }

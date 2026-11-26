@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import UserNotifications
 
 /// Scheduled background tasks for the agent personality mode.
 /// Runs periodic agent prompts (calendar checks, awareness, self-reflection)
@@ -27,6 +28,8 @@ class AgentScheduler: ObservableObject {
     private var store: AgentScheduleStateStore { stateStore ?? .shared }
     /// 0…1, spreading retry waits a little (`SchedulePolicy.retryDelay`); tests fix it.
     var jitter: () -> Double = { Double.random(in: 0...1) }
+    /// Where a result a task doesn't speak is posted (`ScheduledTaskNotification`); tests catch it.
+    var postSilentResult: (UNNotificationRequest) -> Void = { ScheduledTaskNotification.postToCenter($0) }
 
     /// Built-in scheduled tasks. Users can add more via quick actions.
     struct ScheduledTask: Codable, Identifiable, Equatable {
@@ -36,7 +39,9 @@ class AgentScheduler: ObservableObject {
         var intervalMinutes: Int
         var enabled: Bool
         var lastRun: Date?
-        var speakResult: Bool      // Whether to speak the result via TTS
+        /// Whether the result is spoken (`AgentNotificationQueue`). Off, it arrives as one silent
+        /// notification instead (`ScheduledTaskNotification`).
+        var speakResult: Bool
         var personaId: String?     // Which persona/agent runs this (nil = default/current)
         var modelId: String?       // Specific model override (nil = persona's model or active model)
         var createdBy: String?     // Which agent created this task (for audit trail)
@@ -47,6 +52,11 @@ class AgentScheduler: ObservableObject {
         /// daily cap on goal sentences counts.
         var lastSpokenAt: Date? = nil
 
+        /// What a new task starts with, wherever it is made — the New Task sheet, `manage_schedule`,
+        /// a Shortcut template, the built-in tasks: silent, so a result lands as a notification
+        /// rather than being spoken through the phone. A task already saved keeps its own setting.
+        static let speakResultDefault = false
+
         static let defaults: [ScheduledTask] = [
             ScheduledTask(
                 id: "calendar-check",
@@ -54,7 +64,7 @@ class AgentScheduler: ObservableObject {
                 prompt: "Check the calendar for events in the next 30 minutes. If there's an upcoming meeting or event, remind me with the name, time, and location. If nothing is coming up, there's nothing to report.",
                 intervalMinutes: 15,
                 enabled: true,
-                speakResult: true
+                speakResult: speakResultDefault
             ),
             ScheduledTask(
                 id: "periodic-awareness",
@@ -62,7 +72,7 @@ class AgentScheduler: ObservableObject {
                 prompt: "Check my reminders for anything due now or overdue. Check if there are any timer or alarm results pending. If nothing needs attention, there's nothing to report.",
                 intervalMinutes: 30,
                 enabled: false,
-                speakResult: true
+                speakResult: speakResultDefault
             ),
             ScheduledTask(
                 id: "memory-reflection",
@@ -80,7 +90,7 @@ class AgentScheduler: ObservableObject {
                 prompt: "Use the discover_capabilities tool with category 'all' to see what's available on this device. Then use category 'suggest' to think about useful automations. If you have a genuinely useful suggestion the operator hasn't heard before, propose it briefly. If you've already suggested everything obvious, there's nothing to report.",
                 intervalMinutes: 0,  // Once daily
                 enabled: false,
-                speakResult: true
+                speakResult: speakResultDefault
             ),
         ]
     }
@@ -482,7 +492,8 @@ class AgentScheduler: ObservableObject {
         let run = await ActivityScope.$scheduledTask.withValue(task.name) {
             await executeAgentPrompt(task.prompt, speakResult: task.speakResult, scheduled: true,
                                      inForeground: inForeground,
-                                     personaId: task.personaId, personaName: personaName)
+                                     personaId: task.personaId, personaName: personaName,
+                                     silentResultTask: (id: task.id, name: task.name))
         }
         if let result = run.result {
             Self.recordRun(of: task, result: result, recorder: activityRecorder, at: Date())
@@ -501,7 +512,8 @@ class AgentScheduler: ObservableObject {
     @discardableResult
     private func executeAgentPrompt(_ prompt: String, speakResult: Bool, scheduled: Bool,
                                     inForeground: Bool = true,
-                                    personaId: String? = nil, personaName: String? = nil) async -> PromptRun {
+                                    personaId: String? = nil, personaName: String? = nil,
+                                    silentResultTask: (id: String, name: String)? = nil) async -> PromptRun {
         guard let appState else { return PromptRun(status: .couldNotCheck(reason: .noAppState), result: nil) }
 
         // Don't let a scheduled task auto-load the on-device model. Loading the (multi-GB)
@@ -583,6 +595,10 @@ class AgentScheduler: ObservableObject {
                     personaId: personaId,
                     personaName: personaName
                 )
+            } else if let task = silentResultTask {
+                // Not spoken, but not lost: one silent notification, replaced by the task's next one.
+                postSilentResult(ScheduledTaskNotification.request(taskID: task.id, taskName: task.name,
+                                                                   result: processed))
             }
 
             // The response is what the agent found out about the wearer's day — the single most

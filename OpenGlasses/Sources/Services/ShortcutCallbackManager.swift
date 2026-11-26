@@ -58,17 +58,32 @@ class ShortcutCallbackManager {
         pendingToken = callbackToken
     }
 
+    /// Drop a pending call that never started (Shortcuts didn't open), if it is still the one
+    /// pending.
+    func cancelPending(callbackToken: String) {
+        guard pendingToken == callbackToken else { return }
+        resume(with: nil)
+    }
+
     /// Wait for the shortcut to callback. Returns the output text or nil on timeout.
+    ///
+    /// One call is pending at a time. A newer call replaces the older one's token in
+    /// `setPending`, so the older one can no longer be answered: its wait ends now with nil rather
+    /// than being left unresumed. Each timeout ends only the wait it was set for.
     func waitForResult(timeout: TimeInterval = 30) async -> String? {
+        let token = pendingToken
         return await withCheckedContinuation { cont in
+            if let superseded = self.continuation {
+                self.continuation = nil
+                superseded.resume(returning: nil)
+            }
             self.continuation = cont
 
             // Timeout
             Task {
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                if let pending = self.continuation {
-                    self.clearPending()
-                    pending.resume(returning: nil)
+                if self.continuation != nil, self.pendingToken == token {
+                    self.resume(with: nil)
                 }
             }
         }
@@ -123,7 +138,7 @@ class ShortcutCallbackManager {
 
     /// Resolve the pending wait and burn the token, so the same callback URL can't be replayed
     /// against whatever invocation comes next.
-    private func resume(with result: String) {
+    private func resume(with result: String?) {
         let pending = continuation
         clearPending()
         pending?.resume(returning: result)
