@@ -174276,6 +174276,88 @@
         }
       }
     },
+    "Delete line" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حذف السطر"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar línea"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer la ligne"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sor törlése"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elimina riga"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "項目を削除"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "항목 삭제"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regel verwijderen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Excluir linha"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить строку"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لائن حذف کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除項目"
+          }
+        }
+      }
+    },
     "Delete manual" : {
       "localizations" : {
         "ar" : {
@@ -174932,6 +175014,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "刪除此交接？"
+          }
+        }
+      }
+    },
+    "Delete this line" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حذف هذا السطر"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar esta línea"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer cette ligne"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A sor törlése"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elimina questa riga"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この項目を削除"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 항목 삭제"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze regel verwijderen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Excluir esta linha"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить эту строку"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ لائن حذف کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除这一行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除這個項目"
+          }
+        }
+      }
+    },
+    "Delete this line?" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حذف هذا السطر؟"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Eliminar esta línea?"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer cette ligne?"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Törli ezt a sort?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminare questa riga?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この項目を削除しますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 항목을 삭제할까요?"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze regel verwijderen?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Excluir esta linha?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить эту строку?"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ لائن حذف کریں؟"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除这一行？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除這個項目？"
           }
         }
       }
@@ -185449,6 +185695,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "完成。"
+          }
+        }
+      }
+    },
+    "Doses given or wasted from this line stay in the stock report, so it can't be deleted." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تبقى الجرعات المُعطاة أو المُهدَرة من هذا السطر في تقرير المخزون، لذا لا يمكن حذفه."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las dosis aplicadas o desechadas de esta línea permanecen en el reporte de inventario, así que no se puede eliminar."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les doses administrées ou perdues de cette ligne restent dans le rapport d’inventaire; elle ne peut donc pas être supprimée."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Az ebből a sorból beadott vagy selejtezett adagok a készletjelentésben maradnak, ezért a sor nem törölhető."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le dosi somministrate o scartate da questa riga restano nel rapporto delle scorte, quindi non può essere eliminata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この項目で投与または廃棄した分は在庫レポートに残るため、削除できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 항목에서 투여하거나 폐기한 분량은 재고 보고서에 남으므로 삭제할 수 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toegediende of afgevoerde doses van deze regel blijven in het voorraadrapport staan, dus deze regel kan niet worden verwijderd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As doses aplicadas ou descartadas desta linha permanecem no relatório de estoque, então ela não pode ser excluída."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Введённые или списанные дозы по этой строке остаются в отчёте о запасах, поэтому её нельзя удалить."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس لائن سے دی گئی یا ضائع کی گئی خوراکیں اسٹاک رپورٹ میں رہتی ہیں، اس لیے اسے حذف نہیں کیا جا سکتا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这一行已施用或报废的剂量会保留在库存报告中，因此无法删除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這個項目已施用或報廢的劑量會保留在庫存報告中，因此無法刪除。"
           }
         }
       }
@@ -285964,6 +286292,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "它永遠無法存取你的聯絡人、相機、健康資料、訊息、行事曆、照片或麥克風。"
+          }
+        }
+      }
+    },
+    "It comes off the list with its count, its lots and anything asked for. Undo on the Stock screen puts it back." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يُزال من القائمة مع عدده وتشغيلاته وكل ما طُلب له. يعيده «تراجع» في شاشة المخزون."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sale de la lista con su conteo, sus lotes y todo lo solicitado. Deshacer en la pantalla Inventario la restaura."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elle est retirée de la liste avec son décompte, ses lots et tout ce qui a été demandé. Annuler, sur l’écran Inventaire, la rétablit."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A sor a darabszámával, a gyártási tételeivel és minden kért mennyiséggel együtt lekerül a listáról. A Készlet képernyőn a Visszavonás visszahozza."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esce dall’elenco con il suo conteggio, i suoi lotti e tutto ciò che è stato richiesto. Annulla, nella schermata Scorte, la ripristina."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "数量、ロット、要求済みの分とともにリストから削除されます。「在庫」画面の「取り消し」で元に戻せます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "수량, 로트, 요청한 분량과 함께 목록에서 제거됩니다. 재고 화면의 '실행 취소'로 되돌릴 수 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De regel gaat van de lijst, met het aantal, de partijen en alles wat is gevraagd. Met Ongedaan maken op het scherm Voorraad zet u hem terug."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ela sai da lista com sua contagem, seus lotes e tudo o que foi solicitado. Desfazer na tela Estoque a traz de volta."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Строка убирается из списка вместе с количеством, партиями и всем запрошенным. Кнопка «Отменить» на экране «Запасы» возвращает её."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ اپنی گنتی، اپنے لاٹس اور ہر درخواست کردہ چیز سمیت فہرست سے ہٹ جاتی ہے۔ اسٹاک اسکرین پر واپس لیں اسے واپس لے آتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它会连同数量、批次和所有已请求的数量一起从清单中移除。在“库存”屏幕上点“撤销”可将其恢复。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它會連同數量、批次和所有已要求的數量一起從清單中移除。在「庫存」畫面上點「還原」可將其復原。"
           }
         }
       }
@@ -562324,6 +562734,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "拍攝一張清晰的照片，並檢查其是否清晰到足以讀取。"
+          }
+        }
+      }
+    },
+    "Takes the line off the list. Undo on the Stock screen puts it back." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يزيل السطر من القائمة. يعيده «تراجع» في شاشة المخزون."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quita la línea de la lista. Deshacer en la pantalla Inventario la restaura."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retire la ligne de la liste. Annuler, sur l’écran Inventaire, la rétablit."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leveszi a sort a listáról. A Készlet képernyőn a Visszavonás visszahozza."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toglie la riga dall’elenco. Annulla, nella schermata Scorte, la ripristina."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "項目をリストから削除します。「在庫」画面の「取り消し」で元に戻せます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "목록에서 항목을 제거합니다. 재고 화면의 '실행 취소'로 되돌릴 수 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haalt de regel van de lijst. Met Ongedaan maken op het scherm Voorraad zet u hem terug."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tira a linha da lista. Desfazer na tela Estoque a traz de volta."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Убирает строку из списка. Кнопка «Отменить» на экране «Запасы» возвращает её."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لائن کو فہرست سے ہٹاتا ہے۔ اسٹاک اسکرین پر واپس لیں اسے واپس لے آتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将这一行从清单中移除。在“库存”屏幕上点“撤销”可将其恢复。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將這個項目從清單中移除。在「庫存」畫面上點「還原」可將其復原。"
           }
         }
       }
