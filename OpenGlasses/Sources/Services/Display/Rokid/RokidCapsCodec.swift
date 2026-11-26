@@ -604,12 +604,12 @@ enum RokidCapsMessage: Equatable {
         }
     }
 
+    /// `bytes` may be a whole link frame or a bare Caps blob, as an MFi session reads it.
     static func decode(_ bytes: [UInt8]) -> RokidCapsMessage? {
-        guard let frame = RokidIAP2Packet.decode(bytes),
-              case .uint32(let routeID)? = frame.caps.first,
+        guard let caps = RokidMFIPayload.caps(in: bytes),
+              case .uint32(let routeID)? = caps.first,
               let kind = RokidCapsRoute(rawValue: routeID) else { return nil }
 
-        let caps = frame.caps
         switch kind {
         case .request, .event:
             guard caps.count >= 4,
@@ -671,16 +671,17 @@ enum RokidMediaTransfer: Equatable {
         }
     }
 
+    /// `bytes` may be a whole link frame or a bare Caps blob, as an MFi session reads it.
     static func decode(_ bytes: [UInt8]) -> RokidMediaTransfer? {
-        guard let frame = RokidIAP2Packet.decode(bytes),
-              let kind = RokidCapsRoute(rawValue: frame.route),
-              frame.caps.count >= 2,
-              case .binary(let data) = frame.caps[1] else { return nil }
+        guard let caps = RokidMFIPayload.caps(in: bytes),
+              case .uint32(let route) = caps[0],
+              let kind = RokidCapsRoute(rawValue: route),
+              case .binary(let data) = caps[1] else { return nil }
         switch kind {
         case .photo, .opaque:
-            return .binaryChunk(route: frame.route, data: data)
+            return .binaryChunk(route: route, data: data)
         case .audioData:
-            return .audioChunk(route: frame.route, data: data)
+            return .audioChunk(route: route, data: data)
         default:
             return nil
         }

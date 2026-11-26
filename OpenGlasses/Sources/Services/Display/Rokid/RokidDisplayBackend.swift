@@ -45,10 +45,13 @@ final class RokidDisplayBackend: GlassesDisplayBackend {
         let resolved: RokidTransporting
         if let transport {
             resolved = transport
-        } else if Config.rokidUsesMFI {
-            resolved = RokidMFITransport()
         } else {
+            #if AVENKIN_PHONE_ONLY
+            // No MFi transport in the store build; it never selects this backend anyway.
             resolved = RokidBLETransport()
+            #else
+            resolved = Config.rokidUsesMFI ? RokidMFITransport() : RokidBLETransport()
+            #endif
         }
         self.transport = resolved
         self.transport.onDisconnect = { [weak self] error in

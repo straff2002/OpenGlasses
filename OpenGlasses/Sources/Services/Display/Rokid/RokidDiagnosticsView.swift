@@ -1,3 +1,5 @@
+// Uses the MFi transport and ExternalAccessory, so it is left out of the phone-only build with them.
+#if !AVENKIN_PHONE_ONLY
 import Combine
 import ExternalAccessory
 import Foundation
@@ -11,8 +13,10 @@ import UIKit
 /// established:
 ///
 /// 1. Does iOS surface the accessory at all, and under which protocol string?
-/// 2. Does the glasses' host expect a framed iAP2 packet or the bare Caps blob?
-/// 3. What session id (frame bytes 9-10) does a fresh connection use?
+/// 2. Does the glasses' host expect a framed iAP2 packet or the bare Caps blob? Answered on
+///    hardware: the bare blob. A framed write ends the session (``RokidMFIFraming``).
+/// 3. What session id (frame bytes 9-10) does a fresh connection use? Only matters to a framed
+///    write, since iOS frames the raw ones.
 ///
 /// Every byte written and read is logged in hex so a failed probe is still evidence.
 @MainActor
@@ -24,9 +28,9 @@ final class RokidDiagnosticsModel: ObservableObject {
     @Published private(set) var bytesOut = 0
     @Published private(set) var sequence: UInt32 = 1
 
-    /// Which payload policy the transport applies. `.framed` writes `ff 5a …`; `.rawCaps`
-    /// writes only the Caps blob inside it.
-    @Published var useRawCaps = false
+    /// Which payload policy the transport applies. `.rawCaps` writes only the Caps blob, which is
+    /// what an MFi session accepts; `.framed` writes `ff 5a …`, which ends the session.
+    @Published var useRawCaps = true
     @Published var sessionIDText = "1"
     @Published var rawHexText = ""
     @Published var channel = "Dev"
@@ -117,7 +121,13 @@ final class RokidDiagnosticsModel: ObservableObject {
         do {
             try await transport.connect()
             isConnected = transport.isConnected
-            append(isConnected ? "EASession open" : "connect() returned without a session")
+            if isConnected {
+                let name = transport.connectedProtocolString ?? "?"
+                let id = transport.connectedProtocolID.map(String.init) ?? "?"
+                append("EASession open on \(name) (protocol id \(id))")
+            } else {
+                append("connect() returned without a session")
+            }
         } catch {
             isConnected = false
             append("connect failed: \(String(describing: error))")
@@ -159,7 +169,7 @@ final class RokidDiagnosticsModel: ObservableObject {
         do {
             try await transport.send(bytes)
             bytesOut += bytes.count
-            append("TX raw ok")
+            append("TX raw queued")
         } catch {
             append("TX raw failed: \(String(describing: error))")
         }
@@ -186,7 +196,7 @@ final class RokidDiagnosticsModel: ObservableObject {
             try await transport.send(frame)
             bytesOut += wire.count
             sequence &+= 1
-            append("TX ok, next seq \(sequence)")
+            append("TX queued, next seq \(sequence)")
         } catch {
             append("TX failed: \(String(describing: error))")
         }
@@ -198,14 +208,24 @@ final class RokidDiagnosticsModel: ObservableObject {
         bytesIn += bytes.count
         append("RX \(bytes.count) B: \(hex(bytes))")
 
-        guard let frame = RokidIAP2Packet.decode(bytes) else {
-            append("RX: not a decodable iAP2 frame (bad sync, length or checksum)")
+        if let frame = RokidIAP2Packet.decode(bytes) {
+            let seq = frame.sequence.map(String.init) ?? "none"
+            append("RX frame route \(hex4(UInt16(truncatingIfNeeded: frame.route))) seq \(seq) ts \(frame.timestampMicroseconds) session \(hex4(frame.sessionID))")
+        } else if let caps = RokidMFIPayload.caps(in: bytes), case .uint32(let route) = caps[0] {
+            // What an MFi session reads: iOS has already taken the link envelope off.
+            var seq = "none"
+            if case .uint32(let value) = caps[1] { seq = String(value) }
+            append("RX caps route \(hex4(UInt16(truncatingIfNeeded: route))) seq \(seq)")
+        } else {
+            append("RX: neither a link frame nor a Caps blob")
+            if let discarded = transport?.discardedInboundByteCount, discarded > 0 {
+                append("RX: \(discarded) B discarded so far while finding blob boundaries")
+            }
             return
         }
-
-        let seq = frame.sequence.map(String.init) ?? "none"
-        append("RX frame route \(hex4(UInt16(truncatingIfNeeded: frame.route))) seq \(seq) ts \(frame.timestampMicroseconds) session \(hex4(frame.sessionID))")
-        append("RX tags \(frame.caps.map { String($0.typeTag) }.joined())")
+        if let caps = RokidMFIPayload.caps(in: bytes) {
+            append("RX tags \(caps.map { String($0.typeTag) }.joined())")
+        }
 
         if let message = RokidCapsMessage.decode(bytes) {
             append("RX message method \(message.method) channel \(message.channel ?? "-") payload \(message.textPayload ?? "-")")
@@ -306,7 +326,7 @@ struct RokidDiagnosticsView: View {
 
     private var sessionSection: some View {
         Section("Session") {
-            Toggle("Write raw Caps instead of a framed packet", isOn: $model.useRawCaps)
+            Toggle("Write raw Caps (what the glasses accept)", isOn: $model.useRawCaps)
             HStack {
                 Text("Session id")
                 Spacer()
@@ -316,7 +336,7 @@ struct RokidDiagnosticsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             }
-            Text("Captures show 1 on one connection and 8 on another; the allocation rule is unknown. Try both.")
+            Text("Only used by a framed write; iOS frames raw Caps itself. Captures show 1 on one connection and 8 on another.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             HStack {
@@ -339,13 +359,13 @@ struct RokidDiagnosticsView: View {
 
     private var commandSection: some View {
         Section("Commands") {
-            Button("Probe as framed") {
-                Task { await model.probe(.framed) }
-            }
             Button("Probe as rawCaps") {
                 Task { await model.probe(.rawCaps) }
             }
-            Text("Each probe sends Dev_GetGlassInfo, which is a read: the glasses answer with a device descriptor and change nothing. Run one, then the other, and see which produces a reply.")
+            Button("Probe as framed (ends the session)") {
+                Task { await model.probe(.framed) }
+            }
+            Text("Each probe sends Dev_GetGlassInfo, a read that changes nothing. The glasses parse each write as a Caps blob, which must have 0x05 at byte 4; a framed write has 0x40 there, so they reject it and close the session. The glasses also answer only after the connect message on route 0x1004.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
@@ -398,3 +418,4 @@ struct RokidDiagnosticsView: View {
         }
     }
 }
+#endif

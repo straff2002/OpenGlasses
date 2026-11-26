@@ -1,3 +1,7 @@
+// The MFi transport links ExternalAccessory, which the phone-only store build must not: Apple asks
+// a build that links it for an MFi product id. Everything this file needs from the protocol itself
+// lives in RokidMFIProtocol, which compiles everywhere.
+#if !AVENKIN_PHONE_ONLY
 import Combine
 import ExternalAccessory
 import Foundation
@@ -19,6 +23,8 @@ enum RokidMFIError: LocalizedError, Equatable {
     case streamsUnavailable
     case notConnected
     case writeFailed
+    /// Writes are arriving faster than the session takes them; see `RokidWriteQueue`.
+    case writeQueueFull
 
     var errorDescription: String? {
         switch self {
@@ -29,7 +35,7 @@ enum RokidMFIError: LocalizedError, Equatable {
                 ? "the connected accessory"
                 : accessories.joined(separator: ", ")
             let list = advertised.isEmpty ? "no MFi protocols" : advertised.joined(separator: ", ")
-            return "\(names) does not speak com.rokid.aiglasses (advertises: \(list))."
+            return "\(names) does not speak either Rokid protocol (advertises: \(list))."
         case .sessionCreationFailed(let protocolString):
             return "iOS refused an EASession for \(protocolString). Either the accessory is not "
                 + "paired over MFi, or another app (Rokid's own) holds the session."
@@ -38,7 +44,9 @@ enum RokidMFIError: LocalizedError, Equatable {
         case .notConnected:
             return "No open MFi session."
         case .writeFailed:
-            return "The MFi output stream accepted no bytes."
+            return "The MFi output stream reported an error."
+        case .writeQueueFull:
+            return "The MFi session is not taking writes as fast as they are sent."
         }
     }
 }
@@ -50,34 +58,29 @@ enum RokidMFIError: LocalizedError, Equatable {
 /// `0x0051` out and `0x0b08` back, carrying RFCOMM, carrying iAP2 `FF 5A` link packets whose
 /// payload is a Caps tuple. See `docs/rokid-caps-encoding.md`.
 ///
-/// **What iOS does for us.** There is no app-level handshake to reverse: the captured session
-/// goes from RFCOMM modem text (`+CIEV: 5,3`) straight into a complete command. MFi
-/// identification and authentication are performed by the OS against the Apple
-/// Authentication Coprocessor at `/sys/devices/platform/soc/988000.i2c/i2c-2/2-0010`
-/// (confirmed present on the device), so this class only has to open a session and move bytes.
+/// **What iOS does for us.** MFi identification and authentication are performed by the OS
+/// against the Apple Authentication Coprocessor at
+/// `/sys/devices/platform/soc/988000.i2c/i2c-2/2-0010` (confirmed present on the device), and iOS
+/// adds and strips the iAP2 link envelope, so the session carries bare Caps blobs both ways
+/// (``RokidMFIFraming``).
+///
+/// **What iOS does not do for us.** The glasses' CXR service ignores a session until the client
+/// registers on it with a connect message (route `0x1004`), which carries the session's EAP
+/// protocol id (``connectedProtocolID``). This class only moves bytes; the layer that composes
+/// commands sends that message first. See `docs/rokid-hardware-validation.md`.
 ///
 /// **Threading.** `EASession` streams must be scheduled on a run loop that is being pumped, so
-/// the streams live on a dedicated `Thread` inside ``RokidMFIStreamCore``; only whole frames
-/// cross back to the main actor. That core is a plain lock-guarded class rather than an actor
+/// the streams live on a dedicated `Thread` inside ``RokidMFIStreamCore``; only whole messages
+/// cross back to the main actor. Writes join a ``RokidWriteQueue`` and leave on that thread, as
+/// the stream makes room. That core is a plain lock-guarded class rather than an actor
 /// because `StreamDelegate` callbacks arrive on that thread and cannot `await`, and it is
 /// declared at file scope rather than nested so that it does not inherit this type's
 /// `@MainActor` isolation.
 @MainActor
 final class RokidMFITransport: NSObject, ObservableObject, RokidTransporting {
 
-    /// The two `mfi.eap` names in the glasses' `cxr-service.json`, in preference order:
-    /// `com.rokid.aiglasses` (id 194) and `com.rokid.global.aiglasses` (id 195).
-    ///
-    /// **Not declared in the committed `Info.plist`, on purpose.** iOS only opens an `EASession`
-    /// for a protocol listed under `UISupportedExternalAccessoryProtocols`, and App Review rejects
-    /// a build that lists an MFi protocol unless the accessory maker has registered that app with
-    /// Apple's MFi program. Registration is per app: Rokid is an MFi licensee and registered its own
-    /// app, but not this one. Add both strings to `Info.plist` locally for a hardware spike and never
-    /// commit them; `RokidAccessoryProtocolGuardTests` fails if they land.
-    nonisolated static let protocolStrings = [
-        "com.rokid.aiglasses",
-        "com.rokid.global.aiglasses",
-    ]
+    /// The protocols to open, in preference order; see ``RokidMFIProtocol/strings``.
+    nonisolated static var protocolStrings: [String] { RokidMFIProtocol.strings }
 
     /// Spelled as a literal rather than through the `EAAccessory` constant so this file does
     /// not depend on how the C symbol is Swift-renamed. The value is the framework's own.
@@ -90,10 +93,22 @@ final class RokidMFITransport: NSObject, ObservableObject, RokidTransporting {
     /// Connected accessories that advertise one of ``protocolStrings``, for the pairing UI.
     @Published private(set) var discovered: [(id: String, name: String)] = []
 
-    /// Set from a hardware experiment — see ``RokidMFIFraming``.
-    var framing: RokidMFIFraming = .framed
+    /// What a write puts on the session. `.rawCaps` is what the glasses accept; `.framed` exists
+    /// for the probe (``RokidMFIFraming``). Reads are split by the framing the session opened with.
+    var framing: RokidMFIFraming = RokidMFIProtocol.framing
 
     var isConnected: Bool { core.isOpen }
+
+    /// The protocol string the open session was made for, or `nil` while none is open.
+    private(set) var connectedProtocolString: String?
+
+    /// The EAP protocol id of the open session, for the connect message; `nil` while none is open.
+    var connectedProtocolID: UInt32? {
+        connectedProtocolString.flatMap { RokidMFIProtocol.ids[$0] }
+    }
+
+    /// Bytes the open session threw away on the way in because they could not start a message.
+    var discardedInboundByteCount: Int { core.discardedInboundByteCount }
 
     private let core = RokidMFIStreamCore()
 
@@ -159,18 +174,24 @@ final class RokidMFITransport: NSObject, ObservableObject, RokidTransporting {
             throw RokidMFIError.streamsUnavailable
         }
 
-        core.open(session: session)
+        connectedProtocolString = protocolString
+        core.open(session: session, readsRawCaps: framing == .rawCaps)
         refresh()
     }
 
     func disconnect() {
         core.close()
+        connectedProtocolString = nil
         refresh()
     }
 
+    /// Queue one encoded command (a whole link frame, as the encoders build it) for the session.
+    ///
+    /// Returns once the bytes are queued, not once they are written: the stream takes them as it
+    /// makes room. A stream error after that closes the session and arrives on ``onDisconnect``.
     func send(_ bytes: [UInt8]) async throws {
         guard isConnected else { throw RokidMFIError.notConnected }
-        try core.write(RokidMFIPayload.payload(for: bytes, framing: framing))
+        try core.enqueue(RokidMFIPayload.payload(for: bytes, framing: framing))
     }
 
     // MARK: - Notifications
@@ -179,6 +200,7 @@ final class RokidMFITransport: NSObject, ObservableObject, RokidTransporting {
         refresh()
         guard isConnected, discovered.isEmpty else { return }
         core.close()
+        connectedProtocolString = nil
         onDisconnect?(nil)
     }
 }
@@ -188,8 +210,10 @@ final class RokidMFITransport: NSObject, ObservableObject, RokidTransporting {
 /// Owns the `EASession` and its streams on their own run-loop thread.
 ///
 /// Every member is called either under `lock` or from the stream thread. `onFrame`/`onFailed`
-/// are assigned once, before ``open(session:)``, and never mutated afterwards.
-private final class RokidMFIStreamCore: NSObject, StreamDelegate {
+/// are assigned once, before ``open(session:readsRawCaps:)``, and never mutated afterwards.
+/// Marked `@unchecked Sendable` because the lock, not the compiler, keeps it safe: the transport
+/// queues writes from the main actor, and the stream thread drains them.
+private final class RokidMFIStreamCore: NSObject, StreamDelegate, @unchecked Sendable {
 
     var onFrame: (([UInt8]) -> Void)?
     var onFailed: ((Error?) -> Void)?
@@ -199,7 +223,12 @@ private final class RokidMFIStreamCore: NSObject, StreamDelegate {
     private var input: InputStream?
     private var output: OutputStream?
     private var thread: Thread?
-    private var drain = RokidFrameDrain()
+    /// The stream thread's run loop, once it is running, so a queued write can wake it.
+    private var runLoop: CFRunLoop?
+    private var frameDrain = RokidFrameDrain()
+    private var capsDrain = RokidCapsDrain()
+    private var readsRawCaps = true
+    private var writes = RokidWriteQueue()
     private var closing = false
 
     var isOpen: Bool {
@@ -208,13 +237,25 @@ private final class RokidMFIStreamCore: NSObject, StreamDelegate {
         return session != nil && input != nil && output != nil && !closing
     }
 
-    func open(session: EASession) {
+    var discardedInboundByteCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return capsDrain.discardedByteCount
+    }
+
+    /// - Parameter readsRawCaps: split reads into bare Caps blobs (an MFi session) rather than
+    ///   `FF 5A` link frames. Fixed for the life of the session.
+    func open(session: EASession, readsRawCaps: Bool) {
         lock.lock()
         self.session = session
         self.input = session.inputStream
         self.output = session.outputStream
         self.closing = false
-        self.drain.reset()
+        self.readsRawCaps = readsRawCaps
+        self.frameDrain.reset()
+        self.capsDrain = RokidCapsDrain()
+        self.writes.removeAll()
+        self.runLoop = nil
         lock.unlock()
 
         let thread = Thread { [weak self] in self?.runStreamLoop() }
@@ -226,21 +267,27 @@ private final class RokidMFIStreamCore: NSObject, StreamDelegate {
         thread.start()
     }
 
-    func write(_ bytes: [UInt8]) throws {
+    /// Queue `bytes` whole and wake the stream thread to send what the stream has room for.
+    func enqueue(_ bytes: [UInt8]) throws {
         lock.lock()
-        let stream = output
-        lock.unlock()
-        guard let stream else { throw RokidMFIError.notConnected }
-
-        var offset = 0
-        while offset < bytes.count {
-            let written = bytes.withUnsafeBufferPointer { buffer -> Int in
-                guard let base = buffer.baseAddress else { return 0 }
-                return stream.write(base.advanced(by: offset), maxLength: bytes.count - offset)
-            }
-            guard written > 0 else { throw RokidMFIError.writeFailed }
-            offset += written
+        guard output != nil, !closing else {
+            lock.unlock()
+            throw RokidMFIError.notConnected
         }
+        guard writes.enqueue(bytes) else {
+            lock.unlock()
+            throw RokidMFIError.writeQueueFull
+        }
+        let loop = runLoop
+        lock.unlock()
+
+        // Before the thread's run loop exists there is nothing to wake: opening the output
+        // stream reports space, and that event drains whatever was queued meanwhile.
+        guard let loop else { return }
+        CFRunLoopPerformBlock(loop, CFRunLoopMode.defaultMode.rawValue) { [weak self] in
+            self?.drainWrites()
+        }
+        CFRunLoopWakeUp(loop)
     }
 
     /// Tear down without notifying — the caller decides whether this close is worth reporting.
@@ -252,6 +299,7 @@ private final class RokidMFIStreamCore: NSObject, StreamDelegate {
         session = nil
         input = nil
         output = nil
+        writes.removeAll()
         lock.unlock()
     }
 
@@ -266,6 +314,7 @@ private final class RokidMFIStreamCore: NSObject, StreamDelegate {
         lock.lock()
         let input = self.input
         let output = self.output
+        runLoop = CFRunLoopGetCurrent()
         lock.unlock()
         guard let input, let output else { return }
 
@@ -284,6 +333,30 @@ private final class RokidMFIStreamCore: NSObject, StreamDelegate {
         output.close()
         input.remove(from: .current, forMode: .default)
         output.remove(from: .current, forMode: .default)
+        lock.lock()
+        runLoop = nil
+        lock.unlock()
+    }
+
+    /// Stream thread only. Sends queued bytes until the queue empties or the stream is full; a
+    /// full stream reports space again later, which calls this again.
+    private func drainWrites() {
+        lock.lock()
+        guard let stream = output, !closing else {
+            lock.unlock()
+            return
+        }
+        // Holding the lock across the writes is deliberate: they never block, because each one
+        // is made only while the stream reports space, and it keeps `close()` from clearing the
+        // queue in the middle of a write.
+        let outcome = writes.drain { base, count in
+            stream.hasSpaceAvailable ? stream.write(base, maxLength: count) : 0
+        }
+        lock.unlock()
+
+        if outcome == .failed {
+            failed(stream.streamError ?? RokidMFIError.writeFailed)
+        }
     }
 
     private func readAvailableBytes() {
@@ -297,12 +370,13 @@ private final class RokidMFIStreamCore: NSObject, StreamDelegate {
             let read = stream.read(&chunk, maxLength: chunk.count)
             guard read > 0 else { break }
 
-            let frames: [[UInt8]]
+            let messages: [[UInt8]]
             lock.lock()
-            frames = drain.append(Array(chunk[0..<read]))
+            let bytes = Array(chunk[0..<read])
+            messages = readsRawCaps ? capsDrain.append(bytes) : frameDrain.append(bytes)
             lock.unlock()
 
-            for frame in frames { onFrame?(frame) }
+            for message in messages { onFrame?(message) }
         }
     }
 
@@ -329,5 +403,9 @@ private final class RokidMFIStreamCore: NSObject, StreamDelegate {
         if eventCode.contains(.hasBytesAvailable) {
             readAvailableBytes()
         }
+        if eventCode.contains(.hasSpaceAvailable) {
+            drainWrites()
+        }
     }
 }
+#endif

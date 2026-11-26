@@ -365,7 +365,10 @@ exchange**, and the closest thing to a handshake the Classic link contains:
 - `0x1005` answers with `i` = 1 and `S` = `<phone address>`, the *phone's* Bluetooth address
   from the capture's own `Address:` line.
 
-So the glasses learn which host is talking and acknowledge with the host's address. The `u` = 13
+So the glasses learn which host is talking and acknowledge with the host's address. A later
+hardware run (2026-11-21) showed the exchange is required, not incidental: the glasses serve no
+command until it succeeds, and they answer only a client UUID they already have registered. See
+`docs/rokid-hardware-validation.md`, item 4. The `u` = 13
 and 14 in the third slot look like paired message-type ids (request/response), and the leading
 `u` = 1 in both may be a protocol version — but with one sample each, treat all of that as
 conjecture. What is certain is that the shapes and the host address are real.
@@ -500,7 +503,7 @@ implementation existing nowhere.
 | `Sources/Services/Display/Rokid/RokidCommand.swift` | `RokidCommand` now renders an iAP2 frame; `RokidWireCodec` is the command↔frame bridge |
 | `Sources/Services/Display/Rokid/RokidDisplayBackend.swift` | holds the per-connection `sequence` and a monotonic timestamp origin; `Config.rokidUsesMFI` chooses the transport |
 | `Sources/Services/Display/Rokid/RokidFrameDrain.swift` | `RokidFrameDrain`: turns a chunked byte stream into whole frames. Resynchronises on `FF 5A`, accepts a candidate only when declared length, type `0x40` and checksum all agree, and charges a failed candidate **one byte** rather than the whole frame, because `FF 5A` occurs inside binary payloads (the 2,358-frame audio stream makes that certain, not hypothetical) |
-| `Sources/Services/Display/Rokid/RokidMFITransport.swift` | `RokidMFITransport`: the real command transport — an `EASession` over `com.rokid.aiglasses`, with the streams pumped on their own run-loop thread. Also `RokidMFIError` and the `RokidMFIFraming` switch |
+| `Sources/Services/Display/Rokid/RokidMFITransport.swift` | `RokidMFITransport`: the real command transport — an `EASession` over `com.rokid.global.aiglasses` (195) first, with the streams pumped on their own run-loop thread. Writes bare Caps blobs by default and queues them (`RokidWriteQueue`); splits reads into blobs (`RokidCapsDrain`). Also `RokidMFIError` and the `RokidMFIFraming` switch |
 | `OpenGlassesTests/RokidCapsCodecTests.swift` | 9 golden frames from this capture (covering 6 of the 9 route shapes), round-trips, and refusal tests |
 
 `RokidCapsValue` (already in `RokidCXRProtocol.swift`) is reused as the value model: its
@@ -521,7 +524,11 @@ CI run as the real gate.
    `xcodebuild test` on `macos-26`, so CI is the gate. Highest-risk files are the two
    new ones; the MFi transport touches `EASession`, `StreamDelegate` and a background
    run loop, none of which any Python mirror can exercise.
-2. **Whether we write raw Caps or the whole `ff 5a` frame.** Every capture starts mid-session
+2. ~~**Whether we write raw Caps or the whole `ff 5a` frame.**~~ **Settled on hardware
+   (2026-11-21): raw Caps, both ways.** iOS builds and strips the iAP2 envelope; the glasses
+   parse each session payload as a Caps blob, need `0x05` at byte 4, and close the session on
+   a framed write. `.rawCaps` is now the default. See `docs/rokid-hardware-validation.md`.
+   The original reasoning, kept for the record: every capture starts mid-session
    and contains exactly one frame type (`0x40`, all 3,690 checksum-valid frames), so it cannot
    show whether iOS builds the iAP2 envelope or Rokid's app does. Both encoders are tested, so
    this is one hardware experiment: launch with
@@ -535,9 +542,9 @@ CI run as the real gate.
    ms clock on inbound, 0 outbound). No decoder depends on them.
 5. **`0x2003` is a single 264-byte sample** — one frame, content unidentified. Do not infer a
    transfer protocol from it.
-6. **The RFCOMM layer is not modelled** — correctly so, since `EASession` hands over the iAP2
-   frame as its payload. Worth re-confirming on hardware that no reassembly is needed across
-   `EASession` reads.
+6. **The RFCOMM layer is not modelled** — correctly so. Settled since: `EASession` hands over
+   the bare Caps blob, not the iAP2 frame, and a blob can still split across reads, so
+   `RokidCapsDrain` reassembles them by the blob's own total.
 7. **Oversized payloads need a send-side chunker.** §6 shows the glasses' side splitting a
    big Caps blob over several frames. `RokidIAP2Packet.encode` currently emits exactly one
    frame, so any outbound payload larger than the link MTU (a long `Tts_SendPlayTts` string is

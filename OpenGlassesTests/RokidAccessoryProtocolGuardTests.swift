@@ -28,7 +28,7 @@ final class RokidAccessoryProtocolGuardTests: XCTestCase {
 
     func testCommittedInfoPlistDeclaresNoRokidProtocol() throws {
         let declared = try authoredAccessoryProtocols()
-        for rokid in RokidMFITransport.protocolStrings {
+        for rokid in RokidMFIProtocol.strings {
             XCTAssertFalse(
                 declared.contains(rokid),
                 "\(rokid) is in the committed Info.plist. Keep it as a local edit for the hardware spike — App Review rejects an MFi protocol the accessory maker has not registered the app for."

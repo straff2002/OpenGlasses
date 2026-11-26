@@ -6,6 +6,16 @@ is owed and needs a Rokid RV101 in hand. **Held, not merged (owner, 2026-10-26):
 for a working Rokid route — now CXR-L, once the developer account's scopes and app name are agreed —
 so an App Store review never meets a Rokid option that does nothing.
 
+**Route A tried on hardware, 2026-11-21 to 2026-11-23 (reported, not yet repeated on our glasses):**
+over MFi the glasses connect and answer commands, and the lens, camera, microphone and speaker
+all worked. What that settled is in this branch: the session opens on `com.rokid.global.aiglasses`
+(195), writes and reads are bare Caps blobs, and writes leave through a queue. What it did not
+settle blocks Route A for us: the glasses serve nothing until a connect message succeeds, and
+they accept it only from a client UUID they have already registered, which in that run meant
+Rokid's own app's. We do not ship another app's identity, so this branch leaves the connect
+message and the session layer out. The lens also draws text only inside the AI scene the wearer
+opens with "Hi Rokid". Details: `docs/rokid-hardware-validation.md`, "Settled on hardware".
+
 **Design added 2026-10-26 (no code):** three routes to the Rokid display, including an on-glasses
 AIUI agent with the phone as a Bluetooth LE peripheral, which needs no MFi; and a shared on-glasses
 HUD format, promoted from Plan BP's `WebHUDPayload`, for Meta's Web App surface and Rokid alike.
@@ -55,6 +65,10 @@ first session with the glasses).
    or linked (the same rule as CQ Track B).
 
 ## Phase 1 — hardware validation (owed)
+
+**Partly answered 2026-11-21 to 2026-11-23** (see the status above). Still owed on our own
+glasses: the same steps with the branch's raw-Caps transport, and the answer to how a new client
+UUID gets registered, which is a question for Rokid.
 
 Run `docs/rokid-hardware-validation.md` with the glasses: pair over BLE, try the MFi session with
 the local plist edit, send `Dev_GetGlassInfo` from the probe, then a text overlay. Each step
@@ -278,6 +292,9 @@ Agent Store reaches wearers outside mainland China, and under what agreement.
 - ~~Which Rokid route leads~~ — **decided 2026-10-26:** B (CXR-L), with A only if B fails and C as
   the fallback, because the target is wearers outside mainland China (see "Three routes"). C0, the
   shared payload, is still worth building for Meta's Web App surface on its own.
+- **How Rokid registers a new CXR client** (added 2026-11-25): ask whether the `0x1004` connect
+  message has a path for an app's own client UUID, and whether CXR-L's `authenticate` is that
+  path. Without one, Route A needs another app's identity and stays closed.
 - **The CXR-L `scopes` and `appName`** to agree with Rokid's open platform under the new developer
   account, plus the SDK licence and its default telemetry.
 - **Reversing Plan BP's "the mirror is not a backend" decision** so Meta's Web App and Rokid share

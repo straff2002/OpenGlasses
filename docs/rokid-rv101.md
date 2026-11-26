@@ -243,8 +243,10 @@ observations rather than reconstruction:
    GATT — the BLE characteristics are only a bootstrap.
 3. **GATT UUIDs**: the concrete service/characteristic UUIDs for the write/notify paths
    (currently placeholders in `RokidBLETransport`).
-4. **Auth handshake**: any app-level handshake after connect (the EVEN G2 has a 7-packet
-   one; Rokid likely does too).
+4. **Auth handshake**: **found (2026-11-21).** A connect message on route `0x1004`, answered on
+   `0x1005`, must succeed before any command is served, and the glasses answer it only for a
+   client UUID they have already registered. How a new client gets registered is the open
+   question; see `docs/rokid-hardware-validation.md`.
 5. **Param schemas**: validate the reconstructed `Ntf` / `Custom_View` / `Nav` key and
    param shapes against what the device accepts.
 6. **Camera still-fetch / live-frame ingest**: the `Med` capture + network fetch, and the
