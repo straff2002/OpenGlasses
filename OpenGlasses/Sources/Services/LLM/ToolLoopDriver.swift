@@ -73,6 +73,11 @@ struct ToolDispatchOutcome {
 /// Runs a single tool call: parses guard, executes via the injected executor, tracks status, and
 /// detects `yield_to_human`. Provider-neutral and free of `LLMService`, so it is unit-testable with
 /// a mock executor.
+///
+/// `dispatch` runs on the main actor: its status reports drive `LLMService`'s published
+/// `toolCallStatus`, which SwiftUI observes, so a report must never land off the main thread. A
+/// nonisolated `dispatch` ran on the global executor and set it from a background thread, which
+/// crashed in UIKit when the update built a view (a sheet's navigation stack) there.
 struct ToolDispatcher {
     /// Executes a well-formed native/gateway tool call. `rawArguments` is the original arg string
     /// (OpenAI) for the bridge `task` fallback. `callID` is the provider's own id for this call —
@@ -80,9 +85,11 @@ struct ToolDispatcher {
     /// execution off; nil where the provider is name-keyed (Gemini) and no such identity exists.
     let execute: (_ name: String, _ args: [String: Any], _ rawArguments: String?,
                   _ callID: String?) async -> ToolExecutionOutcome
-    /// Reports status transitions (executing → completed/failed/unknown) to the UI.
-    let onStatus: (ToolCallStatus) -> Void
+    /// Reports status transitions (executing → completed/failed/unknown) to the UI. Main actor,
+    /// and always called there: it sets a published property the UI observes.
+    let onStatus: @MainActor (ToolCallStatus) -> Void
 
+    @MainActor
     func dispatch(_ invocation: ToolInvocation) async -> ToolDispatchOutcome {
         onStatus(.executing(invocation.name))
         let outcome: ToolExecutionOutcome
