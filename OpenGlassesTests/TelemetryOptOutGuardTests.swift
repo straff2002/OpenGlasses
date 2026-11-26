@@ -182,6 +182,29 @@ final class TelemetryOptOutGuardTests: XCTestCase {
         XCTAssertTrue(NetworkRouteRegistry.requiredPrivacyManifestTypes.contains("NSPrivacyCollectedDataTypeDeviceID"))
     }
 
+    /// Plan NG — new egress: a team learning a technician files in a portal company goes to the
+    /// vendor's licence service for the company's administrator. The manifest's header names what it
+    /// sends, user content is declared, both Privacy footers say so in decision 10's words, and the
+    /// route says what it carries, all in the same change as the send.
+    func testPortalTeamLearningsAreDisclosedInTheManifestAndThePrivacyCopy() throws {
+        let manifest = normalisedWhitespace(try sourceText(Self.privacyManifest))
+        XCTAssertTrue(manifest.contains("a team learning the technician files is sent to the company's administrator for review through the same service, signed by this phone's seat (Plan NG)"),
+                      "PrivacyInfo.xcprivacy's header no longer names the portal team-learning send")
+        XCTAssertTrue(manifest.contains("never a photo, reading, customer or site"))
+        XCTAssertTrue(manifest.contains("<string>NSPrivacyCollectedDataTypeOtherUserContent</string>"))
+
+        let privacyCopy = normalisedWhitespace(try sourceText("OpenGlasses/Sources/App/Views/SettingsView.swift"))
+        let sentence = "Learnings you file are sent to your company's administrator for review when your company's vaults come from Avenkin's portal: Avenkin's licence service carries them with this phone's seat, with the job number, the machine and your name as your team sees it; never a photo, a reading, a customer or a site."
+        XCTAssertEqual(privacyCopy.components(separatedBy: sentence).count - 1, 2,
+                       "both Privacy footers (phone-only and glasses builds) disclose the portal send")
+
+        XCTAssertEqual(NetworkRoute.teamLearningPortal.dataClasses, [.transcript, .deviceIdentifier])
+        XCTAssertEqual(NetworkRoute.teamLearningPortal.transportDelegatedTo, .licenceSeatLease)
+        let sender = try sourceText("OpenGlasses/Sources/Services/Entitlement/DeviceSeat/DeviceSeatService.swift")
+        XCTAssertTrue(sender.contains("MedicalEgressGuard.check(.teamLearningPortal)"),
+                      "the seat client sends team learnings without asking the medical guard for their route")
+    }
+
     // MARK: - Backstop ordering
 
     /// Drops whole-line `//` comments so a source-order scan reads code, not prose.

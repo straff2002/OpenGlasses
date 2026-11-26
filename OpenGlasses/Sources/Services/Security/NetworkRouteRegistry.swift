@@ -218,6 +218,10 @@ enum NetworkRoute: String, CaseIterable, Sendable {
     /// Plan JS P2: a seat-checked organisation licence claims, renews and releases this phone's
     /// seat with the vendor's licence service.
     case licenceSeatLease
+    /// Plan NG: a team learning a technician filed, sent to the company's administrator in the
+    /// portal over the seat channel, and the administrator's decisions fetched back. Rides the seat
+    /// client's transport (`licenceSeatLease`) under its own medical guard call.
+    case teamLearningPortal
 
     // MARK: Account linking
     case claudeOAuthToken
@@ -279,6 +283,7 @@ extension NetworkRoute {
         case .expertBridgeWebhook: return "Notify a Field Assist expert endpoint that help was requested."
         case .expertSignaling: return "Exchange WebRTC signaling so an expert can see the wearer's camera."
         case .webRTCBrowserStreaming: return "Relay camera frames to a browser viewer through the signaling server."
+        case .teamLearningPortal: return "Send a team learning the technician filed, in a company whose vaults come from the licence portal, to the company's administrator through the vendor's licence service, signed by this phone's seat: the job number, a key for the job made from its id, the machine, the technician's name as their team sees it, what they found, the symptom and fix, and the pages and citations by name with photos and readings by count, never a photo, reading, customer or site; and fetch the administrator's decisions back."
         case .licenceSeatLease: return "Claim, renew or release this phone's seat on a seat-checked organisation licence with the vendor's licence service, about once a day: the enrolment id, a public key made for this phone, the app build and the profile id, and on a renewal the ids and versions of the organisation's own vaults installed here, and nothing else."
         case .workizAPI: return "Read assigned jobs and write a confirmed work report to the technician’s Workiz account."
         case .squareStockAPI: return "Read stock, items and locations from the business's own Square account, and write the parts-used adjustments a person confirmed, with the key pasted on this phone."
@@ -375,6 +380,8 @@ extension NetworkRoute {
         // prompt text because a line's description may have been dictated. No customer details.
         case .squareStockAPI: return [.promptText, .credential]
         case .licenceSeatLease: return [.deviceIdentifier]
+        // The technician's own words about a machine, and the seat that signs them.
+        case .teamLearningPortal: return [.transcript, .deviceIdentifier]
         case .offlineEndpointSync:
             return [.transcript, .healthFact, .credential]
         case .twitchChatSocket:
@@ -412,7 +419,7 @@ extension NetworkRoute {
         case .claudeOAuthToken, .chatGPTOAuthToken, .googleOAuthToken, .xaiOAuthToken,
              .localModelRepositoryMetadata, .localModelDownload, .ttsVoiceModelDownload,
              .asrModelDownload, .fingerspellingModelDownload, .searchModelDownload, .localizationCatalogDownload,
-             .clawHubCatalog, .vaultPackCatalog, .weatherAttributionMark, .licenceSeatLease:
+             .clawHubCatalog, .vaultPackCatalog, .weatherAttributionMark, .licenceSeatLease, .teamLearningPortal:
             return .firstPartyCloud
         case .webSearch, .newsHeadlines, .podcastDirectory, .currencyRates,
              .aircraftOverhead, .aedDirectory, .twitchChatSocket, .playbookHTTPStep, .recipeAddOn,
@@ -460,6 +467,7 @@ extension NetworkRoute {
         case .cloudTranslationCaptions: return .geminiLiveSession
         case .openAICompatibleRealtimeSession: return .openAIRealtimeSession
         case .conversationRecallSummary: return .llmCompletion
+        case .teamLearningPortal: return .licenceSeatLease
         case .openClawEventStream: return .openClawGatewaySocket
         default: return nil
         }
@@ -538,6 +546,7 @@ extension NetworkRoute {
         case .workizAPI: return ["URLSessionWorkizTransport"]
         case .squareStockAPI: return ["URLSessionStockSystemTransport"]
         case .licenceSeatLease: return ["DeviceSeatHTTPClient"]
+        case .teamLearningPortal: return []
         case .offlineEndpointSync: return ["EndpointSyncSink"]
         case .webRTCBrowserStreaming: return ["WebRTCStreamingService"]
         case .twitchChatSocket: return ["URLSessionChatSocket"]

@@ -1,0 +1,164 @@
+[
+  {
+    "name" : "kind",
+    "problem" : {
+      "field" : "kind",
+      "reason" : "wrongKind"
+    },
+    "status" : {
+      "candidateID" : "00000000000000000000000000000007",
+      "entryID" : "000000000000000000000000000003ef",
+      "issuedAt" : 1795564800,
+      "kind" : "avenkin.learning-candidate",
+      "profileId" : "fixture-company",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "approved",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "approved without an entry",
+    "problem" : {
+      "field" : "entryID",
+      "reason" : "missingEntryID"
+    },
+    "status" : {
+      "candidateID" : "00000000000000000000000000000007",
+      "issuedAt" : 1795564800,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "approved",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "approved with a reason",
+    "problem" : {
+      "field" : "reason",
+      "reason" : "reasonOutOfPlace"
+    },
+    "status" : {
+      "candidateID" : "00000000000000000000000000000007",
+      "entryID" : "000000000000000000000000000003ef",
+      "issuedAt" : 1795564800,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "reason" : "nice",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "approved",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "not taken up without a reason",
+    "problem" : {
+      "field" : "reason",
+      "reason" : "missingReason"
+    },
+    "status" : {
+      "candidateID" : "00000000000000000000000000000007",
+      "issuedAt" : 1795564800,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "not_taken_up",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "not taken up with an entry",
+    "problem" : {
+      "field" : "entryID",
+      "reason" : "entryIDOutOfPlace"
+    },
+    "status" : {
+      "candidateID" : "00000000000000000000000000000007",
+      "entryID" : "000000000000000000000000000003ef",
+      "issuedAt" : 1795564800,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "reason" : "no",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "not_taken_up",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "reason over 500",
+    "problem" : {
+      "field" : "reason",
+      "reason" : "tooLong"
+    },
+    "status" : {
+      "candidateID" : "00000000000000000000000000000007",
+      "issuedAt" : 1795564800,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "reason" : "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "not_taken_up",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "reason with a control character",
+    "problem" : {
+      "field" : "reason",
+      "reason" : "controlCharacter"
+    },
+    "status" : {
+      "candidateID" : "00000000000000000000000000000007",
+      "issuedAt" : 1795564800,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "reason" : "no\u0007",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "not_taken_up",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "received with an entry",
+    "problem" : {
+      "field" : "entryID",
+      "reason" : "entryIDOutOfPlace"
+    },
+    "status" : {
+      "candidateID" : "00000000000000000000000000000007",
+      "entryID" : "000000000000000000000000000003ef",
+      "issuedAt" : 1795564800,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 1,
+      "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+      "status" : "received",
+      "version" : 1
+    }
+  },
+  {
+    "name" : "seat id upper case",
+    "problem" : {
+      "field" : "seatID",
+      "reason" : "badIdentifier"
+    },
+    "status" : {
+      "candidateID" : "00000000000000000000000000000007",
+      "entryID" : "000000000000000000000000000003ef",
+      "issuedAt" : 1795564800,
+      "kind" : "avenkin.learning-candidate-status",
+      "profileId" : "fixture-company",
+      "revision" : 1,
+      "seatID" : "C29B00B78E50C8469837D9A707781A73568EA48088473BE4D3219544ABBDA7FE",
+      "status" : "approved",
+      "version" : 1
+    }
+  }
+]

@@ -7,7 +7,7 @@ administrator may change in the portal, the profile generation, the conditional 
 Configuration keys; reference code in the licence core and the phone's half), [crew experience](crew-experience.md)
 (a company's own fixes kept in a spreadsheet: the template, the CSV dialect, every row refusal by name, the
 row-to-entry mapping, the sealed set and its `experience` catalog field, and `crew-models.md`; reference code in
-the licence core and fixtures, the phone's entry fields, and no phone that applies a set yet), [activation lookup](activation-lookup.md) (where
+the licence core and fixtures, and the phone's half), [activation lookup](activation-lookup.md) (where
 the phone finds an activation key's sealed file on the licence host, and what each answer means), [captured manual](captured-manual.md) (IF P0: immutable source
 manifest, shared Swift/Go checks, signed report extension and proposed reviewed-vault provenance;
 no capture or sender), [job file](job-file.md) (format 2: an office-assigned identifier
@@ -16,7 +16,9 @@ office's service history and site requirements, under its own signature domain; 
 implementation, fixtures and the phone's import), [office commissioning](commissioning.md) (scan to join an office),
 [office preview](office-preview.md), [recorded session](recorded-session.md) (the shared rules
 and the two signed messages have reference code and fixtures; nothing records or sends),
-[team learning](team-learning.md), [managed office folders](office-folders.md),
+[team learning](team-learning.md) (§12, Plan NG: the portal binding and the two seat actions a
+portal company's phones send candidates and fetch statuses on; reference code in the licence core, fixtures in
+`fixtures/team-learning-portal-v1/`, and the phone's half), [managed office folders](office-folders.md),
 [bulk content](office-bulk.md) (an organisation's own publisher, the assignment receipt, and what
 a job names; messages, fixtures, and the phone's half in the opt-in build),
 [office reports](office-reports.md) (messages, fixtures and the phone's half in the opt-in

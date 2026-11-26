@@ -108,6 +108,32 @@ public enum SeatWire {
         return request
     }
 
+    /// Plan NG: open a team-learning seat action's envelope (`SeatLearningWire`), signed by the key on
+    /// the seat its lease names. The same signature rule as the other actions, with the action's
+    /// own request cap (a candidate may weigh 32 KiB; a status fetch 4 KiB).
+    public static func openLearningEnvelope(_ envelope: SeatEnvelope, action: SeatLearningWire.Action,
+                                            publicKeyX963: Data) throws -> Data {
+        let cap = action == .learningCandidate ? SeatLearningWire.maximumCandidateRequestBytes
+                                               : SeatLearningWire.maximumStatusRequestBytes
+        guard let request = Data(base64Encoded: envelope.request), request.count <= cap,
+              let signature = Data(base64Encoded: envelope.signature),
+              !envelope.nonce.isEmpty, envelope.nonce.utf8.count <= 128 else { throw SeatWireError.malformed }
+        guard let key = try? P256.Signing.PublicKey(x963Representation: publicKeyX963),
+              let ecdsa = try? P256.Signing.ECDSASignature(derRepresentation: signature) else {
+            throw SeatWireError.badSignature
+        }
+        guard key.isValidSignature(ecdsa, for: SeatLearningWire.signedBytes(action: action, nonce: envelope.nonce,
+                                                                              request: request)) else {
+            throw SeatWireError.badSignature
+        }
+        return request
+    }
+
+    /// Plan NG decision 3: the join key a candidate carries for its job, never the session id itself.
+    public static func learningJobSessionID(profileId: String, sessionId: String) -> String {
+        String(IssuanceWire.digest(SeatLearningWire.jobSessionHashInput(profileId: profileId, sessionId: sessionId)).prefix(32))
+    }
+
     /// The public key a claim carries, checked to be a P-256 key.
     public static func devicePublicKey(of claim: SeatClaimRequest) throws -> Data {
         guard let raw = Data(base64Encoded: claim.devicePublicKey),

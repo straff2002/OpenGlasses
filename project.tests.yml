@@ -49,6 +49,11 @@ targets:
       - path: Contracts/fixtures/crew-experience-v1
         type: folder
         buildPhase: resources
+      # Plan NG: the team-learning seat actions' golden fixtures, shared with the licence core's
+      # tests. Invented content; no key signs anything in them.
+      - path: Contracts/fixtures/team-learning-portal-v1
+        type: folder
+        buildPhase: resources
       # Shared FX1 public assignment/archive fixtures (no production keys or content).
       - path: Contracts/fixtures/manual-assignment-v1.json
         buildPhase: resources

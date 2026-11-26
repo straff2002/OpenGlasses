@@ -838,7 +838,11 @@ struct OpenGlassesApp: App {
                 SceneNarrationService.shared.noteInterruption(.backgrounded, active: false)
                 // Plan CT PR 2b: renew the organisation profile's lease (at most once a day) and
                 // re-evaluate it — the clock moved while the app was away.
-                Task { await OrgProfileManager.shared.renewIfDue() }
+                // Plan NG: then the team learnings owed to the portal go, and its decisions come back.
+                Task {
+                    await OrgProfileManager.shared.renewIfDue()
+                    await appState.refreshTeamLearningPortal()
+                }
                 // Plan CT PR 4: and a phone that has left the firm retries delivering what it owes.
                 Task { await OrgDepartureService.shared.settle() }
                 // Teleprompter (PR B): pull in any scripts shared via the iOS share sheet
@@ -1815,13 +1819,14 @@ class AppState: ObservableObject, AppStateProtocol {
         // A team-learning bundle the endpoint accepted has left the phone: its candidates are
         // `sent` (Plan FP P3). Only this sink's own deliveries count — never the local fallback's.
         endpoint.onDelivered = { op in LearningBundleOutbox.shared.delivered(op) }
-        guard let reports = officeReports, let evidence = officeReportEvidence else { return endpoint }
-        return OfficeReportSink(seams: .init(
+        // Plan NG: a candidate for the portal goes over the seat channel; everything else on.
+        guard let reports = officeReports, let evidence = officeReportEvidence else { return LearningPortalSink(fallback: endpoint) }
+        return LearningPortalSink(fallback: OfficeReportSink(seams: .init(
             fallback: endpoint,
             officeIsDestination: { AppState.officeIsReportDestination },
             reports: reports,
             evidence: { try await evidence.evidence(for: $0) },
-            capturedManualAllowed: {CapturedManualOutbox.shared.allows($0)}))
+            capturedManualAllowed: {CapturedManualOutbox.shared.allows($0)})))
     }
 
     static var officeIsReportDestination: Bool {
@@ -3729,7 +3734,10 @@ class AppState: ObservableObject, AppStateProtocol {
         OrgProfileManager.shared.observeJobs()
         // Plan LR: staging a pass left behind is swept, and a change held for a job runs when it closes.
         CompanyVaultService.shared.startAtLaunch()
-        Task { await OrgProfileManager.shared.renewIfDue() }
+        Task { [weak self] in
+            await OrgProfileManager.shared.renewIfDue()
+            await self?.refreshTeamLearningPortal()
+        }
         // Plan ND P3: a company's MDM may deliver the profile; read now, on foreground and on change.
         managedConfigEnrolment.start(ManagedConfigIngress.shared)
         // Plan CT PR 4: a phone that has left the firm keeps trying to deliver what it owes.
@@ -4061,7 +4069,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // organisation's endpoint, when it has one and it is allowed (FP §2: sending is part of
         // capture). Without an endpoint nothing is queued: the composer and share sheet are the
         // route, and `sent` is set only when a bundle really leaves.
-        LearningCandidateService.shared.onChange = { [weak self] _ in self?.queueTeamLearningCandidates() }
+        // Plan NG: in a company that reviews learnings in the portal, the candidate itself is queued
+        // for the portal instead, and never also bundled for an endpoint.
+        LearningCandidateService.shared.onChange = { [weak self] candidate in self?.queueTeamLearningCandidates(candidate) }
         // Finish any manual removal a previous run was interrupted part-way through. Ordering is
         // not what makes this safe — a pending removal's manual is already excluded from retrieval
         // and from being opened, whether or not this has run yet — but leaving one unfinished would
@@ -6410,7 +6420,15 @@ class AppState: ObservableObject, AppStateProtocol {
     /// bundle still waiting there (each bundle carries every candidate not yet answered, so the
     /// newest is all that needs to go). Does nothing without an allowed endpoint, under HIPAA
     /// mode, or without the capability.
-    func queueTeamLearningCandidates() {
+    func queueTeamLearningCandidates(_ changed: LearningCandidate? = nil) {
+        // Plan NG §4: one route per company. On the portal route the candidate goes to the
+        // company's administrator over the seat channel, and no bundle goes to an endpoint.
+        if TeamLearningRoute.current() == .portal {
+            if let changed, LearningPortalOutbox.shared.enqueue(changed, in: offlineQueue) {
+                Task { [weak self] in _ = await self?.syncEngine.flush() }
+            }
+            return
+        }
         let policy = DeliveryPolicy(settings: Config.deliverySettings)
         guard Config.deliverySettings.hasEndpoint, policy.decide(channel: .endpoint).isAllowed,
               case .success(let bundle) = LearningBundleOutbox.shared.composeCandidates(),
@@ -6422,6 +6440,17 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         offlineQueue.enqueue(op)
         Task { [weak self] in _ = await self?.syncEngine.flush() }
+    }
+
+    /// Plan NG: after a foreground, queue any candidate still owed to the portal, send what is
+    /// queued, then hear back the administrator's decisions. Nothing off the portal route.
+    func refreshTeamLearningPortal() async {
+        guard TeamLearningRoute.current() == .portal else { return }
+        let outbox = LearningPortalOutbox.shared
+        if outbox.enqueueOwed(in: offlineQueue) > 0 || !offlineQueue.pending(limit: 1).isEmpty {
+            _ = await syncEngine.flush()
+        }
+        await outbox.refreshStatuses()
     }
 
     /// Stage a team-learning bundle on a channel — the composer, share sheet or endpoint the

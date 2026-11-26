@@ -133,6 +133,7 @@ struct SyncStatusView: View {
         case .partsRequest:  return "Parts request"
         case .subjectErasure: return "Deletion request"
         case .teamLearning:  return "Team learnings"
+        case .teamLearningPortal: return "Team learning for review"
         case .capturedManual: return "Photographed manual"
         }
     }

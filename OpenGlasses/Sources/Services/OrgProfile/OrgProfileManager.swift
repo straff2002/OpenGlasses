@@ -1517,6 +1517,7 @@ extension SettingKey {
         case .customerReportShowsExpertTime: return String(localized: "Whether the customer's report shows an expert's time and name")
         case .organizationStockPlace: return String(localized: "Where stock is kept")
         case .organizationStockClinical: return String(localized: "Whether the stock list is a clinic's")
+        case .organizationTeamLearningsInPortal: return String(localized: "Whether team learnings go to your company's administrator in the portal")
         case .stockSystemEnabled: return String(localized: "Whether this phone connects to the business's stock system")
         case .stockSystemConnector: return String(localized: "Which stock system the business uses")
         case .stockSystemSendBack: return String(localized: "Whether parts used are sent back to the stock system")

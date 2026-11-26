@@ -61,6 +61,11 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// coaching steps. Never a rate. Absent or false: off — the steps print as work done, unnamed.
     /// With no profile the device owner sets the same key in Field Assist › Experts.
     case customerReportShowsExpertTime
+    /// Whether a company whose vaults come from the portal reviews its team learnings there (Plan NG
+    /// decision 9): absent or true, a learning filed on this phone goes to the company's
+    /// administrator in the portal; false, it takes the reviewer-device route. Written only by a
+    /// profile; the administrator may set it in the portal.
+    case organizationTeamLearningsInPortal
 
     // Organisation policy — tighten only.
     case organizationAllowsUnsignedVaults
@@ -200,7 +205,8 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
              .organizationToolDefinitionsMode, .organizationManualSearchModel, .technicianFullName, .technicianID, .organizationExperts,
              .expertHandoverTranscript, .expertHandoverRetentionDays, .organizationStockPlace:
             return .profileOwned(.string)
-        case .expertHandoverIncludesAddress, .customerReportShowsExpertTime, .organizationStockClinical:
+        case .expertHandoverIncludesAddress, .customerReportShowsExpertTime, .organizationStockClinical,
+             .organizationTeamLearningsInPortal:
             return .profileOwned(.bool)
         case .organizationReportRecipients:
             return .profileOwned(.strings)

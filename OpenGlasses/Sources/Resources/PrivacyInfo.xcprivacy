@@ -23,7 +23,16 @@
   on this phone and the version of the organisation's settings it has applied,
   and nothing else; only a phone holding such a licence makes the
   call (DeviceID below). The same service hosts an organisation's own vaults and
-  manuals: the phone downloads them, and sends nothing but the requests for them. Every other transmission is user-directed app functionality sent under
+  manuals: the phone downloads them, and sends nothing but the requests for them.
+  In a company whose vaults come from the licence portal, a team learning the
+  technician files is sent to the company's administrator for review through the
+  same service, signed by this phone's seat (Plan NG): the job number, a key for the
+  job made from its id, the machine, the technician's name as their team sees it,
+  what they found, the symptom and fix, and the pages and citations by name with
+  photos and readings by count; never a photo, reading, customer or site. The
+  phone then fetches the administrator's decisions. Declared below as
+  OtherUserContent (linked to the seat) beside the seat's DeviceID; never under
+  HIPAA mode or Medical Local Only. Every other transmission is user-directed app functionality sent under
   the user's own API keys to third-party providers (Anthropic / OpenAI / Gemini / Groq / OpenRouter
   / etc. for LLM + vision, ElevenLabs / OpenAI / xAI / Gemini for TTS, Deepgram for diarized
   captions, Deepgram or OpenAI for dictation when the wearer chooses a cloud
@@ -116,7 +125,9 @@
 		</dict>
 		<!-- Prompts, notes, meeting summaries, message drafts sent to LLM providers; and, when Field
 		     Assist connects the business's own stock system (Square), part numbers, quantities and the
-		     chosen locations sent to that business's own account with the key pasted on the phone -->
+		     chosen locations sent to that business's own account with the key pasted on the phone; and
+		     (Plan NG) a team learning the technician files, sent with this phone's seat to the vendor's
+		     licence service for the company's administrator to review: user content linked to the seat -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeOtherUserContent</string>

@@ -1,0 +1,50 @@
+[
+  {
+    "officeBinding" : false,
+    "portalCompanyVaults" : false,
+    "portalSwitchedOn" : false,
+    "route" : "reviewerDevice"
+  },
+  {
+    "officeBinding" : false,
+    "portalCompanyVaults" : false,
+    "portalSwitchedOn" : true,
+    "route" : "reviewerDevice"
+  },
+  {
+    "officeBinding" : false,
+    "portalCompanyVaults" : true,
+    "portalSwitchedOn" : false,
+    "route" : "reviewerDevice"
+  },
+  {
+    "officeBinding" : false,
+    "portalCompanyVaults" : true,
+    "portalSwitchedOn" : true,
+    "route" : "portal"
+  },
+  {
+    "officeBinding" : true,
+    "portalCompanyVaults" : false,
+    "portalSwitchedOn" : false,
+    "route" : "office"
+  },
+  {
+    "officeBinding" : true,
+    "portalCompanyVaults" : false,
+    "portalSwitchedOn" : true,
+    "route" : "office"
+  },
+  {
+    "officeBinding" : true,
+    "portalCompanyVaults" : true,
+    "portalSwitchedOn" : false,
+    "route" : "office"
+  },
+  {
+    "officeBinding" : true,
+    "portalCompanyVaults" : true,
+    "portalSwitchedOn" : true,
+    "route" : "office"
+  }
+]

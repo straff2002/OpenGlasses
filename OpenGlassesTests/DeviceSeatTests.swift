@@ -134,6 +134,49 @@ actor StubSeatService: DeviceSeatServer {
         }
     }
 
+    /// Plan NG: the team-learning actions, verified the way the service does — the lease opens, the
+    /// seat it names signed this action over this nonce, and the request passes the core's checks.
+    var learningRequests: [(SeatLearningWire.Action, Data)] = []
+    var learningHeld: [String: SeatLearningCandidate] = [:]
+
+    func sendLearning(_ action: OpenGlasses.SeatLearningWire.Action, envelope: DeviceSeatLease.Envelope,
+                      origin: URL) async throws -> Data {
+        guard reachable else { throw URLError(.notConnectedToInternet) }
+        let encoder = SeatLearningWire.encoder(), decoder = SeatLearningWire.decoder()
+        func refuse(_ code: SeatLearningRefusal) -> Data { (try? encoder.encode(SeatLearningCandidateReply(refusal: code))) ?? Data() }
+        guard nonces.remove(envelope.nonce) != nil else { return refuse(.badNonce) }
+        guard let coreAction = SeatLearningWire.Action(rawValue: action.rawValue),
+              let body = Data(base64Encoded: envelope.request) else { return refuse(.badRequest) }
+        struct LeaseOnly: Decodable { let lease: String }
+        guard let leaseText = try? decoder.decode(LeaseOnly.self, from: body).lease,
+              let lease = try? SeatWire.openLease(leaseText, publicKeys: [leaseKey.publicKey]),
+              let seat = seats.last(where: { $0.deviceKeyHash == lease.deviceKeyHash && $0.freedAt == nil }),
+              let key = Data(base64Encoded: seat.devicePublicKey) else { return refuse(.freed) }
+        let wire = SeatEnvelope(nonce: envelope.nonce, request: envelope.request, signature: envelope.signature)
+        guard (try? SeatWire.openLearningEnvelope(wire, action: coreAction, publicKeyX963: key)) != nil else { return refuse(.badRequest) }
+        learningRequests.append((coreAction, body))
+        switch coreAction {
+        case .learningCandidate:
+            guard let request = try? decoder.decode(SeatLearningCandidateRequest.self, from: body),
+                  (try? SeatLearningCheck.check(request)) != nil,
+                  request.candidate.seatID == lease.deviceKeyHash, request.candidate.profileId == profileId
+            else { return refuse(.badRequest) }
+            let kept = SeatLearningIntake.keep(request.candidate, held: learningHeld[request.candidate.candidateID])
+            learningHeld[kept.candidateID] = kept
+            let status = SeatLearningStatus(candidateID: kept.candidateID, revision: kept.revision, profileId: profileId,
+                                            seatID: lease.deviceKeyHash, status: .received,
+                                            issuedAt: Int64(now.timeIntervalSince1970))
+            return try encoder.encode(SeatLearningCandidateReply(status: status))
+        case .learningStatus:
+            guard let request = try? decoder.decode(SeatLearningStatusRequest.self, from: body) else { return refuse(.badRequest) }
+            let statuses = learningHeld.values.map {
+                SeatLearningStatus(candidateID: $0.candidateID, revision: $0.revision, profileId: profileId,
+                                   seatID: lease.deviceKeyHash, status: .received, issuedAt: Int64(now.timeIntervalSince1970))
+            }
+            return try encoder.encode(SeatLearningIntake.page(statuses, after: request.after))
+        }
+    }
+
     private func record(_ outcome: SeatPolicy.Outcome) -> DeviceSeatLease.Reply {
         if case .grant(let seat, _) = outcome {
             if let index = seats.firstIndex(where: { $0.deviceKeyHash == seat.deviceKeyHash && $0.freedAt == nil }) {
@@ -747,6 +790,86 @@ final class DeviceSeatTests: XCTestCase {
         let check = FieldAssistCapabilityCheck.resolve(.ownVaults, capabilities: [], decision: decision())
         XCTAssertEqual(CustomVaultGateState.resolve(check), .seatUnavailable(hold))
         XCTAssertEqual(CustomVaultGateState.resolve(check).explanation, hold.message)
+    }
+
+    // MARK: - Team learnings over the seat (Plan NG)
+
+    private func learningCandidate(revision: Int = 1) -> LearningCandidate {
+        LearningCandidate(id: String(repeating: "c", count: 32), revision: revision, sessionId: "session-1", jobReference: "J-7",
+                          taskId: nil, vaultId: "fixture-crew-units", equipment: nil, spokenModel: "QXRT 990",
+                          finding: "The harness at the plug, not the switch.", symptom: nil, fix: nil,
+                          evidence: .init(readings: 1), author: "Fixture Technician",
+                          createdAt: t0, redactions: [])
+    }
+
+    private func sendLearning(_ seats: DeviceSeatService, _ candidate: LearningCandidate) async -> DeviceSeatService.LearningExchange {
+        await seats.learningExchange(.learningCandidate) { lease, seatID, profileId in
+            try? OpenGlasses.SeatLearningWire.encoder().encode(OpenGlasses.SeatLearningCandidateRequest(
+                lease: lease, candidate: LearningPortalOutbox.wire(candidate, profileId: profileId, seatID: seatID)))
+        }
+    }
+
+    func testALearningIsSignedByTheSeatAndCarriesOnlyTheContractsFields() async throws {
+        let seats = service()
+        await seats.checkIn(enrolment, force: true)
+        guard case .reply(let data) = await sendLearning(seats, learningCandidate()) else { return XCTFail("expected a reply") }
+        let reply = try SeatLearningWire.decoder().decode(SeatLearningCandidateReply.self, from: data)
+        XCTAssertEqual(reply.status?.status, .received)
+        XCTAssertEqual(reply.status?.seatID, keys.currentKeyHash(), "the seat id is the lease's device key hash")
+        let sent = await server.learningRequests
+        XCTAssertEqual(sent.map(\.0), [.learningCandidate])
+        let request = try XCTUnwrap(JSONSerialization.jsonObject(with: sent[0].1) as? [String: Any])
+        XCTAssertEqual(Set(request.keys), ["lease", "candidate"])
+        let candidate = try XCTUnwrap(request["candidate"] as? [String: Any])
+        XCTAssertEqual(Set(candidate.keys), ["version", "kind", "candidateID", "revision", "withdrawn", "profileId", "seatID",
+                                             "jobSessionID", "jobNumber", "createdAt", "author", "vaultID", "spokenModel",
+                                             "finding", "evidence", "redactions"],
+                       "the contract's fields and no other: no photo, reading value, customer, site or transcript")
+        XCTAssertNotEqual(candidate["jobSessionID"] as? String, "session-1", "the job session id is hashed")
+        // A duplicate revision is the same received; a status fetch then answers for this seat only.
+        guard case .reply(let again) = await sendLearning(seats, learningCandidate()) else { return XCTFail("expected a reply") }
+        XCTAssertEqual(try SeatLearningWire.decoder().decode(SeatLearningCandidateReply.self, from: again).status?.revision, 1)
+        let held = await server.learningHeld
+        XCTAssertEqual(held.count, 1)
+        let fetched = await seats.learningExchange(.learningStatus) { lease, _, _ in
+            try? OpenGlasses.SeatLearningWire.encoder().encode(OpenGlasses.SeatLearningStatusRequest(lease: lease))
+        }
+        guard case .reply(let page) = fetched else { return XCTFail("expected a page") }
+        XCTAssertEqual(try SeatLearningWire.decoder().decode(SeatLearningStatusReply.self, from: page).statuses?.count, 1)
+    }
+
+    func testWithoutALiveLeaseNoLearningIsSent() async throws {
+        let seats = service()
+        let outcome = await sendLearning(seats, learningCandidate())
+        XCTAssertEqual(outcome, .noSeat, "no claim yet: no seat to sign with")
+        XCTAssertEqual(keys.created, 0, "a learning never makes a seat key")
+        await seats.checkIn(enrolment, force: true)
+        await advance(days: 45)
+        let lapsed = await sendLearning(seats, learningCandidate())
+        XCTAssertEqual(lapsed, .noSeat, "a lease past its grace signs nothing")
+        let sent = await server.learningRequests
+        XCTAssertTrue(sent.isEmpty)
+    }
+
+    func testAStaleNonceIsAskedForOnceMoreForALearning() async throws {
+        let seats = service()
+        await seats.checkIn(enrolment, force: true)
+        await server.set(staleNonceOnce: true)
+        guard case .reply(let data) = await sendLearning(seats, learningCandidate()) else { return XCTFail("expected a reply") }
+        XCTAssertEqual(try SeatLearningWire.decoder().decode(SeatLearningCandidateReply.self, from: data).status?.status, .received)
+    }
+
+    /// Plan NG: the new egress is its own route — the technician's words beside the seat's
+    /// identifier — riding the seat client's transport, refused under Medical Local Only, and
+    /// declared in the manifest.
+    func testTheTeamLearningRouteDisclosesUserContentLinkedToTheSeat() {
+        XCTAssertEqual(NetworkRoute.teamLearningPortal.dataClasses, [.transcript, .deviceIdentifier])
+        XCTAssertEqual(NetworkRoute.teamLearningPortal.transportDelegatedTo, .licenceSeatLease)
+        XCTAssertEqual(NetworkRoute.teamLearningPortal.endpointClass, .firstPartyCloud)
+        XCTAssertTrue(NetworkRoute.teamLearningPortal.medicalPolicy.blocksLocalOnly)
+        XCTAssertTrue(NetworkRouteRegistry.requiredPrivacyManifestTypes.contains("NSPrivacyCollectedDataTypeOtherUserContent"))
+        XCTAssertEqual(NetworkRoute.licenceSeatLease.dataClasses, [.deviceIdentifier],
+                       "the seat check itself still sends only its identifiers")
     }
 
     func testTheNetworkRouteDisclosesOnlyADeviceIdentifier() {

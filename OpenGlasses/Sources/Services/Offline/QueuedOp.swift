@@ -27,6 +27,10 @@ enum OpKind: String, Codable {
     /// an organisation's endpoint when one is configured; the office route is the signed contract
     /// and does not carry this.
     case teamLearning
+    /// One team-learning candidate on its way to the company's administrator in the portal, over the
+    /// seat channel (Plan NG). The payload is the candidate's id and revision, never its words: the
+    /// send reads the candidate as it then stands (`LearningPortalOutbox`).
+    case teamLearningPortal
     /// Exact canonical captured-manual manifest; files remain immutable and Office-only.
     case capturedManual
 }
@@ -92,6 +96,12 @@ struct QueuedOp: Identifiable, Codable, Equatable {
     /// an endpoint receives and what a reviewer would open from an email are the same file.
     static func make(learningBundle bundle: LearningBundle) -> QueuedOp {
         QueuedOp(kind: .teamLearning, sessionId: LearningBundle.queueSessionID, payload: bundle.encoded())
+    }
+
+    /// A candidate for the portal (Plan NG): its id and revision only.
+    static func make(portalCandidate candidate: LearningCandidate) -> QueuedOp {
+        make(kind: .teamLearningPortal, sessionId: LearningBundle.queueSessionID,
+             json: ["candidateID": candidate.id, "revision": candidate.revision])
     }
 
     static func make(capturedManual: CapturedManualContract.Manifest) -> QueuedOp {

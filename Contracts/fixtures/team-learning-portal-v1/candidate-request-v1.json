@@ -1,0 +1,35 @@
+{
+  "candidate" : {
+    "author" : "Fixture Technician",
+    "candidateID" : "c0ffee00c0ffee00c0ffee00c0ffee01",
+    "createdAt" : 1795564800,
+    "evidence" : {
+      "citationsOpened" : [
+        "Installation manual p. 12"
+      ],
+      "pagesVerified" : [
+        "Installation manual p. 12"
+      ],
+      "photos" : 1,
+      "readings" : 2
+    },
+    "finding" : "On this model the E228 is the harness at the plug, not the switch.\nCheck the plug first.",
+    "fix" : "Reseated the harness at the plug",
+    "jobNumber" : "J-1042",
+    "jobSessionID" : "e34e091911c158bc78aef1a8e636d9b8",
+    "kind" : "avenkin.learning-candidate",
+    "modelToken" : "QXRT-990",
+    "profileId" : "fixture-company",
+    "redactions" : [
+      "email"
+    ],
+    "revision" : 1,
+    "seatID" : "c29b00b78e50c8469837d9a707781a73568ea48088473be4d3219544abbda7fe",
+    "symptom" : "E228 on start",
+    "taskID" : "task-2",
+    "vaultID" : "fixture-crew-units",
+    "version" : 1,
+    "withdrawn" : false
+  },
+  "lease" : "Zml4dHVyZS1sZWFzZQ==.Zml4dHVyZS1zaWduYXR1cmU="
+}
