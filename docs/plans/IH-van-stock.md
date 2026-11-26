@@ -19,6 +19,15 @@ when nothing matches word for word, returns `.near` for lines that match every s
 at least two of them, the odd one sounding like an unsaid word of the line (a small phonetic key or
 one to two letters' edit; never a number). `check` gives the near line's figure to be confirmed;
 every write changes nothing and asks, and `load`/`count` start a new line only with `new_line`.
+**Note (2026-11-26, owner's ask):** a line can be deleted from its page ("Delete this line", with a
+confirmation). An import of corrections still never deletes; only a takeover replaces the list.
+`VanStockLog.deleteItem` takes the line and its lots off the list as its own batch, noted as an
+`edited` movement that changes nothing, so an older build reads the file as a list without the
+line. The line is kept in `deleted_lines` until the next deletion, and Undo puts it back where it
+stood while the deletion is still the last entry. The line's movements stay as history, which
+the fold already passes over, and the exported History sheet still names it. Not offered while
+a business's own system holds the count; on a clinic's list, a line with a dose given or wasted
+is not deleted, so the stock report keeps it. Not by voice: `van_stock` has no delete.
 **Track:** Field Assist (B2B).
 **Depends on:** Plan [EM](EM-work-record-and-parts.md) P1 (shipped: `PartsVerifier`,
 `VaultPartsIndex`, `parts_request`, the work record). Nothing here waits on the office connection.
