@@ -263,8 +263,10 @@ struct MeetingSummaryTool: NativeTool {
             }
         }
 
+        // Ties break on the word: a Dictionary's order differs between instances, so two
+        // summaries of the same conversation must not list the same topics differently.
         return wordCounts
-            .sorted { $0.value > $1.value }
+            .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
             .prefix(10)
             .map { $0.key }
     }
