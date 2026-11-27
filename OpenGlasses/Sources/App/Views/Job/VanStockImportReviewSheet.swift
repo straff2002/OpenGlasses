@@ -114,6 +114,8 @@ struct VanStockImportReviewSheet: View {
             return Text("That spreadsheet matches the list already. There is nothing to import.")
         case .heldBySystem(let system):
             return Text(verbatim: VanStockImportService.Refusal.heldBySystemSentence(system))
+        case .patientColumns(let headings):
+            return Text(verbatim: ClinicalStockInboundGuard.refusal(headings))
         }
     }
 

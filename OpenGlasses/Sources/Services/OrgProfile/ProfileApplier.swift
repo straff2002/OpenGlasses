@@ -220,6 +220,19 @@ enum ProfileApplier {
                     result.drops.append(Drop(key: name, reason: .wrongDirection)); continue
                 }
                 result.ceilings[key] = value
+            case .daysCeiling(let maximum):
+                guard let disposition = readDisposition(raw, name: name, into: &result) else { continue }
+                guard disposition == .ceiling else {
+                    result.drops.append(Drop(key: name, reason: .dispositionNotAllowed(disposition))); continue
+                }
+                guard case .string(let text) = value else {
+                    result.drops.append(Drop(key: name, reason: .wrongType(expected: .string))); continue
+                }
+                guard let days = HIPAARetentionCeiling.days(text, maximum: maximum) else {
+                    result.drops.append(Drop(key: name, reason: .invalidValue(
+                        String(localized: "not a whole number of days from 1 to \(maximum)")))); continue
+                }
+                result.ceilings[key] = .string(String(days))
             case .startingValue(let type):
                 guard let disposition = readDisposition(raw, name: name, into: &result) else { continue }
                 guard disposition == .default else {

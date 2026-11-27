@@ -83,6 +83,8 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
         case dosesPerCarton = "doses_per_carton"
         /// The line's category (Plan MY §8).
         case category
+        /// Whether a clinic marked the line sensitive (Plan NJ §6).
+        case sensitive
     }
 
     let id: String
@@ -114,6 +116,11 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
     var lotID: String?
     /// For `wasted` only: why.
     var wasteReason: WasteReason?
+    /// A clinic's own short code for the person accountable (Plan NJ §3, Decision 3): letters and
+    /// digits, at most eight. Only on a waste, a removal or a count that disagreed, never on a dose
+    /// given or received. Kept on this phone: `ClinicalStockShareRow` has no field for it, so
+    /// nothing shared can carry it. Absent from every movement recorded before it existed.
+    var staffCode: String?
 
     init(id: String = UUID().uuidString,
          itemID: String,
@@ -133,7 +140,8 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
          openingCounted: Bool? = nil,
          openingUnreliable: Bool? = nil,
          lotID: String? = nil,
-         wasteReason: WasteReason? = nil) {
+         wasteReason: WasteReason? = nil,
+         staffCode: String? = nil) {
         self.id = id
         self.itemID = itemID
         self.kind = kind
@@ -153,6 +161,7 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
         self.openingUnreliable = openingUnreliable
         self.lotID = lotID
         self.wasteReason = wasteReason
+        self.staffCode = staffCode
     }
 
     enum CodingKeys: String, CodingKey {
@@ -167,7 +176,12 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
         case openingUnreliable = "opening_unreliable"
         case lotID = "lot_id"
         case wasteReason = "waste_reason"
+        case staffCode = "staff_code"
     }
+
+    /// The kinds a staff code may be kept on (Plan NJ Decision 3): a waste (cold chain among its
+    /// reasons), a removal, and a count, which keeps one only when it disagreed with the log.
+    static let staffCodeKinds: Set<Kind> = [.wasted, .removed, .counted]
 
     /// Whether this kind changes how many are on the van.
     var changesLevel: Bool {
@@ -175,5 +189,26 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
         case .loaded, .used, .removed, .counted, .opening, .wasted: return true
         case .ordered, .edited, .reversed: return false
         }
+    }
+}
+
+
+/// A clinic's own code for a member of staff (Plan NJ §3, Decision 3): what a clinic writes on a
+/// waste or an adjustment so somebody can be asked about it. Pure.
+///
+/// Letters and digits only, at most eight, so it can be initials or a clinic's own number and
+/// never a name with a space in it or a sentence. It stays on the phone.
+enum StaffCode {
+    static let maximumLength = 8
+
+    /// The code as kept: trimmed and upper-cased. Nil for an empty code, one longer than eight, or
+    /// one with anything but letters and digits in it.
+    static func clean(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty,
+              trimmed.count <= maximumLength,
+              trimmed.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) && $0.isASCII }) else {
+            return nil
+        }
+        return trimmed.uppercased()
     }
 }

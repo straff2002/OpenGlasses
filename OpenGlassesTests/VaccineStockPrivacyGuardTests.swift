@@ -68,7 +68,10 @@ final class VaccineStockPrivacyGuardTests: XCTestCase {
         let fields = Set(Mirror(reflecting: movement).children.compactMap(\.label))
         XCTAssertEqual(fields, ["id", "itemID", "kind", "quantity", "at", "batch", "source", "jobSessionID",
                                 "jobReference", "reason", "requestID", "reverses", "attribute", "oldValue",
-                                "newValue", "openingCounted", "openingUnreliable", "lotID", "wasteReason"])
+                                "newValue", "openingCounted", "openingUnreliable", "lotID", "wasteReason",
+                                // Plan NJ Decision 3: a clinic's own staff code on a waste, a removal
+                                // or a disagreeing count, kept on the phone and never shared.
+                                "staffCode"])
         let lot = StockLot(id: "l", itemID: "flu", code: "ZZ1001", expiry: nil, firstReceived: Date(), createdBatch: "b")
         XCTAssertEqual(Set(Mirror(reflecting: lot).children.compactMap(\.label)),
                        ["id", "itemID", "code", "expiry", "firstReceived", "createdBatch", "hidden"],

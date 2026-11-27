@@ -407,6 +407,8 @@ struct VanStockItemView: View {
     @State private var number = ""
     @State private var bin = ""
     @State private var category = ""
+    /// A clinic's line shown by the week in reports and exports (Plan NJ §6).
+    @State private var sensitive = false
     @State private var minimum = ""
     @State private var unit = VanStockUnit.each
     @State private var loaded = false
@@ -592,12 +594,21 @@ struct VanStockItemView: View {
             if item.category != nil {
                 TextField("Category", text: $category)
             }
+            // Plan NJ §6: only a clinic's list has reports that small figures could point to a patient in.
+            if store.resolvedClinical.clinical {
+                Toggle("Sensitive: report by the week", isOn: $sensitive)
+            }
             Button("Save details") { saveDetails() }
                 .disabled(changes(to: item).isEmpty && minimumIsTaken)
         } header: {
             Text("Details")
         } footer: {
-            Text("The assistant warns at or below the minimum. Leave it empty for no warning until the last one is used.")
+            VStack(alignment: .leading, spacing: 4) {
+                Text("The assistant warns at or below the minimum. Leave it empty for no warning until the last one is used.")
+                if store.resolvedClinical.clinical {
+                    Text("A sensitive line (rabies, travel vaccines, HPV, hepatitis B, or any the clinic chooses) appears in reports and exports by the week, never the day. This screen still shows its exact count.")
+                }
+            }
         }
     }
 
@@ -679,6 +690,7 @@ struct VanStockItemView: View {
         number = item.number ?? ""
         bin = item.bin ?? ""
         category = item.category ?? ""
+        sensitive = item.isSensitive
         minimum = item.minimum.map { VanStockEntry.text($0, locale: locale) } ?? ""
         minimumRefusal = nil
         unit = item.unit
@@ -774,6 +786,7 @@ struct VanStockItemView: View {
         if newBin != (item.bin ?? "") { changes.append(.bin(newBin.isEmpty ? nil : newBin)) }
         let newCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
         if newCategory != (item.category ?? "") { changes.append(.category(newCategory.isEmpty ? nil : newCategory)) }
+        if store.resolvedClinical.clinical, sensitive != item.isSensitive { changes.append(.sensitive(sensitive)) }
         return changes
     }
 

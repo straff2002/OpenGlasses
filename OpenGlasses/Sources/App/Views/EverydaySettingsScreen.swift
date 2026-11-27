@@ -16,7 +16,10 @@ struct EverydaySettingsScreen: View {
 
     // These exist to redraw the screen when a setter writes the key, here or elsewhere. The values
     // are read through `SettingsGroupStore`, so there is no second copy of any of them.
-    @AppStorage("hipaaMode") private var hipaaMode = false
+    /// Observed so the view redraws when the mode changes; the value is `Config.hipaaMode`, which an
+    /// organisation's profile may pin on (Plan NJ §7).
+    @AppStorage("hipaaMode") private var hipaaModeStored = false
+    private var hipaaMode: Bool { Config.hipaaMode }
     @AppStorage("userMemoryEnabled") private var userMemoryEnabled = true
     @AppStorage("conversationPersistenceEnabled") private var conversationPersistenceEnabled = true
     @AppStorage("conversationTimelineEnabled") private var conversationTimelineEnabled = true

@@ -13,7 +13,10 @@ struct LivePreviewView: View {
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var adminGate = AdminGate.shared
     /// Plan KH: the preview stays, for looking. Going live does not.
-    @AppStorage("hipaaMode") private var medicalCompliance = false
+    /// Observed so the view redraws when the mode changes; the value is `Config.hipaaMode`, which an
+    /// organisation's profile may pin on (Plan NJ §7).
+    @AppStorage("hipaaMode") private var medicalComplianceStored = false
+    private var medicalCompliance: Bool { Config.hipaaMode }
 
     /// Streaming isn't set up and the wearer asked to go and set it up. The owner of the cover
     /// closes it and opens Settings: neither can happen from in here.

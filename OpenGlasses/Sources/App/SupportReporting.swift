@@ -354,6 +354,9 @@ extension AppState {
         // Plan JY P1: each document's detected language and the model it is searched with, and
         // where each script's search model stands. Counts and labels only — no names or text.
         phone += ManualLanguageReport.current(store: documentStore)
+        // Plan NJ P1: a clinic's stock history window, how it shares, and the medical mode's pins.
+        // Case names and numbers only.
+        phone += ClinicalStockReportLines.current
         // Plan IW P2: how many goals are on the go and how long the trail is — counts only.
         phone.append(GoalActivityReportLine.line(goals: GoalStore.shared.goals,
                                                  entries: ActivityStore.shared.entries, now: Date()))

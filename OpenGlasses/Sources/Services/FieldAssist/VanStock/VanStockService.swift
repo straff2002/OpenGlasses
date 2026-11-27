@@ -219,6 +219,14 @@ final class VanStockService {
     /// The words for that place.
     var wording: StockPlaceWording { StockPlaceWording(place, clinical: isClinical) }
 
+    /// The job a movement is recorded against: none on a clinic's list (Plan NJ §1), so no job
+    /// reference, session or job record ever joins a dose. A van's movement takes the open job.
+    private func movementJob() -> Job? { isClinical ? nil : activeJob() }
+
+    /// The staff code kept on a clinic's movement (Plan NJ Decision 3): only on a clinic's list,
+    /// and only a code `StaffCode` takes. Never on a van's.
+    private func keptStaffCode(_ raw: String?) -> String? { isClinical ? StaffCode.clean(raw) : nil }
+
     private var lotComposer: StockLotComposer { StockLotComposer(wording: wording) }
 
     /// Today, as an expiry is compared with it.
@@ -311,7 +319,7 @@ final class VanStockService {
                 case .success(let chosen): lot = chosen
                 }
                 let before = log.level(of: found.item.id)
-                let job = self.activeJob()
+                let job = self.movementJob()
                 log.record(.loaded, itemID: found.item.id, quantity: quantity, at: at, batch: batch,
                            source: source, id: self.makeID(), jobSessionID: job?.sessionID,
                            jobReference: job?.reference, lotID: lot?.id)
@@ -357,7 +365,7 @@ final class VanStockService {
                 case .success(let chosen): lot = chosen
                 }
                 let before = log.level(of: found.item.id)
-                let job = self.activeJob()
+                let job = self.movementJob()
                 let movement = log.record(.used, itemID: found.item.id, quantity: quantity, at: at, batch: batch,
                                           source: source, id: self.makeID(), jobSessionID: job?.sessionID,
                                           jobReference: job?.reference, lotID: lot?.id)
@@ -384,7 +392,7 @@ final class VanStockService {
     }
 
     func remove(_ lines: [Line], reason: VanStockMovement.RemovalReason,
-                source: VanStockMovement.Source = .spoken) -> String {
+                source: VanStockMovement.Source = .spoken, staffCode: String? = nil) -> String {
         if let desk = systemDesk {
             guard let kept = desk.keptReason(for: reason) else {
                 return desk.composer.removalNotKept(keepsDamage: desk.keptReason(for: .damaged) != nil)
@@ -415,7 +423,8 @@ final class VanStockService {
                 }
                 let before = log.level(of: found.item.id)
                 log.record(.removed, itemID: found.item.id, quantity: quantity, at: at, batch: batch,
-                           source: source, id: self.makeID(), reason: reason, lotID: lot?.id)
+                           source: source, id: self.makeID(), reason: reason, lotID: lot?.id,
+                           staffCode: self.keptStaffCode(staffCode))
                 return (self.composer.removed(found.item, quantity: quantity, reason: reason, before: before,
                                               after: log.level(of: found.item.id)),
                         "\(found.item.phrase(quantity)) \(self.wording.takenFrom) (\(reason.rawValue))")
@@ -426,7 +435,7 @@ final class VanStockService {
     /// Doses or stock thrown out, for a reason (Plan MY §3): its own kind, never a removal. An
     /// expired lot may be wasted; that is what the expired refusal on a dose given offers.
     func waste(_ lines: [Line], reason: VanStockMovement.WasteReason,
-               source: VanStockMovement.Source = .spoken) -> String {
+               source: VanStockMovement.Source = .spoken, staffCode: String? = nil) -> String {
         if systemDesk != nil {
             return "\(StockPlaceWording.capitalised(wording.stockName)) here is held by the business's own system, "
                 + "so waste is recorded there, not on the phone. Nothing was changed."
@@ -454,7 +463,8 @@ final class VanStockService {
                 case .success(let chosen): lot = chosen
                 }
                 log.record(.wasted, itemID: found.item.id, quantity: quantity, at: at, batch: batch,
-                           source: source, id: self.makeID(), lotID: lot?.id, wasteReason: reason)
+                           source: source, id: self.makeID(), lotID: lot?.id, wasteReason: reason,
+                           staffCode: self.keptStaffCode(staffCode))
                 return (self.lotComposer.wasted(found.item, quantity: quantity, reason: reason, lot: lot,
                                                 after: log.level(of: found.item.id)),
                         self.lotComposer.wastedDone(found.item, quantity: quantity, reason: reason, lot: lot))
@@ -462,7 +472,7 @@ final class VanStockService {
         }
     }
 
-    func count(_ lines: [Line], source: VanStockMovement.Source = .spoken) -> String {
+    func count(_ lines: [Line], source: VanStockMovement.Source = .spoken, staffCode: String? = nil) -> String {
         if let desk = systemDesk { return desk.composer.refused(.count) }
         return write("count", lines) { log, said, batch, at in
             let line: Line
@@ -490,11 +500,12 @@ final class VanStockService {
                 if let lot = chosenLot {
                     // A count of one lot (Plan MY §6), checked against what the log held in it.
                     let lotBefore = log.level(of: found.item.id).lots[lot.id] ?? StockLotLevel(lotID: lot.id)
+                    let check = VanStockCountCheck(before: lotBefore, counted: quantity)
                     log.record(.counted, itemID: found.item.id, quantity: quantity, at: at, batch: batch,
-                               source: source, id: self.makeID(), lotID: lot.id)
+                               source: source, id: self.makeID(), lotID: lot.id,
+                               staffCode: Self.disagrees(check) ? self.keptStaffCode(staffCode) : nil)
                     let after = log.level(of: found.item.id)
                     let item = log.item(id: found.item.id) ?? found.item
-                    let check = VanStockCountCheck(before: lotBefore, counted: quantity)
                     var answer = self.lotComposer.lotCounted(item, lot: lot, newLot: log.lots.count > lotsBefore,
                                                              check: check, after: after)
                     if found.created { answer += " " + self.composer.newLineNote(item) }
@@ -503,12 +514,23 @@ final class VanStockService {
                 }
                 let before = log.level(of: found.item.id)
                 log.record(.counted, itemID: found.item.id, quantity: quantity, at: at, batch: batch,
-                           source: source, id: self.makeID())
+                           source: source, id: self.makeID(),
+                           staffCode: Self.disagrees(VanStockCountCheck(before: before, counted: quantity))
+                               ? self.keptStaffCode(staffCode) : nil)
                 let after = log.level(of: found.item.id)
                 let check = VanStockCountCheck(before: before, counted: after.onHand)
                 return (self.composer.counted(found.item, before: before, after: after, created: found.created),
                         "\(found.item.name) counted: \(found.item.figure(after.onHand)) \(self.wording.location)" + (check?.said(found.item.unit) ?? ""))
             }
+        }
+    }
+
+    /// Whether a count disagreed with the log (Plan NJ Decision 3): short or over. A count that
+    /// matched, or one with nothing to compare, keeps no staff code.
+    nonisolated static func disagrees(_ check: VanStockCountCheck?) -> Bool {
+        switch check {
+        case .short?, .over?: return true
+        case .matches?, .unreliable?, nil: return false
         }
     }
 
@@ -837,7 +859,9 @@ final class VanStockService {
         let url = folder.appendingPathComponent(VanStockSheet.fileName(exportedAt: at, calendar: calendar, kind: kind))
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try VanStockSheet.data(store.log, van: store.van, exportedAt: at, calendar: calendar, kind: kind)
+            // A clinic's list leaves inventory-only (Plan NJ §2): by day, no times, no jobs.
+            try VanStockSheet.data(store.log, van: store.van, exportedAt: at, calendar: calendar, kind: kind,
+                                   clinical: isClinical)
                 .write(to: url, options: [.atomic, .completeFileProtection])
             return url
         } catch {

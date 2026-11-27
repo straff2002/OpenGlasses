@@ -20,7 +20,10 @@ enum CaptionSessionsCopy {
 struct CaptionSessionsView: View {
     @ObservedObject private var store: CaptionSessionStore
     // Redraw when either key is written, here or elsewhere; the values are read through `Config`.
-    @AppStorage("hipaaMode") private var hipaaMode = false
+    /// Observed so the view redraws when the mode changes; the value is `Config.hipaaMode`, which an
+    /// organisation's profile may pin on (Plan NJ §7).
+    @AppStorage("hipaaMode") private var hipaaModeStored = false
+    private var hipaaMode: Bool { Config.hipaaMode }
     @AppStorage(Config.keepCaptionSessionsKey) private var keepStored = false
     @State private var confirmingDeleteAll = false
 

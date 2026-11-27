@@ -107,13 +107,22 @@ enum VanStockSheet {
 
     /// The workbook. With no kind given, the place in force for `van` (`kind(for:)`).
     static func data(_ log: VanStockLog, van: VanIdentity? = nil, exportedAt: Date,
-                     calendar: Calendar = .current, kind: StockPlace.Kind? = nil) -> Data {
-        XLSXWriter.data(for: workbook(log, van: van, exportedAt: exportedAt, calendar: calendar, kind: kind),
+                     calendar: Calendar = .current, kind: StockPlace.Kind? = nil, clinical: Bool = false) -> Data {
+        XLSXWriter.data(for: workbook(log, van: van, exportedAt: exportedAt, calendar: calendar, kind: kind,
+                                      clinical: clinical),
                         modified: exportedAt)
     }
 
+    /// The sheet a clinic's export has in place of History (Plan NJ §2).
+    static let clinicalHistorySheetName = "By day"
+
+    /// The workbook. A clinic's list (`clinical`) leaves the phone inventory-only (Plan NJ §2): its
+    /// history is `ClinicalStockShareRow`s by day (by week for a sensitive line) with small figures
+    /// printed as "fewer than 5", never a movement with its time or a job; "Last changed" is a day.
+    /// The stock sheet's levels stay exact, because a takeover reads them back.
     static func workbook(_ log: VanStockLog, van: VanIdentity? = nil, exportedAt: Date,
-                         calendar: Calendar = .current, kind: StockPlace.Kind? = nil) -> XLSX.Workbook {
+                         calendar: Calendar = .current, kind: StockPlace.Kind? = nil,
+                         clinical: Bool = false) -> XLSX.Workbook {
         let kind = kind ?? Self.kind(for: van)
         let rows = VanStockRows.rows(log)
         var stock: [[XLSX.Cell]] = [Column.allCases.map { .text($0.rawValue) }]
@@ -136,7 +145,8 @@ enum VanStockSheet {
                 case .onOrder: return level.onOrder > .zero ? figure(level.onOrder) : .empty
                 case .needsCount: return level.unreliable ? .text("Yes") : .empty
                 case .bin: return item.bin.map(XLSX.Cell.text) ?? .empty
-                case .lastChanged: return level.asOf.map { .text(stamp($0, calendar)) } ?? .empty
+                case .lastChanged:
+                    return level.asOf.map { .text(clinical ? StockDay($0, calendar: calendar).description : stamp($0, calendar)) } ?? .empty
                 case .itemID: return .text(item.id)
                 }
             })
@@ -177,6 +187,15 @@ enum VanStockSheet {
             if let place = van.place { meta.append([.text(placeKey), .text(place.rawValue)]) }
         }
 
+        if clinical {
+            return XLSX.Workbook(sheets: [
+                XLSX.Sheet(name: stockSheetName(kind), columns: Column.allCases.map(\.layout), rows: stock),
+                ClinicalStockShare.sheet(ClinicalStockShare.rows(log, calendar: calendar), name: clinicalHistorySheetName),
+                XLSX.Sheet(name: metaSheetName,
+                           columns: [XLSX.Column(width: 16, isText: true), XLSX.Column(width: 28, isText: true)],
+                           rows: meta, isHidden: true),
+            ])
+        }
         return XLSX.Workbook(sheets: [
             XLSX.Sheet(name: stockSheetName(kind), columns: Column.allCases.map(\.layout), rows: stock),
             XLSX.Sheet(name: historySheetName,
@@ -628,6 +647,20 @@ enum VanStockSheet {
     }
 
     // MARK: - Reading a sheet
+
+    /// The stock sheet's header row as `rows(from:)` finds it, with the columns it reads (Plan NJ
+    /// §1): every recognised column, the other-names columns and the category. Nil when no row is
+    /// a header. Column names only; nothing under them.
+    static func headerCells(in sheets: [XLSXReader.Sheet]) -> (headings: [String], used: Set<Int>)? {
+        let sheet = sheets.first { stockSheetNames.contains($0.name) }
+            ?? sheets.first { !$0.isHidden && $0.name != metaSheetName }
+        guard let sheet, let (headerIndex, columns, otherNameColumns, categoryColumn) = header(in: sheet.rows) else {
+            return nil
+        }
+        var used = Set(columns.values).union(otherNameColumns)
+        if let categoryColumn { used.insert(categoryColumn) }
+        return (sheet.rows[headerIndex], used)
+    }
 
     /// The header row, where each recognised column is, and the other-names columns. A header
     /// names a part or a description and at least one of the figures, or, for a list of what is

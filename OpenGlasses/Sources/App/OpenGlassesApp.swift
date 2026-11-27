@@ -3588,6 +3588,8 @@ class AppState: ObservableObject, AppStateProtocol {
             }
             Task { @MainActor in await ErasureReplay.replay(ledger: ledger, sources: replaySources) }
         }
+        // Plan NJ §7: an organisation's pin on the mode, in force from the stored profile.
+        hipaaService.applyOrganisationPin()
         if Config.hipaaMode {
             hipaaService.log(action: "APP_LAUNCHED", detail: "HIPAA mode active, retention: \(Config.hipaaRetentionDays) days")
         }
@@ -7124,6 +7126,9 @@ class AppState: ObservableObject, AppStateProtocol {
         if !(Config.agentModeEnabled && Config.mcpServerEnabled) {
             MCPGlassesServer.shared.stop()
         }
+        // Plan NJ §7: a profile that pins Medical Compliance or Local Only on, or stops pinning it.
+        hipaaService.applyOrganisationPin()
+        MedicalEgressCoordinator.announceModeChange()
     }
 
     /// Start the dev-only MCP glasses server (Plan E) with this AppState's services.

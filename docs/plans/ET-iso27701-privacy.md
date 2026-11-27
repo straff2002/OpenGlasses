@@ -163,7 +163,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | turnTraces | `TurnTraceStore` | conversationContent | wearer | completeUntilFirstUserAuthentication | yes | up to 14 days, at most 2000 turns and 8 MB; bounded, credential-redacted search contents | `TurnTraceStore.shared.removeAll()` | n/a — no subject linkage |
 | upcomingJobs | `UpcomingJobStore` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | cap 100 | `UpcomingJobStore.removeAll()` | n/a — no subject linkage |
 | usage | `UsageStore` | operationalAudit | none | completeUntilFirstUserAuthentication | yes | none | `UsageStore.deleteAll()` | n/a — no subject linkage |
-| vanStock | `VanStockStore` | operationalAudit | none | completeUntilFirstUserAuthentication | no | history folded after 400 days | `VanStockStore.removeAll()` | n/a — no subject linkage |
+| vanStock | `VanStockStore` | operationalAudit | none | completeUntilFirstUserAuthentication | no | history folded after 400 days, 1461 for a clinic's list | `VanStockStore.removeAll()` | n/a — no subject linkage |
 | vaultDocuments | `VaultStore` | documentCorpus | none | platformDefault | no | none | none — vaults are removed individually by identity | n/a — no subject linkage |
 | vaultLedger | `VaultDocumentLedger` | derivedIndex | wearer | platformDefault | no | none | `VaultDocumentLedger.clear(in:)` | `VaultDocumentLedger.forget(documentId:in:)` |
 | vaultLinkStaging | `VaultLinkStagingStore` | documentCorpus | none | complete | yes | deleted when the install finishes, fails or is dismissed; a directory found at launch belonged to an approval that no longer exists and is swept | `VaultLinkStagingStore.removeAbandonedSessions()` | n/a — no subject linkage |

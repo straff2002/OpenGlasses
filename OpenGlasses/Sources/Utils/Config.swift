@@ -3293,9 +3293,16 @@ struct Config {
     /// Master toggle for HIPAA-compliant mode.
     /// When enabled: encrypts files at rest, disables cloud memory sync, prefers local LLM,
     /// disables web search, excludes data from iCloud backup, enforces retention policies.
+    ///
+    /// An organisation's profile may pin it on (Plan NJ §7), never off: the getter is clamped, and
+    /// while it is pinned the setter is refused, so the person's own choice is there again when
+    /// the profile goes.
     static var hipaaMode: Bool {
-        get { UserDefaults.standard.bool(forKey: "hipaaMode") }
-        set { UserDefaults.standard.set(newValue, forKey: "hipaaMode") }
+        get { PolicyEnvelope.bool(.hipaaMode, stored: UserDefaults.standard.bool(forKey: "hipaaMode")) }
+        set {
+            guard !PolicyEnvelope.isLocked(.hipaaMode) else { return }
+            UserDefaults.standard.set(newValue, forKey: "hipaaMode")
+        }
     }
 
     /// Data retention period in days. Transcripts/recordings older than this are auto-purged.
@@ -3304,10 +3311,22 @@ struct Config {
         get {
             // Unset → default 90. An explicit 0 is preserved and means "no auto-purge"
             // (enforceRetentionPolicy guards on > 0).
-            guard UserDefaults.standard.object(forKey: "hipaaRetentionDays") != nil else { return 90 }
-            return max(0, UserDefaults.standard.integer(forKey: "hipaaRetentionDays"))
+            let stored = UserDefaults.standard.object(forKey: "hipaaRetentionDays") == nil
+                ? 90 : max(0, UserDefaults.standard.integer(forKey: "hipaaRetentionDays"))
+            // Plan NJ §7: an organisation's figure is the longest this phone keeps them.
+            return HIPAARetentionCeiling.effective(stored: stored, ceiling: hipaaRetentionCeilingDays)
         }
-        set { UserDefaults.standard.set(newValue, forKey: "hipaaRetentionDays") }
+        set {
+            guard !PolicyEnvelope.isLocked(.hipaaRetentionDays) else { return }
+            UserDefaults.standard.set(newValue, forKey: "hipaaRetentionDays")
+        }
+    }
+
+    /// The organisation's longest retention for Medical Compliance, in days, or nil with no
+    /// profile setting one (Plan NJ §7).
+    static var hipaaRetentionCeilingDays: Int? {
+        guard case .string(let raw)? = PolicyEnvelope.current.ceilings[.hipaaRetentionDays] else { return nil }
+        return HIPAARetentionCeiling.days(raw)
     }
 
     /// How long the wearer's own history is kept, in days; 0 (the default) keeps everything.
@@ -3323,9 +3342,13 @@ struct Config {
 
     /// Force all LLM queries through local on-device model when HIPAA mode is active.
     /// If false, cloud LLMs can still be used but a BAA warning is shown.
+    /// An organisation's profile may pin it on (Plan NJ §7), never off.
     static var hipaaLocalOnly: Bool {
-        get { UserDefaults.standard.bool(forKey: "hipaaLocalOnly") }
-        set { UserDefaults.standard.set(newValue, forKey: "hipaaLocalOnly") }
+        get { PolicyEnvelope.bool(.hipaaLocalOnly, stored: UserDefaults.standard.bool(forKey: "hipaaLocalOnly")) }
+        set {
+            guard !PolicyEnvelope.isLocked(.hipaaLocalOnly) else { return }
+            UserDefaults.standard.set(newValue, forKey: "hipaaLocalOnly")
+        }
     }
 
     /// Tools disabled under HIPAA mode to prevent PHI leakage.

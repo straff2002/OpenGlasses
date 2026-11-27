@@ -9,7 +9,10 @@ struct ServicesSettingsView: View {
     @ObservedObject var appState: AppState
     @AppStorage("digestEnabled") private var digestEnabled = true
     @AppStorage("diarizationEnabled") private var diarizationEnabled = false
-    @AppStorage("hipaaMode") private var hipaaMode = false
+    /// Observed so the view redraws when the mode changes; the value is `Config.hipaaMode`, which an
+    /// organisation's profile may pin on (Plan NJ §7).
+    @AppStorage("hipaaMode") private var hipaaModeStored = false
+    private var hipaaMode: Bool { Config.hipaaMode }
 
     // Text-to-Speech — self-contained: seeded from Config, persisted on change.
     @State private var elevenLabsKeyInput: String = Config.elevenLabsAPIKey

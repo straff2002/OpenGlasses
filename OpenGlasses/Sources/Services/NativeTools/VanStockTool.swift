@@ -213,6 +213,12 @@ final class VanStockTool: NativeTool {
                 "enum": VanStockMovement.WasteReason.allCases.map(\.rawValue),
                 "description": "For 'waste': why the doses were thrown out."
             ]
+            // Plan NJ Decision 3: the clinic's own code for whoever is accountable, on a waste, a
+            // removal or a count that disagreed; never on a dose given. Kept on the phone.
+            properties["staff_code"] = [
+                "type": "string",
+                "description": "For 'waste', 'remove' or 'count' only, and only if \(w.person) gives one: the clinic's own staff code or initials, letters and digits, at most \(StaffCode.maximumLength). Never on 'give'."
+            ]
         }
         properties["items"] = [
             "type": "array",
@@ -307,12 +313,14 @@ final class VanStockTool: NativeTool {
             return service.use(lines, source: Self.source(lines))
         case "remove":
             let reason = (args["reason"] as? String).flatMap { VanStockMovement.RemovalReason(rawValue: $0.lowercased()) }
-            return service.remove(lines, reason: reason ?? .other, source: Self.source(lines))
+            return service.remove(lines, reason: reason ?? .other, source: Self.source(lines),
+                                  staffCode: Self.text(args["staff_code"]))
         case "count":
-            return service.count(lines, source: Self.source(lines))
+            return service.count(lines, source: Self.source(lines), staffCode: Self.text(args["staff_code"]))
         case "waste":
             let reason = (args["waste_reason"] as? String).flatMap { VanStockMovement.WasteReason(rawValue: $0.lowercased()) }
-            return service.waste(lines, reason: reason ?? .other, source: Self.source(lines))
+            return service.waste(lines, reason: reason ?? .other, source: Self.source(lines),
+                                 staffCode: Self.text(args["staff_code"]))
         case "undo":
             return service.undo()
         case "report" where service.isClinical:

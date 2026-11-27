@@ -74,10 +74,10 @@ enum RowIdentityRoster {
             .init(.picker, #"Check in Picker; fixed cadences with distinct codeValues, current one added only if missing (GoalsScreenModel.swift:217)"#),
         #"HIPAASettingsView.swift|framework.coveredSafeguards|\.self"#:
             .init(.notARow, #"VStack inside a framework DisclosureGroup; per-framework literal enum lists with no repeats (HIPAASettingsView.swift:61)"#),
-        #"HIPAASettingsView.swift|framework.organisationalRequirements|\.self"#:
-            .init(.notARow, #"VStack inside a framework DisclosureGroup; per-framework literal sentence lists with no repeats (HIPAASettingsView.swift:83)"#),
-        #"HIPAASettingsView.swift|retentionOptions|\.self"#:
-            .init(.picker, #"Auto-Purge Picker; literal [30, 60, 90, 180, 365, 0] (HIPAASettingsView.swift:226)"#),
+        #"HIPAASettingsView.swift|framework.organisationalRequirements(in: jurisdiction)|\.self"#:
+            .init(.notARow, #"VStack inside a framework DisclosureGroup; per-framework literal sentence lists with no repeats, and the Canada entry's duties are distinct sentences (agreement, breach, PIA, user activity, PIPEDA) (CanadianHealthAct.swift)"#),
+        #"HIPAASettingsView.swift|retentionChoices|\.self"#:
+            .init(.picker, #"Auto-Purge Picker; literal [30, 60, 90, 180, 365, 0], with an organisation's figure added in front only when it is not among them (HIPAASettingsView.swift retentionChoices)"#),
         #"HealthVaultEditorView.swift|store.manifest.files|\.self"#:
             .init(.constant, #"built-in health vault manifest lists six distinct markdown files (VaultRegistry.swift:105)"#),
         #"HomeActionEditorSheet.swift|HomeActionIcons.curated|\.symbol"#:

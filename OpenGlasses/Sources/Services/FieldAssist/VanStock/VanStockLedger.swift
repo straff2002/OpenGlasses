@@ -236,7 +236,8 @@ struct VanStockLog: Codable, Equatable, Sendable {
                          reason: VanStockMovement.RemovalReason? = nil,
                          requestID: String? = nil,
                          lotID: String? = nil,
-                         wasteReason: VanStockMovement.WasteReason? = nil) -> VanStockMovement? {
+                         wasteReason: VanStockMovement.WasteReason? = nil,
+                         staffCode: String? = nil) -> VanStockMovement? {
         guard let item = item(id: itemID) else { return nil }
         if let lotID {
             guard kind != .ordered, lots.contains(where: { $0.id == lotID && $0.itemID == itemID }) else { return nil }
@@ -254,7 +255,9 @@ struct VanStockLog: Codable, Equatable, Sendable {
             reason: kind == .removed ? (reason ?? .other) : nil,
             requestID: kind == .ordered ? requestID : nil,
             lotID: lotID,
-            wasteReason: kind == .wasted ? (wasteReason ?? .other) : nil)
+            wasteReason: kind == .wasted ? (wasteReason ?? .other) : nil,
+            // Plan NJ Decision 3: a waste, a removal or a count only, and only a code that is one.
+            staffCode: VanStockMovement.staffCodeKinds.contains(kind) ? StaffCode.clean(staffCode) : nil)
         movements.append(movement)
         return movement
     }
@@ -297,6 +300,8 @@ struct VanStockLog: Codable, Equatable, Sendable {
         case dosesPerCarton(Int?)
         /// The group a list sorts the line under (Plan MY §8); nil for none.
         case category(String?)
+        /// Whether a clinic's reports and exports show the line by the week (Plan NJ §6).
+        case sensitive(Bool)
     }
 
     /// Change one attribute of a line and note that it changed. False, and nothing noted, when the
@@ -360,6 +365,9 @@ struct VanStockLog: Codable, Equatable, Sendable {
             let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
             (attribute, old, new) = (.category, item.category, value)
             item.category = value
+        case .sensitive(let value):
+            (attribute, old, new) = (.sensitive, String(item.isSensitive), String(value))
+            item.sensitive = value ? true : nil
         }
 
         guard old != new else { return false }
@@ -477,6 +485,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
         case .verified: items[index].verification = VanStockVerification(storedValue: old)
         case .dosesPerCarton: items[index].dosesPerCarton = old.flatMap(Int.init)
         case .category: items[index].category = old
+        case .sensitive: items[index].sensitive = old == "true" ? true : nil
         }
     }
 

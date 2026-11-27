@@ -1492,6 +1492,9 @@ extension SettingKey {
         case .preparedCardCustomerTexts: return String(localized: "My Day cards don't offer to text customers")
         case .conversationDigestsEnabled: return String(localized: "Notes of finished conversations are off")
         case .privateConversationsAllowed: return String(localized: "Private conversations are off")
+        case .hipaaMode: return String(localized: "Medical Compliance mode is always on")
+        case .hipaaLocalOnly: return String(localized: "Medical Compliance keeps every AI request on this phone")
+        case .hipaaRetentionDays: return String(localized: "Medical Compliance keeps transcripts and recordings no longer than your organisation sets")
         default: return rawValue
         }
     }

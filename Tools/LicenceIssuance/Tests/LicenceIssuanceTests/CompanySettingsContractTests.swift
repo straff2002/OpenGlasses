@@ -14,7 +14,7 @@ final class CompanySettingsContractTests: XCTestCase {
     }
 
     func testEveryKeyHasAKind() {
-        XCTAssertEqual(ProfileContract.allowList.count, 65)   // Plan NG: organizationTeamLearningsInPortal
+        XCTAssertEqual(ProfileContract.allowList.count, 68)   // Plan NJ: hipaaMode, hipaaLocalOnly, hipaaRetentionDays
         XCTAssertTrue(ProfileContract.administratorEditableSettings.isSubset(of: Set(ProfileContract.allowList.keys)))
         XCTAssertTrue(ProfileContract.phoneCheckedSettings.isSubset(of: Set(ProfileContract.allowList.keys)))
     }

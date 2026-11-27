@@ -149,11 +149,13 @@ final class StockPeriodReportTests: XCTestCase {
         XCTAssertEqual(report.fileName, "Stock report 2026-11-16 to 2026-11-22.xlsx")
         let data = report.spreadsheet(modified: day(24))
         let sheets = try XCTUnwrap(try? XLSXReader.read(data).get())
-        XCTAssertEqual(sheets.map(\.name), ["Summary", "Given and wasted", "On hand", "Count differences"])
+        // Plan NJ §2: a clinic's report also gives its movements by day, the shape that may leave.
+        XCTAssertEqual(sheets.map(\.name), ["Summary", "Given and wasted", "On hand", "Count differences", "By day"])
         let summary = sheets[0].rows
         XCTAssertEqual(summary[1].first, "This is a stock record, not the immunisation record.")
-        XCTAssertTrue(summary.contains(["Given", "4"]))
-        XCTAssertTrue(summary.contains(["Wasted: expired", "2"]))
+        // Plan NJ §6: a clinic's figures from 1 to 4 print as "fewer than 5".
+        XCTAssertTrue(summary.contains(["Given", "fewer than 5"]))
+        XCTAssertTrue(summary.contains(["Wasted: expired", "fewer than 5"]))
         XCTAssertTrue(sheets[2].rows.contains(["the flu vaccine", "each", "ZZ1001", "2026-12-10", "5"]))
         XCTAssertTrue(sheets[3].rows.contains(["the flu vaccine", "ZZ1001", "5", "6", "-1"]))
     }

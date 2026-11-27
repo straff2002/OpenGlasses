@@ -67,6 +67,10 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
     /// The group a list sorts the line under: "Respiratory", "Routine" in a clinic's vaccine
     /// table (Plan MY §8). Nil for every line that has never been given one.
     var category: String?
+    /// A clinic marked the line sensitive (Plan NJ §6): rabies, travel vaccines, HPV, hepatitis B,
+    /// whatever it chooses. A clinical list's reports and exports then show it by the week, never
+    /// the day. Nil for every line nobody marked, which decodes and reads exactly as before.
+    var sensitive: Bool?
     /// The batch that created the line, so undoing that batch takes the line away again.
     let createdBatch: String
 
@@ -83,6 +87,7 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
          verification: VanStockVerification? = nil,
          dosesPerCarton: Int? = nil,
          category: String? = nil,
+         sensitive: Bool? = nil,
          createdBatch: String) {
         self.id = id
         self.number = number
@@ -96,6 +101,7 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
         self.verification = verification ?? VanStockVerification(legacy: verified)
         self.dosesPerCarton = dosesPerCarton
         self.category = category
+        self.sensitive = sensitive == true ? true : nil
         self.createdBatch = createdBatch
     }
 
@@ -112,7 +118,7 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, number, description, unit, minimum, standard, bin, codes, verified, verification, category
+        case id, number, description, unit, minimum, standard, bin, codes, verified, verification, category, sensitive
         case standardSetBy = "standard_set_by"
         case createdBatch = "created_batch"
         case dosesPerCarton = "doses_per_carton"
@@ -138,6 +144,7 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
         }
         dosesPerCarton = try container.decodeIfPresent(Int.self, forKey: .dosesPerCarton)
         category = try container.decodeIfPresent(String.self, forKey: .category)
+        sensitive = try container.decodeIfPresent(Bool.self, forKey: .sensitive) == true ? true : nil
         createdBatch = try container.decode(String.self, forKey: .createdBatch)
     }
 
@@ -158,6 +165,7 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
         try container.encode(verification, forKey: .verification)
         try container.encodeIfPresent(dosesPerCarton, forKey: .dosesPerCarton)
         try container.encodeIfPresent(category, forKey: .category)
+        try container.encodeIfPresent(sensitive, forKey: .sensitive)
         try container.encode(createdBatch, forKey: .createdBatch)
     }
 
@@ -168,6 +176,9 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
         guard let number, !number.isEmpty else { return described.isEmpty ? "Unnamed item" : described }
         return described.isEmpty ? number : "\(described) (\(number))"
     }
+
+    /// Whether a clinical list's reports and exports show this line by the week (Plan NJ §6).
+    var isSensitive: Bool { sensitive == true }
 
     /// "2 × Flame sensor (62-23543-01)", "4.25 litres of Engine oil": for the model, measured
     /// amounts in words (`VanStockUnit.spoken(_:of:)`).

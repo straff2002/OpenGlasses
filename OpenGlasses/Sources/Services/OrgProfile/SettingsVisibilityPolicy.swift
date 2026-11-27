@@ -107,13 +107,17 @@ enum SettingsVisibilityPolicy {
     ///   the organisation, so the wearer knows why no notes are written.
     /// - **Private conversations**, pinned off (Plan LU decision 6): the wearer is told why "off the
     ///   record" starts nothing, rather than left looking for a switch that is gone.
+    /// - **Medical mode, Local Only and how long medical data is kept**, pinned by a clinic (Plan
+    ///   NJ §7): the person holding the phone must see that the mode is on and who set it.
     static let alwaysShown: Set<ManagedSetting> = [.key(.privacyFilterEnabled), .area(.requestRouting),
                                                    .key(.aiConnectionCueEnabled),
                                                    .key(.cloudDictationEnabled),
                                                    .key(.interpreterEnabled),
                                                    .key(.instantReplayEnabled),
                                                    .key(.conversationDigestsEnabled),
-                                                   .key(.privateConversationsAllowed)]
+                                                   .key(.privateConversationsAllowed),
+                                                   .key(.hipaaMode), .key(.hipaaLocalOnly),
+                                                   .key(.hipaaRetentionDays)]
 
     /// Whether the organisation's policy stops whoever is looking from changing `setting`.
     static func isLocked(_ setting: ManagedSetting, in context: ManagedSettingsContext) -> Bool {
@@ -181,6 +185,7 @@ enum SettingsVisibilityPolicy {
         let ceilings = context.lockedKeys.filter {
             if case .ceiling = $0.kind { return true }
             if case .stringCeiling = $0.kind { return true }
+            if case .daysCeiling = $0.kind { return true }
             return false
         }
         if ceilings.contains(where: { presentation(.key($0), in: context) == .hidden }) { return true }

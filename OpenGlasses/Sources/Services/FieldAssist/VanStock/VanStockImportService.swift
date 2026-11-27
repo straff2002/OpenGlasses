@@ -23,6 +23,9 @@ final class VanStockImportService: ObservableObject {
         /// A business's own stock system holds the count (Plan MM P3/P4): the phone's list is the
         /// previous list, so a workbook is not loaded into it. Carries the system's name.
         case heldBySystem(String)
+        /// A clinic's list was offered a sheet with a column that may hold patient details (Plan
+        /// NJ §1). Carries the headings, never a value under them. Nothing was read into a review.
+        case patientColumns([String])
 
         /// "Stock is kept in <system>, so this list was kept as the previous list and not loaded."
         static func heldBySystemSentence(_ system: String) -> String {
@@ -110,6 +113,15 @@ final class VanStockImportService: ObservableObject {
             return
         case .success(let read):
             sheets = read
+        }
+        // Fail closed for a clinic's list (Plan NJ §1): a column about a patient refuses the whole
+        // sheet, as a correction, a takeover or a baseline alike. A van's list reads it as before.
+        if service.isClinical {
+            let patient = ClinicalStockInboundGuard.patientHeadings(in: sheets)
+            if !patient.isEmpty {
+                stage = .refused(.patientColumns(patient))
+                return
+            }
         }
         switch VanStockSheet.proposal(from: sheets, log: store.log) {
         case .failure(.workbook(let failure)):

@@ -156,6 +156,16 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// and the buttons start none on its phones, and never on — whether a wearer may keep a
     /// conversation out of the record is theirs to choose. Jobs refuse them whatever this says.
     case privateConversationsAllowed
+    /// Medical Compliance mode (Plan CT, built by Plan NJ §7): an organisation may pin it on, so a
+    /// clinic's phone is always in it, and never off.
+    case hipaaMode
+    /// Medical Compliance's Local Only (Plan NJ §7): every AI request on the phone, and nothing
+    /// captured leaves except to the clinic's own record system. Pinned on, never off.
+    case hipaaLocalOnly
+    /// How many days Medical Compliance keeps transcripts and recordings before it deletes them
+    /// (Plan NJ §7): the organisation's figure is the longest a phone may keep them. A phone set
+    /// shorter keeps its own; "never" is held to the figure. Written as digits, 1–3650.
+    case hipaaRetentionDays
 
     // Starting values the person may change.
     case fieldAssistEnabled
@@ -189,6 +199,9 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
         /// A ceiling that may only pin the flag to this value — never away from it.
         case ceiling(pinnedTo: Bool)
         case stringCeiling(pinnedTo: String)
+        /// A ceiling on how many days something is kept (Plan NJ §7): the profile's figure, 1 to
+        /// `maximum` written as digits, is the longest a phone may keep it. It can only shorten.
+        case daysCeiling(maximum: Int)
         /// A starting value, written once, that the person may change afterwards.
         case startingValue(ValueType)
     }
@@ -219,8 +232,10 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
              .organizationAllowsOnlyOrganisationAddOns, .organizationForbidsSelfBuiltAddOns,
              .organizationRequiresBlurBeforeOfficeSync, .organizationForbidsRecordingSyncOnCellular,
              .organizationRequiresTableChecks, .organizationRunsProceduresWithoutAssistant,
-             .privacyFilterEnabled, .aiConnectionCueEnabled:
+             .privacyFilterEnabled, .aiConnectionCueEnabled, .hipaaMode, .hipaaLocalOnly:
             return .ceiling(pinnedTo: true)
+        case .hipaaRetentionDays:
+            return .daysCeiling(maximum: HIPAARetentionCeiling.maximumDays)
         case .remoteInvokeObserveEnabled, .remoteInvokeOutputEnabled, .remoteInvokeCaptureEnabled,
              .mcpServerEnabled, .agentModeEnabled, .teamLearningReviewerDevice,
              .cloudDictationEnabled, .interpreterEnabled, .instantReplayEnabled, .preparedCardCustomerTexts,

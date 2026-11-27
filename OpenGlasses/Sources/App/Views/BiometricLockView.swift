@@ -1,8 +1,8 @@
 import SwiftUI
 import LocalAuthentication
 
-/// Full-screen biometric lock overlay for HIPAA mode.
-/// Shown when the app returns from background and HIPAA mode is enabled.
+/// Full-screen biometric lock overlay for Medical Compliance mode.
+/// Shown when the app returns from background and the mode is on.
 struct BiometricLockView: View {
     @Binding var isLocked: Bool
     @State private var authFailed = false
@@ -23,7 +23,8 @@ struct BiometricLockView: View {
                     .font(.title.bold())
                     .foregroundStyle(.white)
 
-                Text("HIPAA Protected")
+                // Plan NJ §8: the mode's own name, not a US act's, on every lock screen.
+                Text("Medical mode")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 

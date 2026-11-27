@@ -107,7 +107,9 @@ final class SettingsVisibilityPolicyTests: XCTestCase {
                                             .key(.aiConnectionCueEnabled),
                                             .key(.cloudDictationEnabled), .key(.interpreterEnabled),
                                             .key(.instantReplayEnabled), .key(.conversationDigestsEnabled),
-                                            .key(.privateConversationsAllowed)])
+                                            .key(.privateConversationsAllowed),
+                                            // Plan NJ §7: a clinic's pinned Medical Compliance is shown.
+                                            .key(.hipaaMode), .key(.hipaaLocalOnly), .key(.hipaaRetentionDays)])
         // Plan LQ §9: conversation notes pinned off are drawn read-only, naming the organisation.
         let lqContext = technician(lockEverything, keys: [.conversationDigestsEnabled])
         XCTAssertEqual(Policy.presentation(.key(.conversationDigestsEnabled), in: lqContext), .readOnly)

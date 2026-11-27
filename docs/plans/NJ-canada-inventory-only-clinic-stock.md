@@ -1,8 +1,18 @@
 # Plan NJ — Canada, Inventory Only (a clinic's shared stock can never carry a patient, the Medical Compliance claims say only what the app does, and Canada's health acts are named)
 
-**Status:** 📝 Drafted 2026-11-27. Not scheduled. Nothing built. It waits on the clinic's
-province and on whether it needs patient linkage (open questions 1 and 3). The design holds in
-every province while the answer to 3 is no.
+**Status:** 🚧 P0–P1 built (headless) 2026-11-27. Decisions 1–6 taken as recommended; Decision 7
+deferred, so P3 (§9, vaccine records) is not built. Built: `ClinicalStockShareRow` and its allow-list
+guard, the per-day aggregator behind the clinical spreadsheet export, the handover workbook and the
+period report's "By day" sheet, the fail-closed sheet check for clinical lists, no job on a clinical
+movement, the staff code (Decision 3), the billing-export reader and `BillingReconciliation` with
+the shared-code case, the 1,461-day clinical history window, the sensitive flag and small-cell rule
+(5), `CanadianHealthAct` with the Canada entry and province picker, the ceiling keys `hipaaMode`,
+`hipaaLocalOnly` and `hipaaRetentionDays` (a new `daysCeiling` kind), the claims rewritten, the lock
+screen's "Medical mode", and the support report's clinical lines. 82 new tests in 9 classes.
+Owed: P2 catalog sync; P3 (deferred); P4 counsel; P5 device pass and pilot; a Stock screen entry
+for the billing check (the core is headless only). Retention is read as the longest a phone keeps
+clinical files, never longer (CT is silent; the stricter reading). It still waits on the clinic's
+province and on whether it needs patient linkage (open questions 1 and 3).
 **Track:** Field Assist stock, for a medical clinic, and the Medical Compliance mode.
 **Builds on:**
 - Plan [MY](MY-vaccine-stock.md): lots, waste and expiry; the check against the EMR (§8); stock
@@ -198,7 +208,11 @@ Stock screen still shows the exact count to the person holding it.
   `aiChoices`) and pins cloud dictation and the interpreter off, so a spoken patient name never
   reaches a cloud model.
 - **Built here:** the ceiling keys CT decided: `hipaaMode` (on, locked), `hipaaLocalOnly` (on,
-  locked) and `hipaaRetentionDays` (a floor). Each can only make a phone stricter, never looser.
+  locked) and `hipaaRetentionDays`. Each can only make a phone stricter, never looser.
+  `hipaaRetentionDays` is a ceiling: the longest a phone keeps Medical mode's transcripts and
+  recordings. A shorter setting on the phone stands, and "Never" is held to the figure. This
+  follows CT's rule that a ceiling only subtracts, and the expert-handover retention key. It does
+  not touch the stock store, whose four years come from §5 (2026-11-27; the draft said "a floor").
 
 ### 8 · Medical Compliance says only what the app does, and names Canada
 

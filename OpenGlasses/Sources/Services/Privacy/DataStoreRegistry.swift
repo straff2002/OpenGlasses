@@ -910,7 +910,8 @@ enum SensitiveStore: String, CaseIterable {
             // into one opening figure per line; levels are exact either way.
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .none,
                           protection: .completeUntilFirstUserAuthentication, backupExcluded: false,
-                          retention: .policy("history folded after \(VanStockStore.historyDays) days"),
+                          retention: .policy("history folded after \(VanStockStore.historyDays) days, "
+                              + "\(VaccineStockPolicy.clinicalHistoryDays) for a clinic's list"),
                           deleteAll: .api("VanStockStore.removeAll()"),
                           deleteSubject: .notSubjectLinked,
                           owner: "VanStockStore",

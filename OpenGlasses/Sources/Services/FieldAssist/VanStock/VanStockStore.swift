@@ -22,9 +22,17 @@ final class VanStockStore: ObservableObject {
     /// writes — and its read, so a store first opened while locked would be marked unreadable.
     nonisolated static let fileProtection = FileProtectionType.completeUntilFirstUserAuthentication
 
-    /// How long a movement is kept before it is folded into its line's opening figure. Levels are
-    /// exact either way; only the history gets shorter.
-    nonisolated static let historyDays = 400
+    /// How long a van's movement is kept before it is folded into its line's opening figure.
+    /// Levels are exact either way; only the history gets shorter. A clinical list keeps longer
+    /// (`VaccineStockPolicy.historyDays(clinical:)`, Plan NJ §5).
+    nonisolated static let historyDays = VaccineStockPolicy.vanHistoryDays
+
+    /// How many days of history the list in `van` keeps: four years for a clinic's list (by the
+    /// organisation's profile or the list's own flag), 400 days for anything else.
+    nonisolated static func historyWindow(for van: VanIdentity?, profileClinical: Bool?) -> Int {
+        VaccineStockPolicy.historyDays(clinical: StockClinicalSetting.resolve(profile: profileClinical,
+                                                                             list: van?.clinical).clinical)
+    }
 
     /// What is on disk: the log and which van it is, under a format number so a later shape can
     /// be told apart.
@@ -63,7 +71,9 @@ final class VanStockStore: ObservableObject {
     /// van is not the end of the right one's list.
     private let archiveURL: URL
 
-    init(directory: URL? = nil, now: Date = Date()) {
+    /// - Parameter profileClinical: the organisation's clinical flag, read once here for the
+    ///   history window; nil (the default) reads the profile in force.
+    init(directory: URL? = nil, now: Date = Date(), profileClinical: Bool?? = nil) {
         let folder = directory ?? DeliveryQueueStore.defaultDirectory()
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         fileURL = folder.appendingPathComponent("van-stock.json")
@@ -81,7 +91,9 @@ final class VanStockStore: ObservableObject {
         case .loaded(let stored, let identity, let migrated):
             isUnreadable = false
             van = identity
-            let cutoff = now.addingTimeInterval(-Double(Self.historyDays) * 86_400)
+            // The window comes from the list (Plan NJ §5): nothing inside it is folded or deleted.
+            let days = Self.historyWindow(for: identity, profileClinical: profileClinical ?? Config.organizationStockClinical)
+            let cutoff = now.addingTimeInterval(-Double(days) * 86_400)
             let folded = stored.compacted(before: cutoff)
             log = folded
             // A migrated file is written back in format 2 at once, so it is read the new way from

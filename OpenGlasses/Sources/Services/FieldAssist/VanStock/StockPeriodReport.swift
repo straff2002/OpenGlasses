@@ -147,6 +147,9 @@ struct StockPeriodReport: Equatable, Sendable {
     let countDifferences: [CountDifference]
     /// The latest check against the EMR, if one was run.
     let emrCheck: ImmunisationCheckSummary?
+    /// A clinic's movements over the range as they may leave the phone (Plan NJ §2): by day, by
+    /// week for a sensitive line, with no time. Empty for a list that is not a clinic's.
+    var shareRows: [ClinicalStockShareRow] = []
 
     // MARK: - Totals
 
@@ -273,7 +276,8 @@ struct StockPeriodReport: Equatable, Sendable {
         return StockPeriodReport(range: range, clinical: clinical, lines: lines,
                                  expiringSoon: expiringSoon.sorted(by: byExpiry),
                                  expired: expired.sorted(by: byExpiry),
-                                 countsMade: countsMade, countDifferences: differences, emrCheck: emrCheck)
+                                 countsMade: countsMade, countDifferences: differences, emrCheck: emrCheck,
+                                 shareRows: clinical ? ClinicalStockShare.rows(log, calendar: calendar, range: range) : [])
     }
 
     private static func reversedIDs(_ movements: [VanStockMovement]) -> Set<String> {
@@ -343,38 +347,73 @@ struct StockPeriodReport: Equatable, Sendable {
 
     /// The workbook: a summary, the movements by line and lot, what is on hand with expiry, and
     /// the counts that differed. Every date is written as text ("2026-11-22").
+    /// Whether a sensitive line's figures for this range would show less than a week (Plan NJ
+    /// §6): a clinic's report then prints "Reported weekly" in their place, and the "By day"
+    /// sheet gives the line's weeks.
+    var showsLessThanAWeek: Bool { range.last < range.first.adding(days: 6, calendar: Self.utc) }
+
+    private static let utc: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? calendar.timeZone
+        return calendar
+    }()
+
+    /// "Reported weekly", in place of a sensitive line's daily figure.
+    static var reportedWeekly: String {
+        String(localized: "Reported weekly", comment: "Stock report cell for a sensitive vaccine line, shown by the week instead of the day.")
+    }
+
+    /// A movement figure as a clinic's report prints it: through the small-cell rule (Plan NJ
+    /// §6). A list that is not a clinic's prints it exactly, as it always has.
+    private func figure(_ quantity: StockQuantity) -> XLSX.Cell {
+        clinical ? StockSmallCell.cell(quantity) : .decimal(quantity)
+    }
+
+    /// A count of findings or counts, by the same rule.
+    private func tally(_ count: Int) -> XLSX.Cell {
+        clinical && count > 0 && count < VaccineStockPolicy.smallCellThreshold
+            ? .text(StockSmallCell.fewerThan()) : .number(count)
+    }
+
     func workbook() -> XLSX.Workbook {
         let reasons = VanStockMovement.WasteReason.allCases
         var summary: [[XLSX.Cell]] = [[.text("Stock report"), .text(range.first == range.last
             ? range.first.description : "\(range.first) to \(range.last)")]]
         if clinical { summary.append([.text("This is a stock record, not the immunisation record."), .empty]) }
-        summary.append([.text("Given"), .decimal(given)])
+        summary.append([.text("Given"), figure(given)])
         for reason in reasons {
             let total = lines.reduce(StockQuantity.zero) { $0 + ($1.wasted[reason] ?? .zero) }
-            summary.append([.text("Wasted: \(reason.spoken)"), .decimal(total)])
+            summary.append([.text("Wasted: \(reason.spoken)"), figure(total)])
         }
-        summary.append([.text("Received"), .decimal(received)])
+        summary.append([.text("Received"), figure(received)])
         summary.append([.text("Counts made"), .number(countsMade)])
         summary.append([.text("Counts that differed"), .number(countDifferences.count)])
         summary.append([.text("Lots expiring soon"), .number(expiringSoon.count)])
         summary.append([.text("Lots expired in stock"), .number(expired.count)])
         if let emrCheck {
             summary.append([.text("Last check against the EMR"), .text("\(emrCheck.first) to \(emrCheck.last)")])
-            summary.append([.text("Given here, not in the EMR on that day"), .number(emrCheck.givenNotInEMR)])
-            summary.append([.text("In the EMR, not given here"), .number(emrCheck.inEMRNotGiven)])
-            summary.append([.text("Same day, different lot"), .number(emrCheck.differentLot)])
-            summary.append([.text("Nearby day"), .number(emrCheck.nearby)])
+            summary.append([.text("Given here, not in the EMR on that day"), tally(emrCheck.givenNotInEMR)])
+            summary.append([.text("In the EMR, not given here"), tally(emrCheck.inEMRNotGiven)])
+            summary.append([.text("Same day, different lot"), tally(emrCheck.differentLot)])
+            summary.append([.text("Nearby day"), tally(emrCheck.nearby)])
         }
 
         var movements: [[XLSX.Cell]] = [[.text("Line"), .text("Lot"), .text("Expiry"), .text("Given")]
             + reasons.map { XLSX.Cell.text("Wasted: \($0.spoken)") } + [.text("Received"), .text("Removed")]]
         for line in lines where line.hasActivity {
-            movements.append([.text(line.item.name), .empty, .empty, .decimal(line.given)]
-                + reasons.map { XLSX.Cell.decimal(line.wasted[$0] ?? .zero) } + [.decimal(line.received), .decimal(line.removed)])
+            // A sensitive line is shown by the week (Plan NJ §6): over a shorter range its figures
+            // are left to the "By day" sheet's weeks.
+            if clinical, line.item.isSensitive, showsLessThanAWeek {
+                movements.append([.text(line.item.name), .empty, .empty, .text(Self.reportedWeekly)]
+                    + reasons.map { _ in XLSX.Cell.empty } + [.empty, .empty])
+                continue
+            }
+            movements.append([.text(line.item.name), .empty, .empty, figure(line.given)]
+                + reasons.map { figure(line.wasted[$0] ?? .zero) } + [figure(line.received), figure(line.removed)])
             for lot in line.lots where lot.given > .zero || lot.wasted > .zero || lot.received > .zero {
                 movements.append([.text(line.item.name), .text(lot.code), lot.expiry.map { XLSX.Cell.text($0.description) } ?? XLSX.Cell.empty,
-                                  .decimal(lot.given)] + reasons.map { _ in XLSX.Cell.empty }
-                    + [.decimal(lot.received), .empty])
+                                  figure(lot.given)] + reasons.map { _ in XLSX.Cell.empty }
+                    + [figure(lot.received), .empty])
             }
         }
 
@@ -391,6 +430,8 @@ struct StockPeriodReport: Equatable, Sendable {
         for difference in countDifferences {
             let expected: XLSX.Cell
             let by: XLSX.Cell
+            // A count and what the log expected are levels, not doses, so a clinic's report prints
+            // them, and so their difference, exactly (Plan NJ §6).
             switch difference.check {
             case .short(let value, let gap): (expected, by) = (.decimal(value), .text("-" + gap.decimalString))
             case .over(let value, let gap): (expected, by) = (.decimal(value), .text("+" + gap.decimalString))
@@ -401,6 +442,8 @@ struct StockPeriodReport: Equatable, Sendable {
                            .decimal(difference.counted), expected, by])
         }
 
+        // A clinic's report also gives its movements by day, the shape that may leave the phone.
+        let byDay = clinical ? [ClinicalStockShare.sheet(shareRows)] : []
         return XLSX.Workbook(sheets: [
             XLSX.Sheet(name: "Summary", columns: [XLSX.Column(width: 44), XLSX.Column(width: 24)], rows: summary),
             XLSX.Sheet(name: "Given and wasted",
@@ -415,7 +458,7 @@ struct StockPeriodReport: Equatable, Sendable {
                        columns: [XLSX.Column(width: 32), XLSX.Column(width: 14, isText: true), XLSX.Column(width: 12),
                                  XLSX.Column(width: 12), XLSX.Column(width: 30)],
                        rows: counts),
-        ])
+        ] + byDay)
     }
 
     func spreadsheet(modified: Date) -> Data {
