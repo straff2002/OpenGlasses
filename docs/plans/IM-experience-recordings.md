@@ -1,6 +1,6 @@
 # Plan IM — Experience Recordings (what the crew already knows, one case per recording)
 
-**Status:** 🚧 P0 built 2026-11-27, PR pending ([below](#p0--contract-amendment-and-the-model-headless)): team-learning §13, the candidate's `tried`/`outcome` and `recording` evidence, the manifest's `equipment_types`, symptom matching in retrieval, recollections ranked below job-confirmed learnings, and the recalled lead-in. Part of P0 was built by Plan NF P0 (2026-11-25): `LearningCandidate.Origin.recollection`, the entry fields `tried`/`outcome`, `LearningEntry.Subject.symptom(equipmentType:phrase:)` and §11. 🚧 P1 built 2026-11-27, PR pending ([below](#p1--the-recorder-record-experience-phone-and-carplay)): the recorder on the phone and CarPlay. P2–P4 not built. Drafted 2026-10-16.
+**Status:** ✅ P0 merged 2026-11-27 (PR 1256, build 783) ([below](#p0--contract-amendment-and-the-model-headless)): team-learning §13, the candidate's `tried`/`outcome` and `recording` evidence, the manifest's `equipment_types`, symptom matching in retrieval, recollections ranked below job-confirmed learnings, and the recalled lead-in. Part of P0 was built by Plan NF P0 (2026-11-25): `LearningCandidate.Origin.recollection`, the entry fields `tried`/`outcome`, `LearningEntry.Subject.symptom(equipmentType:phrase:)` and §11. 🚧 P1 built 2026-11-27, PR pending ([below](#p1--the-recorder-record-experience-phone-and-carplay)): the recorder on the phone and CarPlay. P2–P4 not built. Drafted 2026-10-16.
 **Track:** Field Assist (B2B).
 **Depends on:** Plan [FP](FP-team-learnings.md) P0–P3 (shipped: candidate, review, entry, corpus,
 bundle) and FP P4 (the review queue on a screen) before anything here is usable by a supervisor.
@@ -143,7 +143,7 @@ brain dump that is all-or-nothing.
   retrieved for a dishwasher turn; a recollection-only answer opens with the recalled lead-in; the
   existing FP suite is green.
 
-**Built 2026-11-27, PR pending.** Team-learning §13. The candidate gains `tried` (≤ 500), `outcome` (≤ 120,
+**Merged 2026-11-27 (PR 1256, build 783).** Team-learning §13. The candidate gains `tried` (≤ 500), `outcome` (≤ 120,
 the entry's limit from NF rather than decision 3's 500, so an approval carries it as written) and
 `evidence.recording` (`recordingID`, `segmentStart..<segmentEnd` whole seconds, within a day), validated
 and redacted like the other fields, carried by FP's bundle (and `tried`/`outcome` on its entries). An
