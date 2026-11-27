@@ -15,7 +15,7 @@ import WebKit
 /// scripts; `.primary`, `.secondary` and `.outline`; with and without an icon; one to four a row.
 ///
 /// Then the app's own screens, through the HUD's builders and backend: every lens button row in
-/// each of the 13 complete languages, before and after the budget; the reading view with an 8- and
+/// each of the 14 complete languages, before and after the budget; the reading view with an 8- and
 /// a 9-line tile under the question line, and its source tile; the page view (the whole page, fit
 /// width, a wide table's close-up); the rows view; the fit check; and the buttons that were built
 /// with an icon (Today's ready and What's new, a prepared card's primary), which go out as labels.
@@ -34,9 +34,9 @@ struct SimulatedDisplayButtonRows {
             .appendingPathComponent("button-rows", isDirectory: true)
     }
 
-    /// The 13 complete catalog languages (`LocalizationCatalogGuardTests.completeLanguages`).
-    static let languages = ["ar", "es-MX", "fr-CA", "hu", "it", "ja", "ko", "nl", "pt-BR", "ru", "ur",
-                            "zh-Hans", "zh-Hant"]
+    /// The 14 complete catalog languages (`LocalizationCatalogGuardTests.completeLanguages`).
+    static let languages = ["ar", "es-MX", "fr-CA", "hu", "it", "ja", "ko", "nl", "pt-BR", "ru", "uk",
+                            "ur", "zh-Hans", "zh-Hant"]
     static let sendDeadline: TimeInterval = 20
 
     private var display: GlassesDisplayService { appState.glassesDisplay }

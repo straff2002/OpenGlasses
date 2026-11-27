@@ -22,6 +22,7 @@ PHONE_USAGE_STRINGS = {
         "nl": "Avenkin bewaart trainingsgegevens van fitnesscoachingsessies in Apple Health.",
         "pt-BR": "O Avenkin salva no Apple Health os dados de treino das sessões com o preparador físico.",
         "ru": "Avenkin сохраняет в Apple Health данные о тренировках, проведенных с фитнес-тренером.",
+        "uk": "Avenkin зберігає в Apple Health дані тренувань із сеансів фітнес-коучингу.",
         "ur": "Avenkin فٹنس کوچنگ سیشنز کا ورزش کا ڈیٹا Apple Health میں محفوظ کرتا ہے۔",
         "zh-Hans": "Avenkin 会将健身指导课程中的锻炼数据存储到 Apple Health。",
         "zh-Hant": "Avenkin 會將健身指導課程的鍛鍊資料儲存到 Apple Health。",

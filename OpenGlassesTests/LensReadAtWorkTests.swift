@@ -520,7 +520,7 @@ final class LensReadAtWorkTests: XCTestCase {
     }
 }
 
-/// Plan MU P3: every lens button row fits the 576 px column in each of the 13 complete catalog
+/// Plan MU P3: every lens button row fits the 576 px column in each of the 14 complete catalog
 /// languages (`LocalizationCatalogGuardTests.completeLanguages`), the languages with the longest
 /// labels first. The rows are the builders' own, before the budget, relabelled from
 /// `Localizable.xcstrings` (a label the catalog doesn't translate yet stays English, as the app
@@ -615,8 +615,8 @@ final class LensButtonRowLanguageTests: XCTestCase {
         ]
     }
 
-    func testThereAreThirteenCompleteLanguages() {
-        XCTAssertEqual(LocalizationCatalogGuardTests.completeLanguages.count, 13)
+    func testThereAreFourteenCompleteLanguages() {
+        XCTAssertEqual(LocalizationCatalogGuardTests.completeLanguages.count, 14)
     }
 
     func testEveryLensButtonRowFitsInEveryCompleteLanguageLongestFirst() throws {
