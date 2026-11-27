@@ -1,0 +1,2219 @@
+{
+  "version": 1,
+  "note": "Invented units, places and words. Spans are Unicode scalar offsets into the transcript, half-open.",
+  "vault": {
+    "id": "fixture-appliances",
+    "name": "Fixture Appliances",
+    "equipment_types": [
+      "dryer",
+      "dishwasher",
+      "walk-in cooler"
+    ],
+    "files": [
+      {
+        "filename": "core.md",
+        "contents": "# Fixture Appliances\n\nInvented units for the drafting pass's fixtures.\n\n## RX-200 (RX200)\n\nAcme RX-200 electric dryer.\n\n## RX-300 (RX300)\n\nAcme RX-300 dryer.\n\n## DW-450 (DW450)\n\nAcme DW-450 dishwasher.\n\n## WC-900 (WC900)\n\nAcme WC-900 walk-in cooler.\n"
+      },
+      {
+        "filename": "safety.md",
+        "contents": "# Safety\n\n## Lockout before opening the cabinet\n\nIsolate the supply first.\n"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "one-case",
+      "covers": [
+        "one case"
+      ],
+      "recordingID": "01010101010101010101010101010101",
+      "duration": 48,
+      "transcript": "Acme RX-200 dryer. It was tripping the thermal fuse after about twenty minutes. I checked the vent run and the lint screen first, both clear. Turned out the exhaust fan wheel was cracked. Swapped the fan wheel and it ran a full cycle. That fixed it every time I've seen it.",
+      "segments": [
+        {
+          "start": 0,
+          "end": 273
+        }
+      ],
+      "answers": [
+        {
+          "model": {
+            "text": "RX-200",
+            "quotes": [
+              "Acme RX-200"
+            ]
+          },
+          "equipmentType": {
+            "text": "dryer",
+            "quotes": [
+              "RX-200 dryer"
+            ]
+          },
+          "symptom": {
+            "text": "Tripping the thermal fuse after about twenty minutes",
+            "quotes": [
+              "tripping the thermal fuse after about twenty minutes"
+            ]
+          },
+          "findings": {
+            "text": "The exhaust fan wheel was cracked",
+            "quotes": [
+              "the exhaust fan wheel was cracked"
+            ]
+          },
+          "tried": {
+            "text": "Checked the vent run and the lint screen first, both clear",
+            "quotes": [
+              "I checked the vent run and the lint screen first, both clear"
+            ]
+          },
+          "fix": {
+            "text": "Swapped the fan wheel",
+            "quotes": [
+              "Swapped the fan wheel"
+            ]
+          },
+          "outcome": {
+            "text": "Fixed it every time",
+            "quotes": [
+              "That fixed it every time"
+            ]
+          },
+          "siteNote": {
+            "text": "",
+            "quotes": []
+          }
+        }
+      ],
+      "expected": {
+        "drafts": [
+          {
+            "segment": {
+              "start": 0,
+              "end": 273
+            },
+            "recording": {
+              "recordingID": "01010101010101010101010101010101",
+              "segmentStart": 0,
+              "segmentEnd": 48
+            },
+            "fields": {
+              "model": {
+                "text": "RX-200",
+                "spans": [
+                  {
+                    "start": 0,
+                    "end": 11
+                  }
+                ],
+                "verbatim": false
+              },
+              "equipmentType": {
+                "text": "dryer",
+                "spans": [
+                  {
+                    "start": 5,
+                    "end": 17
+                  }
+                ],
+                "verbatim": false
+              },
+              "symptom": {
+                "text": "Tripping the thermal fuse after about twenty minutes",
+                "spans": [
+                  {
+                    "start": 26,
+                    "end": 78
+                  }
+                ],
+                "verbatim": false
+              },
+              "findings": {
+                "text": "The exhaust fan wheel was cracked",
+                "spans": [
+                  {
+                    "start": 153,
+                    "end": 186
+                  }
+                ],
+                "verbatim": false
+              },
+              "tried": {
+                "text": "Checked the vent run and the lint screen first, both clear",
+                "spans": [
+                  {
+                    "start": 80,
+                    "end": 140
+                  }
+                ],
+                "verbatim": false
+              },
+              "fix": {
+                "text": "Swapped the fan wheel",
+                "spans": [
+                  {
+                    "start": 188,
+                    "end": 209
+                  }
+                ],
+                "verbatim": false
+              },
+              "outcome": {
+                "text": "Fixed it every time",
+                "spans": [
+                  {
+                    "start": 235,
+                    "end": 259
+                  }
+                ],
+                "verbatim": false
+              }
+            },
+            "heldBack": [],
+            "modelToken": "RX-200",
+            "subject": {
+              "kind": "model",
+              "modelToken": "RX-200",
+              "equipmentType": "dryer"
+            },
+            "safetyTerms": []
+          }
+        ],
+        "siteNotes": []
+      }
+    },
+    {
+      "name": "three-cases",
+      "covers": [
+        "three cases"
+      ],
+      "recordingID": "02020202020202020202020202020202",
+      "duration": 75,
+      "transcript": "Acme RX-200 dryer, no heat. The heating element was open. Replaced the element. That's one, next case. Acme DW-450 dishwasher not draining. Found a sock in the sump. Cleared the sump and it drained. That's one, next case. Acme WC-900 walk-in cooler icing up. The door gasket was torn. Replaced the gasket. Worked once so far.",
+      "segments": [
+        {
+          "start": 0,
+          "end": 79
+        },
+        {
+          "start": 103,
+          "end": 198
+        },
+        {
+          "start": 222,
+          "end": 325
+        }
+      ],
+      "answers": [
+        {
+          "model": {
+            "text": "RX-200",
+            "quotes": [
+              "RX-200"
+            ]
+          },
+          "equipmentType": {
+            "text": "dryer",
+            "quotes": [
+              "dryer"
+            ]
+          },
+          "symptom": {
+            "text": "No heat",
+            "quotes": [
+              "no heat"
+            ]
+          },
+          "findings": {
+            "text": "The heating element was open",
+            "quotes": [
+              "The heating element was open"
+            ]
+          },
+          "tried": {
+            "text": "",
+            "quotes": []
+          },
+          "fix": {
+            "text": "Replaced the element",
+            "quotes": [
+              "Replaced the element"
+            ]
+          },
+          "outcome": {
+            "text": "",
+            "quotes": []
+          },
+          "siteNote": {
+            "text": "",
+            "quotes": []
+          }
+        },
+        {
+          "model": {
+            "text": "DW-450",
+            "quotes": [
+              "Acme DW-450"
+            ]
+          },
+          "equipmentType": {
+            "text": "dishwasher",
+            "quotes": [
+              "dishwasher"
+            ]
+          },
+          "symptom": {
+            "text": "Not draining",
+            "quotes": [
+              "not draining"
+            ]
+          },
+          "findings": {
+            "text": "A sock in the sump",
+            "quotes": [
+              "Found a sock in the sump"
+            ]
+          },
+          "tried": {
+            "text": "",
+            "quotes": []
+          },
+          "fix": {
+            "text": "Cleared the sump",
+            "quotes": [
+              "Cleared the sump"
+            ]
+          },
+          "outcome": {
+            "text": "",
+            "quotes": []
+          },
+          "siteNote": {
+            "text": "",
+            "quotes": []
+          }
+        },
+        {
+          "model": {
+            "text": "WC-900",
+            "quotes": [
+              "WC-900"
+            ]
+          },
+          "equipmentType": {
+            "text": "walk-in cooler",
+            "quotes": [
+              "walk-in cooler"
+            ]
+          },
+          "symptom": {
+            "text": "Icing up",
+            "quotes": [
+              "icing up"
+            ]
+          },
+          "findings": {
+            "text": "The door gasket was torn",
+            "quotes": [
+              "The door gasket was torn"
+            ]
+          },
+          "tried": {
+            "text": "",
+            "quotes": []
+          },
+          "fix": {
+            "text": "Replaced the gasket",
+            "quotes": [
+              "Replaced the gasket"
+            ]
+          },
+          "outcome": {
+            "text": "Worked once so far",
+            "quotes": [
+              "Worked once so far"
+            ]
+          },
+          "siteNote": {
+            "text": "",
+            "quotes": []
+          }
+        }
+      ],
+      "expected": {
+        "drafts": [
+          {
+            "segment": {
+              "start": 0,
+              "end": 79
+            },
+            "recording": {
+              "recordingID": "02020202020202020202020202020202",
+              "segmentStart": 0,
+              "segmentEnd": 19
+            },
+            "fields": {
+              "model": {
+                "text": "RX-200",
+                "spans": [
+                  {
+                    "start": 5,
+                    "end": 11
+                  }
+                ],
+                "verbatim": false
+              },
+              "equipmentType": {
+                "text": "dryer",
+                "spans": [
+                  {
+                    "start": 12,
+                    "end": 17
+                  }
+                ],
+                "verbatim": false
+              },
+              "symptom": {
+                "text": "No heat",
+                "spans": [
+                  {
+                    "start": 19,
+                    "end": 26
+                  }
+                ],
+                "verbatim": false
+              },
+              "findings": {
+                "text": "The heating element was open",
+                "spans": [
+                  {
+                    "start": 28,
+                    "end": 56
+                  }
+                ],
+                "verbatim": false
+              },
+              "fix": {
+                "text": "Replaced the element",
+                "spans": [
+                  {
+                    "start": 58,
+                    "end": 78
+                  }
+                ],
+                "verbatim": false
+              }
+            },
+            "heldBack": [],
+            "modelToken": "RX-200",
+            "subject": {
+              "kind": "model",
+              "modelToken": "RX-200",
+              "equipmentType": "dryer"
+            },
+            "safetyTerms": []
+          },
+          {
+            "segment": {
+              "start": 103,
+              "end": 198
+            },
+            "recording": {
+              "recordingID": "02020202020202020202020202020202",
+              "segmentStart": 23,
+              "segmentEnd": 46
+            },
+            "fields": {
+              "model": {
+                "text": "DW-450",
+                "spans": [
+                  {
+                    "start": 103,
+                    "end": 114
+                  }
+                ],
+                "verbatim": false
+              },
+              "equipmentType": {
+                "text": "dishwasher",
+                "spans": [
+                  {
+                    "start": 115,
+                    "end": 125
+                  }
+                ],
+                "verbatim": false
+              },
+              "symptom": {
+                "text": "Not draining",
+                "spans": [
+                  {
+                    "start": 126,
+                    "end": 138
+                  }
+                ],
+                "verbatim": false
+              },
+              "findings": {
+                "text": "A sock in the sump",
+                "spans": [
+                  {
+                    "start": 140,
+                    "end": 164
+                  }
+                ],
+                "verbatim": false
+              },
+              "fix": {
+                "text": "Cleared the sump",
+                "spans": [
+                  {
+                    "start": 166,
+                    "end": 182
+                  }
+                ],
+                "verbatim": false
+              }
+            },
+            "heldBack": [],
+            "modelToken": "DW-450",
+            "subject": {
+              "kind": "model",
+              "modelToken": "DW-450",
+              "equipmentType": "dishwasher"
+            },
+            "safetyTerms": []
+          },
+          {
+            "segment": {
+              "start": 222,
+              "end": 325
+            },
+            "recording": {
+              "recordingID": "02020202020202020202020202020202",
+              "segmentStart": 51,
+              "segmentEnd": 75
+            },
+            "fields": {
+              "model": {
+                "text": "WC-900",
+                "spans": [
+                  {
+                    "start": 227,
+                    "end": 233
+                  }
+                ],
+                "verbatim": false
+              },
+              "equipmentType": {
+                "text": "walk-in cooler",
+                "spans": [
+                  {
+                    "start": 234,
+                    "end": 248
+                  }
+                ],
+                "verbatim": false
+              },
+              "symptom": {
+                "text": "Icing up",
+                "spans": [
+                  {
+                    "start": 249,
+                    "end": 257
+                  }
+                ],
+                "verbatim": false
+              },
+              "findings": {
+                "text": "The door gasket was torn",
+                "spans": [
+                  {
+                    "start": 259,
+                    "end": 283
+                  }
+                ],
+                "verbatim": false
+              },
+              "fix": {
+                "text": "Replaced the gasket",
+                "spans": [
+                  {
+                    "start": 285,
+                    "end": 304
+                  }
+                ],
+                "verbatim": false
+              },
+              "outcome": {
+                "text": "Worked once so far",
+                "spans": [
+                  {
+                    "start": 306,
+                    "end": 324
+                  }
+                ],
+                "verbatim": false
+              }
+            },
+            "heldBack": [],
+            "modelToken": "WC-900",
+            "subject": {
+              "kind": "model",
+              "modelToken": "WC-900",
+              "equipmentType": "walk-in cooler"
+            },
+            "safetyTerms": []
+          }
+        ],
+        "siteNotes": []
+      }
+    },
+    {
+      "name": "no-model",
+      "covers": [
+        "no model"
+      ],
+      "recordingID": "03030303030303030303030303030303",
+      "duration": 30,
+      "transcript": "One we see a lot on the dryers. If the drum squeaks on start up, check the idler pulley before anything else. Usually the idler bearing is worn. Fit a new idler pulley. Fixed it most times.",
+      "segments": [
+        {
+          "start": 0,
+          "end": 189
+        }
+      ],
+      "answers": [
+        {
+          "model": {
+            "text": "",
+            "quotes": []
+          },
+          "equipmentType": {
+            "text": "dryer",
+            "quotes": [
+              "on the dryers"
+            ]
+          },
+          "symptom": {
+            "text": "The drum squeaks on start up",
+            "quotes": [
+              "the drum squeaks on start up"
+            ]
+          },
+          "findings": {
+            "text": "The idler bearing is worn",
+            "quotes": [
+              "the idler bearing is worn"
+            ]
+          },
+          "tried": {
+            "text": "Check the idler pulley before anything else",
+            "quotes": [
+              "check the idler pulley before anything else"
+            ]
+          },
+          "fix": {
+            "text": "Fit a new idler pulley",
+            "quotes": [
+              "Fit a new idler pulley"
+            ]
+          },
+          "outcome": {
+            "text": "Fixed it most times",
+            "quotes": [
+              "Fixed it most times"
+            ]
+          },
+          "siteNote": {
+            "text": "",
+            "quotes": []
+          }
+        }
+      ],
+      "expected": {
+        "drafts": [
+          {
+            "segment": {
+              "start": 0,
+              "end": 189
+            },
+            "recording": {
+              "recordingID": "03030303030303030303030303030303",
+              "segmentStart": 0,
+              "segmentEnd": 30
+            },
+            "fields": {
+              "equipmentType": {
+                "text": "dryer",
+                "spans": [
+                  {
+                    "start": 17,
+                    "end": 30
+                  }
+                ],
+                "verbatim": false
+              },
+              "symptom": {
+                "text": "The drum squeaks on start up",
+                "spans": [
+                  {
+                    "start": 35,
+                    "end": 63
+                  }
+                ],
+                "verbatim": false
+              },
+              "findings": {
+                "text": "The idler bearing is worn",
+                "spans": [
+                  {
+                    "start": 118,
+                    "end": 143
+                  }
+                ],
+                "verbatim": false
+              },
+              "tried": {
+                "text": "Check the idler pulley before anything else",
+                "spans": [
+                  {
+                    "start": 65,
+                    "end": 108
+                  }
+                ],
+                "verbatim": false
+              },
+              "fix": {
+                "text": "Fit a new idler pulley",
+                "spans": [
+                  {
+                    "start": 145,
+                    "end": 167
+                  }
+                ],
+                "verbatim": false
+              },
+              "outcome": {
+                "text": "Fixed it most times",
+                "spans": [
+                  {
+                    "start": 169,
+                    "end": 188
+                  }
+                ],
+                "verbatim": false
+              }
+            },
+            "heldBack": [],
+            "subject": {
+              "kind": "symptom",
+              "equipmentType": "dryer",
+              "phrase": "The drum squeaks on start up"
+            },
+            "safetyTerms": []
+          }
+        ],
+        "siteNotes": []
+      }
+    },
+    {
+      "name": "site-mentioned",
+      "covers": [
+        "site mentioned"
+      ],
+      "recordingID": "04040404040404040404040404040404",
+      "duration": 40,
+      "transcript": "Acme WC-900 walk-in cooler at the Elm Row depot kitchen. The evaporator fan kept stopping. The fan motor was overheating because the guard was packed with grease. Cleaned the guard and the motor ran cool. Fixed it every time.",
+      "segments": [
+        {
+          "start": 0,
+          "end": 225
+        }
+      ],
+      "answers": [
+        {
+          "model": {
+            "text": "WC-900",
+            "quotes": [
+              "Acme WC-900"
+            ]
+          },
+          "equipmentType": {
+            "text": "walk-in cooler",
+            "quotes": [
+              "walk-in cooler"
+            ]
+          },
+          "symptom": {
+            "text": "The evaporator fan kept stopping",
+            "quotes": [
+              "The evaporator fan kept stopping"
+            ]
+          },
+          "findings": {
+            "text": "The fan motor was overheating because the guard was packed with grease",
+            "quotes": [
+              "The fan motor was overheating because the guard was packed with grease"
+            ]
+          },
+          "tried": {
+            "text": "",
+            "quotes": []
+          },
+          "fix": {
+            "text": "Cleaned the guard",
+            "quotes": [
+              "Cleaned the guard"
+            ]
+          },
+          "outcome": {
+            "text": "Fixed it every time",
+            "quotes": [
+              "Fixed it every time"
+            ]
+          },
+          "siteNote": {
+            "text": "Elm Row depot kitchen",
+            "quotes": [
+              "the Elm Row depot kitchen"
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "drafts": [
+          {
+            "segment": {
+              "start": 0,
+              "end": 225
+            },
+            "recording": {
+              "recordingID": "04040404040404040404040404040404",
+              "segmentStart": 0,
+              "segmentEnd": 40
+            },
+            "fields": {
+              "model": {
+                "text": "WC-900",
+                "spans": [
+                  {
+                    "start": 0,
+                    "end": 11
+                  }
+                ],
+                "verbatim": false
+              },
+              "equipmentType": {
+                "text": "walk-in cooler",
+                "spans": [
+                  {
+                    "start": 12,
+                    "end": 26
+                  }
+                ],
+                "verbatim": false
+              },
+              "symptom": {
+                "text": "The evaporator fan kept stopping",
+                "spans": [
+                  {
+                    "start": 57,
+                    "end": 89
+                  }
+                ],
+                "verbatim": false
+              },
+              "findings": {
+                "text": "The fan motor was overheating because the guard was packed with grease",
+                "spans": [
+                  {
+                    "start": 91,
+                    "end": 161
+                  }
+                ],
+                "verbatim": false
+              },
+              "fix": {
+                "text": "Cleaned the guard",
+                "spans": [
+                  {
+                    "start": 163,
+                    "end": 180
+                  }
+                ],
+                "verbatim": false
+              },
+              "outcome": {
+                "text": "Fixed it every time",
+                "spans": [
+                  {
+                    "start": 205,
+                    "end": 224
+                  }
+                ],
+                "verbatim": false
+              }
+            },
+            "heldBack": [],
+            "modelToken": "WC-900",
+            "subject": {
+              "kind": "model",
+              "modelToken": "WC-900",
+              "equipmentType": "walk-in cooler"
+            },
+            "safetyTerms": []
+          }
+        ],
+        "siteNotes": [
+          {
+            "segment": {
+              "start": 0,
+              "end": 225
+            },
+            "text": "Elm Row depot kitchen",
+            "spans": [
+              {
+                "start": 30,
+                "end": 55
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "safety-relevant-fix",
+      "covers": [
+        "safety-relevant fix"
+      ],
+      "recordingID": "05050505050505050505050505050505",
+      "duration": 44,
+      "transcript": "Acme RX-300 dryer with no heat. The high limit had tripped. I jumpered the high limit to prove the burner lit, then took the jumper off. The real fault was a blocked vent. Cleared the vent and fitted a new high limit. Worked every time.",
+      "segments": [
+        {
+          "start": 0,
+          "end": 236
+        }
+      ],
+      "answers": [
+        {
+          "model": {
+            "text": "RX-300",
+            "quotes": [
+              "Acme RX-300"
+            ]
+          },
+          "equipmentType": {
+            "text": "dryer",
+            "quotes": [
+              "dryer"
+            ]
+          },
+          "symptom": {
+            "text": "No heat, the high limit had tripped",
+            "quotes": [
+              "no heat",
+              "The high limit had tripped"
+            ]
+          },
+          "findings": {
+            "text": "A blocked vent",
+            "quotes": [
+              "The real fault was a blocked vent"
+            ]
+          },
+          "tried": {
+            "text": "Jumpered the high limit to prove the burner lit, then took the jumper off",
+            "quotes": [
+              "I jumpered the high limit to prove the burner lit, then took the jumper off"
+            ]
+          },
+          "fix": {
+            "text": "Cleared the vent and fitted a new high limit",
+            "quotes": [
+              "Cleared the vent and fitted a new high limit"
+            ]
+          },
+          "outcome": {
+            "text": "Worked every time",
+            "quotes": [
+              "Worked every time"
+            ]
+          },
+          "siteNote": {
+            "text": "",
+            "quotes": []
+          }
+        }
+      ],
+      "expected": {
+        "drafts": [
+          {
+            "segment": {
+              "start": 0,
+              "end": 236
+            },
+            "recording": {
+              "recordingID": "05050505050505050505050505050505",
+              "segmentStart": 0,
+              "segmentEnd": 44
+            },
+            "fields": {
+              "model": {
+                "text": "RX-300",
+                "spans": [
+                  {
+                    "start": 0,
+                    "end": 11
+                  }
+                ],
+                "verbatim": false
+              },
+              "equipmentType": {
+                "text": "dryer",
+                "spans": [
+                  {
+                    "start": 12,
+                    "end": 17
+                  }
+                ],
+                "verbatim": false
+              },
+              "symptom": {
+                "text": "No heat, the high limit had tripped",
+                "spans": [
+                  {
+                    "start": 23,
+                    "end": 30
+                  },
+                  {
+                    "start": 32,
+                    "end": 58
+                  }
+                ],
+                "verbatim": false
+              },
+              "findings": {
+                "text": "A blocked vent",
+                "spans": [
+                  {
+                    "start": 137,
+                    "end": 170
+                  }
+                ],
+                "verbatim": false
+              },
+              "tried": {
+                "text": "Jumpered the high limit to prove the burner lit, then took the jumper off",
+                "spans": [
+                  {
+                    "start": 60,
+                    "end": 135
+                  }
+                ],
+                "verbatim": false
+              },
+              "fix": {
+                "text": "Cleared the vent and fitted a new high limit",
+                "spans": [
+                  {
+                    "start": 172,
+                    "end": 216
+                  }
+                ],
+                "verbatim": false
+              },
+              "outcome": {
+                "text": "Worked every time",
+                "spans": [
+                  {
+                    "start": 218,
+                    "end": 235
+                  }
+                ],
+                "verbatim": false
+              }
+            },
+            "heldBack": [],
+            "modelToken": "RX-300",
+            "subject": {
+              "kind": "model",
+              "modelToken": "RX-300",
+              "equipmentType": "dryer"
+            },
+            "safetyTerms": [
+              "jumper",
+              "jumpered"
+            ]
+          }
+        ],
+        "siteNotes": []
+      }
+    },
+    {
+      "name": "not-a-case",
+      "covers": [
+        "not a case"
+      ],
+      "recordingID": "06060606060606060606060606060606",
+      "duration": 6,
+      "transcript": "Just testing. Testing one two three. Okay, that's all.",
+      "segments": [
+        {
+          "start": 0,
+          "end": 36
+        }
+      ],
+      "answers": [
+        {
+          "model": {
+            "text": "",
+            "quotes": []
+          },
+          "equipmentType": {
+            "text": "",
+            "quotes": []
+          },
+          "symptom": {
+            "text": "",
+            "quotes": []
+          },
+          "findings": {
+            "text": "",
+            "quotes": []
+          },
+          "tried": {
+            "text": "",
+            "quotes": []
+          },
+          "fix": {
+            "text": "",
+            "quotes": []
+          },
+          "outcome": {
+            "text": "",
+            "quotes": []
+          },
+          "siteNote": {
+            "text": "",
+            "quotes": []
+          }
+        }
+      ],
+      "expected": {
+        "drafts": [],
+        "siteNotes": []
+      }
+    },
+    {
+      "name": "model-change-without-marker",
+      "covers": [
+        "model change without a marker"
+      ],
+      "recordingID": "07070707070707070707070707070707",
+      "duration": 52,
+      "transcript": "Acme RX-200 dryer, the door switch fails a lot. The actuator arm snaps. Fit the updated switch kit. Fixed it every time. The Acme RX-300 is different, it throws a drum motor overload. The belt was too tight. Re-tensioned the belt. Worked once.",
+      "segments": [
+        {
+          "start": 0,
+          "end": 120
+        },
+        {
+          "start": 121,
+          "end": 243
+        }
+      ],
+      "answers": [
+        {
+          "model": {
+            "text": "RX-200",
+            "quotes": [
+              "Acme RX-200"
+            ]
+          },
+          "equipmentType": {
+            "text": "dryer",
+            "quotes": [
+              "dryer"
+            ]
+          },
+          "symptom": {
+            "text": "The door switch fails",
+            "quotes": [
+              "the door switch fails"
+            ]
+          },
+          "findings": {
+            "text": "The actuator arm snaps",
+            "quotes": [
+              "The actuator arm snaps"
+            ]
+          },
+          "tried": {
+            "text": "",
+            "quotes": []
+          },
+          "fix": {
+            "text": "Fitted the updated switch kit",
+            "quotes": [
+              "Fit the updated switch kit"
+            ]
+          },
+          "outcome": {
+            "text": "Fixed it every time",
+            "quotes": [
+              "Fixed it every time"
+            ]
+          },
+          "siteNote": {
+            "text": "",
+            "quotes": []
+          }
+        },
+        {
+          "model": {
+            "text": "RX-300",
+            "quotes": [
+              "Acme RX-300"
+            ]
+          },
+          "equipmentType": {
+            "text": "",
+            "quotes": []
+          },
+          "symptom": {
+            "text": "Throws a drum motor overload",
+            "quotes": [
+              "it throws a drum motor overload"
+            ]
+          },
+          "findings": {
+            "text": "The belt was too tight",
+            "quotes": [
+              "The belt was too tight"
+            ]
+          },
+          "tried": {
+            "text": "",
+            "quotes": []
+          },
+          "fix": {
+            "text": "Re-tensioned the belt",
+            "quotes": [
+              "Re-tensioned the belt"
+            ]
+          },
+          "outcome": {
+            "text": "Worked once",
+            "quotes": [
+              "Worked once"
+            ]
+          },
+          "siteNote": {
+            "text": "",
+            "quotes": []
+          }
+        }
+      ],
+      "expected": {
+        "drafts": [
+          {
+            "segment": {
+              "start": 0,
+              "end": 120
+            },
+            "recording": {
+              "recordingID": "07070707070707070707070707070707",
+              "segmentStart": 0,
+              "segmentEnd": 26
+            },
+            "fields": {
+              "model": {
+                "text": "RX-200",
+                "spans": [
+                  {
+                    "start": 0,
+                    "end": 11
+                  }
+                ],
+                "verbatim": false
+              },
+              "equipmentType": {
+                "text": "dryer",
+                "spans": [
+                  {
+                    "start": 12,
+                    "end": 17
+                  }
+                ],
+                "verbatim": false
+              },
+              "symptom": {
+                "text": "The door switch fails",
+                "spans": [
+                  {
+                    "start": 19,
+                    "end": 40
+                  }
+                ],
+                "verbatim": false
+              },
+              "findings": {
+                "text": "The actuator arm snaps",
+                "spans": [
+                  {
+                    "start": 48,
+                    "end": 70
+                  }
+                ],
+                "verbatim": false
+              },
+              "fix": {
+                "text": "Fit the updated switch kit",
+                "spans": [
+                  {
+                    "start": 72,
+                    "end": 98
+                  }
+                ],
+                "verbatim": true
+              },
+              "outcome": {
+                "text": "Fixed it every time",
+                "spans": [
+                  {
+                    "start": 100,
+                    "end": 119
+                  }
+                ],
+                "verbatim": false
+              }
+            },
+            "heldBack": [],
+            "modelToken": "RX-200",
+            "subject": {
+              "kind": "model",
+              "modelToken": "RX-200",
+              "equipmentType": "dryer"
+            },
+            "safetyTerms": []
+          },
+          {
+            "segment": {
+              "start": 121,
+              "end": 243
+            },
+            "recording": {
+              "recordingID": "07070707070707070707070707070707",
+              "segmentStart": 25,
+              "segmentEnd": 52
+            },
+            "fields": {
+              "model": {
+                "text": "RX-300",
+                "spans": [
+                  {
+                    "start": 125,
+                    "end": 136
+                  }
+                ],
+                "verbatim": false
+              },
+              "symptom": {
+                "text": "Throws a drum motor overload",
+                "spans": [
+                  {
+                    "start": 151,
+                    "end": 182
+                  }
+                ],
+                "verbatim": false
+              },
+              "findings": {
+                "text": "The belt was too tight",
+                "spans": [
+                  {
+                    "start": 184,
+                    "end": 206
+                  }
+                ],
+                "verbatim": false
+              },
+              "fix": {
+                "text": "Re-tensioned the belt",
+                "spans": [
+                  {
+                    "start": 208,
+                    "end": 229
+                  }
+                ],
+                "verbatim": false
+              },
+              "outcome": {
+                "text": "Worked once",
+                "spans": [
+                  {
+                    "start": 231,
+                    "end": 242
+                  }
+                ],
+                "verbatim": false
+              }
+            },
+            "heldBack": [],
+            "modelToken": "RX-300",
+            "subject": {
+              "kind": "model",
+              "modelToken": "RX-300"
+            },
+            "safetyTerms": []
+          }
+        ],
+        "siteNotes": []
+      }
+    },
+    {
+      "name": "unsupported-field-stays-empty",
+      "covers": [
+        "unsupported field stays empty"
+      ],
+      "recordingID": "08080808080808080808080808080808",
+      "duration": 20,
+      "transcript": "Acme DW-450 dishwasher. It leaves the glasses cloudy. Changed the rinse aid dispenser. Not sure yet if it worked.",
+      "segments": [
+        {
+          "start": 0,
+          "end": 113
+        }
+      ],
+      "answers": [
+        {
+          "model": {
+            "text": "DW-450",
+            "quotes": [
+              "Acme DW-450"
+            ]
+          },
+          "equipmentType": {
+            "text": "dishwasher",
+            "quotes": [
+              "dishwasher"
+            ]
+          },
+          "symptom": {
+            "text": "Leaves the glasses cloudy",
+            "quotes": [
+              "It leaves the glasses cloudy"
+            ]
+          },
+          "findings": {
+            "text": "",
+            "quotes": []
+          },
+          "tried": {
+            "text": "",
+            "quotes": []
+          },
+          "fix": {
+            "text": "Changed the rinse aid dispenser",
+            "quotes": [
+              "Changed the rinse aid dispenser"
+            ]
+          },
+          "outcome": {
+            "text": "Not sure yet if it worked",
+            "quotes": [
+              "Not sure yet if it worked"
+            ]
+          },
+          "siteNote": {
+            "text": "",
+            "quotes": []
+          }
+        }
+      ],
+      "expected": {
+        "drafts": [
+          {
+            "segment": {
+              "start": 0,
+              "end": 113
+            },
+            "recording": {
+              "recordingID": "08080808080808080808080808080808",
+              "segmentStart": 0,
+              "segmentEnd": 20
+            },
+            "fields": {
+              "model": {
+                "text": "DW-450",
+                "spans": [
+                  {
+                    "start": 0,
+                    "end": 11
+                  }
+                ],
+                "verbatim": false
+              },
+              "equipmentType": {
+                "text": "dishwasher",
+                "spans": [
+                  {
+                    "start": 12,
+                    "end": 22
+                  }
+                ],
+                "verbatim": false
+              },
+              "symptom": {
+                "text": "Leaves the glasses cloudy",
+                "spans": [
+                  {
+                    "start": 24,
+                    "end": 52
+                  }
+                ],
+                "verbatim": false
+              },
+              "fix": {
+                "text": "Changed the rinse aid dispenser",
+                "spans": [
+                  {
+                    "start": 54,
+                    "end": 85
+                  }
+                ],
+                "verbatim": false
+              },
+              "outcome": {
+                "text": "Not sure yet if it worked",
+                "spans": [
+                  {
+                    "start": 87,
+                    "end": 112
+                  }
+                ],
+                "verbatim": false
+              }
+            },
+            "heldBack": [],
+            "modelToken": "DW-450",
+            "subject": {
+              "kind": "model",
+              "modelToken": "DW-450",
+              "equipmentType": "dishwasher"
+            },
+            "safetyTerms": []
+          }
+        ],
+        "siteNotes": []
+      }
+    },
+    {
+      "name": "over-limit-outcome",
+      "covers": [
+        "over-limit outcome"
+      ],
+      "recordingID": "09090909090909090909090909090909",
+      "duration": 50,
+      "transcript": "Acme RX-300 dryer takes two cycles to dry. The moisture sensor bars were coated. Cleaned the sensor bars with a scourer. As for how sure I am, it has fixed it on every one of these I have done over the last three years apart from one where the bars were fine and it was the control board instead, so I would say most of the time but check the board if the bars look clean.",
+      "segments": [
+        {
+          "start": 0,
+          "end": 372
+        }
+      ],
+      "answers": [
+        {
+          "model": {
+            "text": "RX-300",
+            "quotes": [
+              "Acme RX-300"
+            ]
+          },
+          "equipmentType": {
+            "text": "dryer",
+            "quotes": [
+              "dryer"
+            ]
+          },
+          "symptom": {
+            "text": "Takes two cycles to dry",
+            "quotes": [
+              "takes two cycles to dry"
+            ]
+          },
+          "findings": {
+            "text": "The moisture sensor bars were coated",
+            "quotes": [
+              "The moisture sensor bars were coated"
+            ]
+          },
+          "tried": {
+            "text": "",
+            "quotes": []
+          },
+          "fix": {
+            "text": "Cleaned the sensor bars with a scourer",
+            "quotes": [
+              "Cleaned the sensor bars with a scourer"
+            ]
+          },
+          "outcome": {
+            "text": "It has fixed it on every one of these I have done over the last three years apart from one where the bars were fine and it was the control board instead, so I would say most of the time but check the board if the bars look clean",
+            "quotes": [
+              "it has fixed it on every one of these I have done over the last three years apart from one where the bars were fine and it was the control board instead, so I would say most of the time but check the board if the bars look clean"
+            ]
+          },
+          "siteNote": {
+            "text": "",
+            "quotes": []
+          }
+        }
+      ],
+      "expected": {
+        "drafts": [
+          {
+            "segment": {
+              "start": 0,
+              "end": 372
+            },
+            "recording": {
+              "recordingID": "09090909090909090909090909090909",
+              "segmentStart": 0,
+              "segmentEnd": 50
+            },
+            "fields": {
+              "model": {
+                "text": "RX-300",
+                "spans": [
+                  {
+                    "start": 0,
+                    "end": 11
+                  }
+                ],
+                "verbatim": false
+              },
+              "equipmentType": {
+                "text": "dryer",
+                "spans": [
+                  {
+                    "start": 12,
+                    "end": 17
+                  }
+                ],
+                "verbatim": false
+              },
+              "symptom": {
+                "text": "Takes two cycles to dry",
+                "spans": [
+                  {
+                    "start": 18,
+                    "end": 41
+                  }
+                ],
+                "verbatim": false
+              },
+              "findings": {
+                "text": "The moisture sensor bars were coated",
+                "spans": [
+                  {
+                    "start": 43,
+                    "end": 79
+                  }
+                ],
+                "verbatim": false
+              },
+              "fix": {
+                "text": "Cleaned the sensor bars with a scourer",
+                "spans": [
+                  {
+                    "start": 81,
+                    "end": 119
+                  }
+                ],
+                "verbatim": false
+              }
+            },
+            "heldBack": [
+              {
+                "field": "outcome",
+                "reason": "overLimit",
+                "count": 228,
+                "limit": 120,
+                "spans": [
+                  {
+                    "start": 143,
+                    "end": 371
+                  }
+                ]
+              }
+            ],
+            "modelToken": "RX-300",
+            "subject": {
+              "kind": "model",
+              "modelToken": "RX-300",
+              "equipmentType": "dryer"
+            },
+            "safetyTerms": []
+          }
+        ],
+        "siteNotes": []
+      }
+    },
+    {
+      "name": "equipment-type-not-listed",
+      "covers": [
+        "equipment type not listed"
+      ],
+      "recordingID": "10101010101010101010101010101010",
+      "duration": 24,
+      "transcript": "The ice maker keeps making thin cubes. The water inlet valve was partly blocked. Replaced the inlet valve. Fixed it most times.",
+      "segments": [
+        {
+          "start": 0,
+          "end": 127
+        }
+      ],
+      "answers": [
+        {
+          "model": {
+            "text": "",
+            "quotes": []
+          },
+          "equipmentType": {
+            "text": "ice maker",
+            "quotes": [
+              "The ice maker"
+            ]
+          },
+          "symptom": {
+            "text": "Keeps making thin cubes",
+            "quotes": [
+              "keeps making thin cubes"
+            ]
+          },
+          "findings": {
+            "text": "The water inlet valve was partly blocked",
+            "quotes": [
+              "The water inlet valve was partly blocked"
+            ]
+          },
+          "tried": {
+            "text": "",
+            "quotes": []
+          },
+          "fix": {
+            "text": "Replaced the inlet valve",
+            "quotes": [
+              "Replaced the inlet valve"
+            ]
+          },
+          "outcome": {
+            "text": "Fixed it most times",
+            "quotes": [
+              "Fixed it most times"
+            ]
+          },
+          "siteNote": {
+            "text": "",
+            "quotes": []
+          }
+        }
+      ],
+      "expected": {
+        "drafts": [
+          {
+            "segment": {
+              "start": 0,
+              "end": 127
+            },
+            "recording": {
+              "recordingID": "10101010101010101010101010101010",
+              "segmentStart": 0,
+              "segmentEnd": 24
+            },
+            "fields": {
+              "symptom": {
+                "text": "Keeps making thin cubes",
+                "spans": [
+                  {
+                    "start": 14,
+                    "end": 37
+                  }
+                ],
+                "verbatim": false
+              },
+              "findings": {
+                "text": "The water inlet valve was partly blocked",
+                "spans": [
+                  {
+                    "start": 39,
+                    "end": 79
+                  }
+                ],
+                "verbatim": false
+              },
+              "fix": {
+                "text": "Replaced the inlet valve",
+                "spans": [
+                  {
+                    "start": 81,
+                    "end": 105
+                  }
+                ],
+                "verbatim": false
+              },
+              "outcome": {
+                "text": "Fixed it most times",
+                "spans": [
+                  {
+                    "start": 107,
+                    "end": 126
+                  }
+                ],
+                "verbatim": false
+              }
+            },
+            "heldBack": [
+              {
+                "field": "equipmentType",
+                "reason": "notListed",
+                "text": "ice maker",
+                "spans": [
+                  {
+                    "start": 0,
+                    "end": 13
+                  }
+                ]
+              }
+            ],
+            "safetyTerms": []
+          }
+        ],
+        "siteNotes": []
+      }
+    }
+  ],
+  "refusals": [
+    {
+      "name": "a field with no quote",
+      "case": "unsupported-field-stays-empty",
+      "answer": {
+        "model": {
+          "text": "DW-450",
+          "quotes": [
+            "Acme DW-450"
+          ]
+        },
+        "equipmentType": {
+          "text": "dishwasher",
+          "quotes": [
+            "dishwasher"
+          ]
+        },
+        "symptom": {
+          "text": "Leaves the glasses cloudy",
+          "quotes": [
+            "It leaves the glasses cloudy"
+          ]
+        },
+        "findings": {
+          "text": "",
+          "quotes": []
+        },
+        "tried": {
+          "text": "Checked the water hardness",
+          "quotes": []
+        },
+        "fix": {
+          "text": "Changed the rinse aid dispenser",
+          "quotes": [
+            "Changed the rinse aid dispenser"
+          ]
+        },
+        "outcome": {
+          "text": "Not sure yet if it worked",
+          "quotes": [
+            "Not sure yet if it worked"
+          ]
+        },
+        "siteNote": {
+          "text": "",
+          "quotes": []
+        }
+      },
+      "refusal": {
+        "kind": "unsupported",
+        "field": "tried"
+      }
+    },
+    {
+      "name": "a quote the transcript does not hold",
+      "case": "unsupported-field-stays-empty",
+      "answer": {
+        "model": {
+          "text": "DW-450",
+          "quotes": [
+            "Acme DW-450"
+          ]
+        },
+        "equipmentType": {
+          "text": "dishwasher",
+          "quotes": [
+            "dishwasher"
+          ]
+        },
+        "symptom": {
+          "text": "Leaves the glasses cloudy",
+          "quotes": [
+            "It leaves the glasses cloudy"
+          ]
+        },
+        "findings": {
+          "text": "",
+          "quotes": []
+        },
+        "tried": {
+          "text": "Checked the water hardness",
+          "quotes": [
+            "checked the water hardness"
+          ]
+        },
+        "fix": {
+          "text": "Changed the rinse aid dispenser",
+          "quotes": [
+            "Changed the rinse aid dispenser"
+          ]
+        },
+        "outcome": {
+          "text": "Not sure yet if it worked",
+          "quotes": [
+            "Not sure yet if it worked"
+          ]
+        },
+        "siteNote": {
+          "text": "",
+          "quotes": []
+        }
+      },
+      "refusal": {
+        "kind": "quoteNotFound",
+        "field": "tried"
+      }
+    },
+    {
+      "name": "a quote from another case",
+      "case": "three-cases",
+      "segment": 1,
+      "answer": {
+        "model": {
+          "text": "RX-200",
+          "quotes": [
+            "RX-200"
+          ]
+        },
+        "equipmentType": {
+          "text": "dryer",
+          "quotes": [
+            "dryer"
+          ]
+        },
+        "symptom": {
+          "text": "No heat",
+          "quotes": [
+            "no heat"
+          ]
+        },
+        "findings": {
+          "text": "The heating element was open",
+          "quotes": [
+            "The heating element was open"
+          ]
+        },
+        "tried": {
+          "text": "",
+          "quotes": []
+        },
+        "fix": {
+          "text": "Replaced the element",
+          "quotes": [
+            "Replaced the element"
+          ]
+        },
+        "outcome": {
+          "text": "",
+          "quotes": []
+        },
+        "siteNote": {
+          "text": "",
+          "quotes": []
+        }
+      },
+      "refusal": {
+        "kind": "quoteNotFound",
+        "field": "model"
+      }
+    },
+    {
+      "name": "the site in a learning",
+      "case": "site-mentioned",
+      "answer": {
+        "model": {
+          "text": "WC-900",
+          "quotes": [
+            "Acme WC-900"
+          ]
+        },
+        "equipmentType": {
+          "text": "walk-in cooler",
+          "quotes": [
+            "walk-in cooler"
+          ]
+        },
+        "symptom": {
+          "text": "The evaporator fan kept stopping",
+          "quotes": [
+            "The evaporator fan kept stopping"
+          ]
+        },
+        "findings": {
+          "text": "The fan motor was overheating at the Elm Row depot kitchen",
+          "quotes": [
+            "The fan motor was overheating",
+            "at the Elm Row depot kitchen"
+          ]
+        },
+        "tried": {
+          "text": "",
+          "quotes": []
+        },
+        "fix": {
+          "text": "Cleaned the guard",
+          "quotes": [
+            "Cleaned the guard"
+          ]
+        },
+        "outcome": {
+          "text": "Fixed it every time",
+          "quotes": [
+            "Fixed it every time"
+          ]
+        },
+        "siteNote": {
+          "text": "Elm Row depot kitchen",
+          "quotes": [
+            "the Elm Row depot kitchen"
+          ]
+        }
+      },
+      "refusal": {
+        "kind": "siteInLearning",
+        "field": "findings"
+      }
+    },
+    {
+      "name": "a model the technician did not name",
+      "case": "unsupported-field-stays-empty",
+      "answer": {
+        "model": {
+          "text": "DW-500",
+          "quotes": [
+            "Acme DW-450"
+          ]
+        },
+        "equipmentType": {
+          "text": "dishwasher",
+          "quotes": [
+            "dishwasher"
+          ]
+        },
+        "symptom": {
+          "text": "Leaves the glasses cloudy",
+          "quotes": [
+            "It leaves the glasses cloudy"
+          ]
+        },
+        "findings": {
+          "text": "",
+          "quotes": []
+        },
+        "tried": {
+          "text": "",
+          "quotes": []
+        },
+        "fix": {
+          "text": "Changed the rinse aid dispenser",
+          "quotes": [
+            "Changed the rinse aid dispenser"
+          ]
+        },
+        "outcome": {
+          "text": "Not sure yet if it worked",
+          "quotes": [
+            "Not sure yet if it worked"
+          ]
+        },
+        "siteNote": {
+          "text": "",
+          "quotes": []
+        }
+      },
+      "refusal": {
+        "kind": "unsupported",
+        "field": "model"
+      }
+    },
+    {
+      "name": "a field missing",
+      "case": "unsupported-field-stays-empty",
+      "answer": {
+        "model": {
+          "text": "DW-450",
+          "quotes": [
+            "Acme DW-450"
+          ]
+        },
+        "equipmentType": {
+          "text": "dishwasher",
+          "quotes": [
+            "dishwasher"
+          ]
+        },
+        "symptom": {
+          "text": "Leaves the glasses cloudy",
+          "quotes": [
+            "It leaves the glasses cloudy"
+          ]
+        },
+        "findings": {
+          "text": "",
+          "quotes": []
+        },
+        "tried": {
+          "text": "",
+          "quotes": []
+        },
+        "fix": {
+          "text": "Changed the rinse aid dispenser",
+          "quotes": [
+            "Changed the rinse aid dispenser"
+          ]
+        },
+        "siteNote": {
+          "text": "",
+          "quotes": []
+        }
+      },
+      "refusal": {
+        "kind": "malformed"
+      }
+    },
+    {
+      "name": "a bidirectional control",
+      "case": "unsupported-field-stays-empty",
+      "answer": {
+        "model": {
+          "text": "DW-450",
+          "quotes": [
+            "Acme DW-450"
+          ]
+        },
+        "equipmentType": {
+          "text": "dishwasher",
+          "quotes": [
+            "dishwasher"
+          ]
+        },
+        "symptom": {
+          "text": "Leaves the glasses cloudy",
+          "quotes": [
+            "It leaves the glasses cloudy"
+          ]
+        },
+        "findings": {
+          "text": "",
+          "quotes": []
+        },
+        "tried": {
+          "text": "",
+          "quotes": []
+        },
+        "fix": {
+          "text": "Changed the rinse aid ‮dispenser",
+          "quotes": [
+            "Changed the rinse aid dispenser"
+          ]
+        },
+        "outcome": {
+          "text": "Not sure yet if it worked",
+          "quotes": [
+            "Not sure yet if it worked"
+          ]
+        },
+        "siteNote": {
+          "text": "",
+          "quotes": []
+        }
+      },
+      "refusal": {
+        "kind": "controlCharacter",
+        "field": "fix"
+      }
+    },
+    {
+      "name": "a quote outside the transcript",
+      "case": "unsupported-field-stays-empty",
+      "answer": {
+        "model": {
+          "text": "DW-450",
+          "quotes": [
+            "Acme DW-450"
+          ]
+        },
+        "equipmentType": {
+          "text": "dishwasher",
+          "quotes": [
+            "dishwasher"
+          ]
+        },
+        "symptom": {
+          "text": "Leaves the glasses cloudy",
+          "quotes": [
+            "It leaves the glasses cloudy",
+            "Acme RX-200"
+          ]
+        },
+        "findings": {
+          "text": "",
+          "quotes": []
+        },
+        "tried": {
+          "text": "",
+          "quotes": []
+        },
+        "fix": {
+          "text": "Changed the rinse aid dispenser",
+          "quotes": [
+            "Changed the rinse aid dispenser"
+          ]
+        },
+        "outcome": {
+          "text": "Not sure yet if it worked",
+          "quotes": [
+            "Not sure yet if it worked"
+          ]
+        },
+        "siteNote": {
+          "text": "",
+          "quotes": []
+        }
+      },
+      "refusal": {
+        "kind": "quoteNotFound",
+        "field": "symptom"
+      }
+    }
+  ]
+}

@@ -1,0 +1,200 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "model",
+    "equipmentType",
+    "symptom",
+    "findings",
+    "tried",
+    "fix",
+    "outcome",
+    "siteNote"
+  ],
+  "properties": {
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "quotes"
+      ],
+      "description": "The model as the technician named it, at most 80 characters. Empty when no model is named.",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Empty when the transcript does not say."
+        },
+        "quotes": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string"
+          },
+          "description": "The exact words from the transcript this rests on, copied as said. Empty when text is empty."
+        }
+      }
+    },
+    "equipmentType": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "quotes"
+      ],
+      "description": "What kind of equipment it is, copied exactly from the vault's list of equipment types, at most 80 characters. Empty when the transcript does not say.",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Empty when the transcript does not say."
+        },
+        "quotes": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string"
+          },
+          "description": "The exact words from the transcript this rests on, copied as said. Empty when text is empty."
+        }
+      }
+    },
+    "symptom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "quotes"
+      ],
+      "description": "The problem as it showed up, at most 500 characters.",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Empty when the transcript does not say."
+        },
+        "quotes": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string"
+          },
+          "description": "The exact words from the transcript this rests on, copied as said. Empty when text is empty."
+        }
+      }
+    },
+    "findings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "quotes"
+      ],
+      "description": "What was found to be the cause, at most 2,000 characters.",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Empty when the transcript does not say."
+        },
+        "quotes": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string"
+          },
+          "description": "The exact words from the transcript this rests on, copied as said. Empty when text is empty."
+        }
+      }
+    },
+    "tried": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "quotes"
+      ],
+      "description": "What was checked or tried on the way to the fix, at most 500 characters.",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Empty when the transcript does not say."
+        },
+        "quotes": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string"
+          },
+          "description": "The exact words from the transcript this rests on, copied as said. Empty when text is empty."
+        }
+      }
+    },
+    "fix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "quotes"
+      ],
+      "description": "What fixed it, at most 500 characters.",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Empty when the transcript does not say."
+        },
+        "quotes": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string"
+          },
+          "description": "The exact words from the transcript this rests on, copied as said. Empty when text is empty."
+        }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "quotes"
+      ],
+      "description": "How sure the technician is, in their own words, never a number, at most 120 characters.",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Empty when the transcript does not say."
+        },
+        "quotes": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string"
+          },
+          "description": "The exact words from the transcript this rests on, copied as said. Empty when text is empty."
+        }
+      }
+    },
+    "siteNote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "quotes"
+      ],
+      "description": "A customer, site or place the transcript names. It is kept apart from every other field: never repeat it there.",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Empty when the transcript does not say."
+        },
+        "quotes": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string"
+          },
+          "description": "The exact words from the transcript this rests on, copied as said. Empty when text is empty."
+        }
+      }
+    }
+  }
+}

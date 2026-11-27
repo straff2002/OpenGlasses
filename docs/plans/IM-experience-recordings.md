@@ -1,6 +1,6 @@
 # Plan IM — Experience Recordings (what the crew already knows, one case per recording)
 
-**Status:** ✅ P0 merged 2026-11-27 (PR 1256, build 783) ([below](#p0--contract-amendment-and-the-model-headless)): team-learning §13, the candidate's `tried`/`outcome` and `recording` evidence, the manifest's `equipment_types`, symptom matching in retrieval, recollections ranked below job-confirmed learnings, and the recalled lead-in. Part of P0 was built by Plan NF P0 (2026-11-25): `LearningCandidate.Origin.recollection`, the entry fields `tried`/`outcome`, `LearningEntry.Subject.symptom(equipmentType:phrase:)` and §11. 🚧 P1 built 2026-11-27, PR pending ([below](#p1--the-recorder-record-experience-phone-and-carplay)): the recorder on the phone and CarPlay. P2–P4 not built. Drafted 2026-10-16.
+**Status:** ✅ P0 merged 2026-11-27 (PR 1256, build 783) ([below](#p0--contract-amendment-and-the-model-headless)): team-learning §13, the candidate's `tried`/`outcome` and `recording` evidence, the manifest's `equipment_types`, symptom matching in retrieval, recollections ranked below job-confirmed learnings, and the recalled lead-in. Part of P0 was built by Plan NF P0 (2026-11-25): `LearningCandidate.Origin.recollection`, the entry fields `tried`/`outcome`, `LearningEntry.Subject.symptom(equipmentType:phrase:)` and §11. ✅ P1 merged 2026-11-27 (PR 1258, build 784) ([below](#p1--the-recorder-record-experience-phone-and-carplay)): the recorder on the phone and CarPlay. 🚧 P2 built 2026-11-27, PR pending ([below](#p2--the-drafting-pass-pure-segmentation-model-extraction-validation)): the drafting pass, segmenter, schema-forced extraction and validator, with the schema and ten scripted recollections shared with the office's intake (team-learning §13.1). P3–P4 not built. Drafted 2026-10-16.
 **Track:** Field Assist (B2B).
 **Depends on:** Plan [FP](FP-team-learnings.md) P0–P3 (shipped: candidate, review, entry, corpus,
 bundle) and FP P4 (the review queue on a screen) before anything here is usable by a supervisor.
@@ -178,7 +178,7 @@ Fixtures in `Contracts/fixtures/team-learning-v1/`; tests in `TeamLearningRecoll
   "next case" split; HIPAA withholding; and the `.teamLearnings` capability gate, plus Plan IP's
   switch once it exists.
 
-**Built 2026-11-27, PR pending.** Decisions 1, 2 and 6 as recommended. `ExperienceRecording` (id,
+**Merged 2026-11-27 (PR 1258).** Decisions 1, 2 and 6 as recommended. `ExperienceRecording` (id,
 created, whole-second duration, redacted transcript, redaction names, the default vault, optional
 spoken model and site, which P1 leaves empty for P2, status forward-only `recorded → sent → drafted →
 reviewed`, and when its audio went) lives in `ExperienceRecordingStore`: an index beside the
@@ -222,6 +222,33 @@ recording, recogniser stretches on hardware).
   ("just testing"). Each must draft the expected candidates, with spans that cover every filled
   field and nothing invented. Run against a stub model in CI and against the live provider as an
   owed check.
+
+**Built 2026-11-27, PR pending.** Decisions 1, 3, 4 and 6 as recommended; the shared rules are
+team-learning §13.1. `RecollectionSegmenter` (pure) splits the transcript into sentences, cuts cases at
+P1's markers (`ExperienceRecordingMarkers.split`, read the recorder's way: "that's all" ends the
+transcript), then at a sentence naming exactly one vault model after another was named
+(`VaultModelIndex`). Each segment is one call through `LLMService.completeStructured` (Plan AD's
+path) behind the `RecollectionDraftModel` seam, with the closed eight-field schema
+(`RecollectionDraftRules.jsonSchema`, held to `recollection-draft-schema-v1.json`). The model gives
+each field as its words plus the exact quotes it rests on; **the phone finds every quote in the
+segment itself** (Unicode scalar spans; a model is good at quoting, bad at counting), and
+`RecollectionDraftValidator` refuses the whole answer for a filled field with no quote, a quote the
+segment does not hold, a model or type its quotes do not say, a control character, a malformed shape,
+or a learning field touching the site note. A free-text field that says more than its quotes becomes
+the technician's words verbatim instead, so nothing is invented. Over a limit (`tried` 500, `outcome`
+120, P0's) a field is held back with its spans, never cut; an equipment type off the vault's closed list
+is held back and drafts no symptom subject. The site is a separate `RecollectionSiteNote` (decision 6).
+A draft carries its segment, the recording evidence in whole seconds (estimated from where the segment
+sits in the transcript, because P1 keeps no stretch timings), the suggested subject and the safety
+check's hazard words; `RecollectionDraft.candidate(from:author:)` makes the `recollection` candidate P3
+will file (finding: the findings, else the fix, then the symptom). `RecollectionDrafter` runs only on a
+reviewer device (`Config.teamLearningReviewerDevice`) and never under Medical Compliance, and stores
+nothing: moving the recording to `drafted` and filing are P3's. The schema and the ten recollections
+(`Contracts/fixtures/team-learning-v1/recollection-draft*-v1.json`) are shared with the office's intake;
+`Contracts/tests/test_recollection_drafts.py` (`python3 -I`, in the contracts workflow) is a second
+implementation held to them. Tests in `RecollectionDraftTests` (stub model). Owed: the live-provider
+pass over the ten recollections (Anthropic, OpenAI, Gemini, on-device), and English-only markers as in
+P1.
 
 ### P3 — Delivery and review
 
