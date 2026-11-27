@@ -106,7 +106,7 @@ enum MedicalFramework: String, CaseIterable, Identifiable {
             return [
                 String(localized: "Breach notification procedures (60-day rule)"),
                 String(localized: "All HIPAA administrative requirements"),
-                String(localized: "Promoting Interoperability attestation (formerly Meaningful Use), if applicable")
+                String(localized: "Medicare Promoting Interoperability reporting (hospitals) or the MIPS Promoting Interoperability category (clinicians), if applicable")
             ]
         case .australianPrivacy:
             return [
@@ -205,7 +205,7 @@ enum MedicalSafeguard: String, CaseIterable {
         case .accessControl:
             return String(localized: "Face ID, Touch ID, or device passcode is required every time the app returns to the foreground.")
         case .auditLog:
-            return String(localized: "Data access events are logged with timestamps on this phone, while Medical mode is on: recordings started and stopped, files saved, shared or deleted. The log keeps its latest 1,000 entries and names no user. Exportable for compliance review.")
+            return String(localized: "Data access events are logged with timestamps on this phone, while Medical mode is on: recordings started and stopped, files saved, shared or deleted. The log keeps its latest 1,000 entries and names no user or patient. Exportable for compliance review.")
         case .dataRetention:
             return String(localized: "Configurable auto-purge removes transcripts and recordings older than the retention period. Files are deleted; flash storage cannot be overwritten; backups and shared copies are not reached.")
         case .baa:
@@ -371,7 +371,7 @@ struct HIPAASettingsView: View {
                 } header: {
                     Text("Framework Coverage")
                 } footer: {
-                    Text("Medical Compliance mode implements the technical safeguards required by these frameworks. Organisational policies (training, incident response, DPAs) are your responsibility.")
+                    Text("Medical Compliance mode provides the technical safeguards listed under each framework. It does not certify compliance. Organisational policies (training, incident response, agreements) are your responsibility.")
                 }
 
                 // MARK: - Data Routing
@@ -397,7 +397,7 @@ struct HIPAASettingsView: View {
                         Text("All AI queries are processed on-device. No clinical data is sent to an AI provider; it leaves the phone only to your own record system.")
                     } else {
                         Label {
-                            Text("Cloud LLM providers may process clinical data. Ensure you have a signed agreement (BAA, DPA, or equivalent) with your provider.")
+                            Text("Cloud LLM providers may process clinical data. Ensure you have a signed agreement (BAA, DPA, or equivalent) with your provider, and with any other service that holds clinical data for you.")
                         } icon: {
                             Image(systemName: "exclamationmark.triangle.fill")
                         }
