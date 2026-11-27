@@ -334,7 +334,7 @@ for the author's job, never publication (§4) and never authority.
 | `licenceLapsed` | the profile's licence has run out | as above |
 | `unknownProfile`, `notSeatChecked` | no such profile, or its licence counts no seats | as above |
 | `routeOff` | the company does not review learnings in the portal (no company vaults, or the switch is off) | as above |
-| `notIncluded` | the licence does not include team learnings | as above |
+| `notIncluded` | **Reserved.** The licence does not include team learnings. The service has no tier to read, so it never sends this today (decided 2026-11-27); the name stays so a later service can, and the phone already handles it | as above |
 
 A refused candidate **stays queued**: an absent or refusing service is not a failed send (§3), and the
 technician's job names the refusal until a send is received.

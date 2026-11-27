@@ -203,6 +203,26 @@ Taken 2026-11-25: all 10 as recommended.
     administrator for review"*, in the same PR as the send (P1), and the privacy manifest lists the data
     type as user content linked to the seat.
 
+### Decided 2026-11-27 (questions raised while building P0b and S1)
+
+1. **A company with no device seats sends no learnings to the portal.** Accepted for v1: the seat channel is
+   the signed route, and a company without seats is not a portal company; it uses the reviewer device and
+   bundles (FP P3). The portal's onboarding says so (private service repository).
+2. **`notIncluded` is reserved.** The service has no tier to read, so it never sends it; the contract keeps the
+   name (§12.2) and the phone keeps handling it.
+3. **A recollection's first job makes its count 1.** Kept: the count is the jobs that confirmed it, and a
+   recollection is not a job. P0b's reading of FP's rule stands.
+4. **The reseal hold-back stays.** Holding a set back until every active seat reports build 779 or later is
+   safer than publishing a set an older phone refuses whole.
+5. **Backups follow the 90-day deletion.** The service's encrypted backups rotate after 30 days (the newest
+   seven kept whatever their age), so a learning deleted 90 days after its decision is gone from every backup
+   too. A copy taken off the host must be rotated the same way (private service repository).
+6. **No `practice` subject yet.** Model and equipment-type subjects cover every case so far; it waits for a
+   real request.
+7. **S1 checks no HIPAA value.** A HIPAA phone sends nothing (§12.3), and the company profile the portal
+   publishes carries no Medical Compliance value for the service to read. When a company profile can pin
+   Medical Compliance on, the seat actions refuse that company's learnings as well.
+
 ## Acceptance
 
 - A learning filed offline reaches the portal once the phone has signal, exactly once.
