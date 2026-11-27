@@ -215,8 +215,9 @@ Taken 2026-11-25: all 10 as recommended.
 4. **The reseal hold-back stays.** Holding a set back until every active seat reports build 779 or later is
    safer than publishing a set an older phone refuses whole.
 5. **Backups follow the 90-day deletion.** The service's encrypted backups rotate after 30 days (the newest
-   seven kept whatever their age), so a learning deleted 90 days after its decision is gone from every backup
-   too. A copy taken off the host must be rotated the same way (private service repository).
+   seven kept whatever their age), so a learning deleted 90 days after its decision is gone from the host's
+   backups within 30 days of that deletion. A copy taken off the host must be rotated the same way (private
+   service repository).
 6. **No `practice` subject yet.** Model and equipment-type subjects cover every case so far; it waits for a
    real request.
 7. **S1 checks no HIPAA value.** A HIPAA phone sends nothing (§12.3), and the company profile the portal
