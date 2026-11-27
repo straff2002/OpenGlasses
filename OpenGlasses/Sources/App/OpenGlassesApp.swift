@@ -1717,7 +1717,27 @@ class AppState: ObservableObject, AppStateProtocol {
     /// The queue's delivery target. `EndpointSyncSink` posts job records and stock checks to the
     /// organisation's endpoint when one is configured (Plan EM P2) and hands everything else — and
     /// everything, when no endpoint is set — to the local sink that was there before.
-    lazy var syncEngine = SyncEngine(queue: offlineQueue, sink: stockSystemSink)
+    lazy var syncEngine = SyncEngine(queue: offlineQueue, sink: clinicStockSink)
+    /// The clinic's shared stock count in its own Microsoft 365 workbook (Plan NK P1).
+    lazy var clinicWorkbook: ClinicWorkbookService = {
+        let service = ClinicWorkbookService()
+        service.sink = clinicStockSink
+        service.flush = { [weak self] in await self?.syncEngine.flush() }
+        // Decision 3: the end of the daily check is one of the moments the rows go.
+        ImmunisationCheckService.shared.onDone = { [weak service] in
+            Task { @MainActor in await service?.send(.dailyCheck) }
+        }
+        return service
+    }()
+    /// A clinical list's rows on their way to the clinic's workbook (Plan NK P1), in front of
+    /// every other sink.
+    lazy var clinicStockSink = ClinicStockSyncSink(
+        queue: offlineQueue, fallback: stockSystemSink,
+        seams: ClinicStockSyncSink.Seams(
+            connection: { [weak self] in self?.clinicWorkbook.queueConnection() ?? .removed },
+            retry: { [weak self] date in self?.scheduleStockSystemRetry(at: date) },
+            delivered: { [weak self] batch in self?.clinicWorkbook.delivered(batch) },
+            abandoned: { [weak self] workbook, keys in self?.clinicWorkbook.abandoned(keys, workbook: workbook) }))
     let workizConnection = WorkizConnection.forApp()
     lazy var workiz: WorkizController = {
         let controller = WorkizController(connection: workizConnection, jobs: upcomingJobs, started: {
@@ -3683,6 +3703,9 @@ class AppState: ObservableObject, AppStateProtocol {
             } else {
                 self.syncEngine.runMaintenance()
             }
+            // Plan NK, Decision 3: the first launch of a day sends what the last day left, through
+            // the queue (it waits there while offline).
+            await self.clinicWorkbook.sendOnLaunchIfDue()
         }
 
         // Register live translation tool with its service reference

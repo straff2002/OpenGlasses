@@ -135,6 +135,7 @@ struct SyncStatusView: View {
         case .teamLearning:  return "Team learnings"
         case .teamLearningPortal: return "Team learning for review"
         case .capturedManual: return "Photographed manual"
+        case .clinicStockRows: return "Stock rows for the clinic's workbook"
         }
     }
 

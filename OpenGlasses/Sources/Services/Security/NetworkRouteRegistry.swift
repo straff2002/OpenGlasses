@@ -26,6 +26,9 @@ enum NetworkDataClass: String, CaseIterable, Sendable {
     /// An identifier for this phone the app made itself: the seat key's public half and the
     /// enrolment id a seat-checked licence's check-in sends (Plan JS P2). Never a vendor id.
     case deviceIdentifier
+    /// A clinic's own stock rows (Plan NK): a day, a line, a lot, a kind of movement, a quantity, a
+    /// waste reason and a row key — `ClinicalStockShareRow`, never a person.
+    case inventoryRows
 }
 
 extension NetworkDataClass {
@@ -52,6 +55,11 @@ extension NetworkDataClass {
             return nil
         case .deviceIdentifier:
             return "NSPrivacyCollectedDataTypeDeviceID"
+        case .inventoryRows:
+            // The clinic's vials, written to the clinic's own Microsoft 365 with the clinic user's
+            // own sign-in. Nothing about the user, and nothing the developer or a partner of ours
+            // receives: the destination is the clinic's record, as a FHIR export's is.
+            return nil
         }
     }
 }
@@ -213,6 +221,10 @@ enum NetworkRoute: String, CaseIterable, Sendable {
     // MARK: Medical records
     case fhirExport
     case fhirConnectionTest
+    /// Plan NK: a clinic's stock rows (inventory only) appended to, and read back from, a workbook
+    /// in the clinic's own Microsoft 365, with the clinic user's own sign-in. The token requests to
+    /// the sign-in host ride the same transport.
+    case clinicStockRecord
 
     // MARK: Licensing
     /// Plan JS P2: a seat-checked organisation licence claims, renews and releases this phone's
@@ -304,6 +316,7 @@ extension NetworkRoute {
         case .searchModelDownload: return "Download the on-device search model that Field Assist's manual search can use, when the wearer chooses it."
         case .fhirExport: return "Write an export to the operator's own FHIR record system."
         case .fhirConnectionTest: return "Health-check the FHIR base URL the operator entered. The saved credential goes only to the address it was saved with."
+        case .clinicStockRecord: return "Sign in to the clinic's own Microsoft 365, then add a clinic's stock rows — day, line, lot, kind, quantity, waste reason and a row key, never a person — to the two tables of the one workbook the clinic chose, and read them back to show the shared count."
         case .claudeOAuthToken: return "Exchange or refresh an OAuth token for the model provider account."
         case .chatGPTOAuthToken: return "Exchange or refresh an OAuth token for the model provider account."
         case .googleOAuthToken: return "Exchange or refresh an OAuth token for the linked Google account."
@@ -391,6 +404,8 @@ extension NetworkRoute {
             return [.modelAsset]
         case .fhirExport:
             return [.healthFact, .credential]
+        case .clinicStockRecord:
+            return [.inventoryRows, .credential]
         case .claudeOAuthToken, .chatGPTOAuthToken, .googleOAuthToken, .xaiOAuthToken:
             return [.credential]
         case .mcpGlassesListener:
@@ -414,7 +429,7 @@ extension NetworkRoute {
              .providerModelCatalog, .conversationRecallSummary, .connectivityProbe,
              .customAgentHarness, .expertBridgeWebhook, .expertSignaling,
              .offlineEndpointSync, .workizAPI, .squareStockAPI, .webRTCBrowserStreaming,
-             .fhirExport, .fhirConnectionTest:
+             .fhirExport, .fhirConnectionTest, .clinicStockRecord:
             return .userConfiguredCloud
         case .claudeOAuthToken, .chatGPTOAuthToken, .googleOAuthToken, .xaiOAuthToken,
              .localModelRepositoryMetadata, .localModelDownload, .ttsVoiceModelDownload,
@@ -453,6 +468,9 @@ extension NetworkRoute {
         case .fhirExport, .fhirConnectionTest:
             return .notApplicable(
                 "The destination is the operator's own record system, which is the point of the medical export; local-only governs third-party egress, not the covered entity's own write-back.")
+        case .clinicStockRecord:
+            return .notApplicable(
+                "The destination is the clinic's own record system: a workbook in its own Microsoft 365, reached with its own user's sign-in. The rows are inventory only (ClinicalStockShareRow), and local-only governs third-party egress, not the clinic's own record.")
         default:
             return .blockedWhenLocalOnly
         }
@@ -565,6 +583,7 @@ extension NetworkRoute {
         case .searchModelDownload: return ["HuggingFaceModelInstaller"]
         case .fhirExport: return ["MedicalExportService"]
         case .fhirConnectionTest: return ["MedicalExportService"]
+        case .clinicStockRecord: return ["URLSessionClinicWorkbookTransport"]
         case .claudeOAuthToken: return ["ClaudeOAuthService"]
         case .chatGPTOAuthToken: return ["ChatGPTOAuthService"]
         case .googleOAuthToken: return ["GoogleOAuthService"]

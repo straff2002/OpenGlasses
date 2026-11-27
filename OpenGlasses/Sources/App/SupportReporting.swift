@@ -357,6 +357,9 @@ extension AppState {
         // Plan NJ P1: a clinic's stock history window, how it shares, and the medical mode's pins.
         // Case names and numbers only.
         phone += ClinicalStockReportLines.current
+        // Plan NK P1: the clinic's workbook — connected, its name, the last send, rows queued.
+        // Counts and the name only: no token, no link, no account, no figure.
+        phone += clinicWorkbook.reportLines
         // Plan IW P2: how many goals are on the go and how long the trail is — counts only.
         phone.append(GoalActivityReportLine.line(goals: GoalStore.shared.goals,
                                                  entries: ActivityStore.shared.entries, now: Date()))
