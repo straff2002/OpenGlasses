@@ -52902,7 +52902,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Field Assist駕照"
+            "value" : "Field Assist 授權"
           }
         }
       }
@@ -397490,84 +397490,84 @@
         }
       }
     },
-    "One case per recording. Say the equipment, its brand and model if you know it. The kind of site, if it matters. The problem as it showed up. What you checked and tried. And what fixed it, and how sure you are. Say “that's one, next case” to start the next, or “that's all” to finish." : {
+    "One case per recording. Say the equipment, its brand and model if you know it. The kind of site, if it matters. The problem as it showed up. What you checked and tried. And what fixed it, and how sure you are. Say “%@” to start the next, or “%@” to finish." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "حالة واحدة في كل تسجيل. اذكر الجهاز، وعلامته التجارية وطرازه إن كنت تعرفهما. نوع الموقع، إن كان مهمًا. المشكلة كما ظهرت. ما فحصته وما جرّبته. وما الذي أصلحه، ومدى تأكدك. قل «that's one, next case» لبدء الحالة التالية، أو «that's all» للإنهاء."
+            "value" : "حالة واحدة في كل تسجيل. اذكر الجهاز، وعلامته التجارية وطرازه إن كنت تعرفهما. نوع الموقع، إن كان مهمًا. المشكلة كما ظهرت. ما فحصته وما جرّبته. وما الذي أصلحه، ومدى تأكدك. قل «%1$@» لبدء الحالة التالية، أو «%2$@» للإنهاء."
           }
         },
         "es-MX" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un caso por grabación. Di el equipo, su marca y modelo si los conoces. El tipo de sitio, si importa. El problema tal como se presentó. Lo que revisaste y probaste. Y qué lo arregló y qué tan seguro estás. Di “that's one, next case” para empezar el siguiente, o “that's all” para terminar."
+            "value" : "Un caso por grabación. Di el equipo, su marca y modelo si los conoces. El tipo de sitio, si importa. El problema tal como se presentó. Lo que revisaste y probaste. Y qué lo arregló y qué tan seguro estás. Di “%1$@” para empezar el siguiente, o “%2$@” para terminar."
           }
         },
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un cas par enregistrement. Nommez l’équipement, sa marque et son modèle si vous les connaissez. Le type de site, si c’est important. Le problème tel qu’il s’est présenté. Ce que vous avez vérifié et essayé. Et ce qui l’a réglé, et à quel point vous en êtes sûr. Dites « that's one, next case » pour commencer le suivant, ou « that's all » pour terminer."
+            "value" : "Un cas par enregistrement. Nommez l’équipement, sa marque et son modèle si vous les connaissez. Le type de site, si c’est important. Le problème tel qu’il s’est présenté. Ce que vous avez vérifié et essayé. Et ce qui l’a réglé, et à quel point vous en êtes sûr. Dites « %1$@ » pour commencer le suivant, ou « %2$@ » pour terminer."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Felvételenként egy eset. Mondja meg a berendezést, a márkáját és típusát, ha tudja. A helyszín jellegét, ha számít. A hibát, ahogyan jelentkezett. Mit ellenőrzött és mit próbált ki. És mi javította meg, és mennyire biztos benne. Mondja, hogy „that's one, next case”, a következő elkezdéséhez, vagy „that's all”, a befejezéshez."
+            "value" : "Felvételenként egy eset. Mondja meg a berendezést, a márkáját és típusát, ha tudja. A helyszín jellegét, ha számít. A hibát, ahogyan jelentkezett. Mit ellenőrzött és mit próbált ki. És mi javította meg, és mennyire biztos benne. Mondja, hogy „%1$@”, a következő elkezdéséhez, vagy „%2$@”, a befejezéshez."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un caso per registrazione. Indica l'apparecchio, marca e modello se li conosci. Il tipo di sito, se conta. Il problema così come si è presentato. Cosa hai controllato e provato. E cosa l'ha risolto e quanto ne sei sicuro. Di «that's one, next case» per iniziare il successivo, o «that's all» per finire."
+            "value" : "Un caso per registrazione. Indica l'apparecchio, marca e modello se li conosci. Il tipo di sito, se conta. Il problema così come si è presentato. Cosa hai controllato e provato. E cosa l'ha risolto e quanto ne sei sicuro. Di «%1$@» per iniziare il successivo, o «%2$@» per finire."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "1回の録音につき1件です。機器と、わかればブランドと型番を言ってください。関係があれば現場の種類。問題がどのように現れたか。確認したことと試したこと。そして何で直ったか、どのくらい確かか。次を始めるには「that's one, next case」、終えるには「that's all」と言ってください。"
+            "value" : "1回の録音につき1件です。機器と、わかればブランドと型番を言ってください。関係があれば現場の種類。問題がどのように現れたか。確認したことと試したこと。そして何で直ったか、どのくらい確かか。次を始めるには「%1$@」、終えるには「%2$@」と言ってください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "녹음 한 번에 한 사례입니다. 장비와, 알면 브랜드와 모델을 말하세요. 중요하다면 현장의 종류. 문제가 어떻게 나타났는지. 확인하고 시도한 것. 그리고 무엇으로 고쳤는지, 얼마나 확신하는지. 다음을 시작하려면 “that's one, next case”, 끝내려면 “that's all”라고 말하세요."
+            "value" : "녹음 한 번에 한 사례입니다. 장비와, 알면 브랜드와 모델을 말하세요. 중요하다면 현장의 종류. 문제가 어떻게 나타났는지. 확인하고 시도한 것. 그리고 무엇으로 고쳤는지, 얼마나 확신하는지. 다음을 시작하려면 “%1$@”, 끝내려면 “%2$@”라고 말하세요."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eén geval per opname. Noem de apparatuur, met merk en model als u die weet. Het soort locatie, als dat ertoe doet. Het probleem zoals het zich voordeed. Wat u hebt gecontroleerd en geprobeerd. En wat het verhielp, en hoe zeker u bent. Zeg “that's one, next case” om het volgende te beginnen, of “that's all” om af te ronden."
+            "value" : "Eén geval per opname. Noem de apparatuur, met merk en model als u die weet. Het soort locatie, als dat ertoe doet. Het probleem zoals het zich voordeed. Wat u hebt gecontroleerd en geprobeerd. En wat het verhielp, en hoe zeker u bent. Zeg “%1$@” om het volgende te beginnen, of “%2$@” om af te ronden."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Um caso por gravação. Diga o equipamento, a marca e o modelo se souber. O tipo de local, se importar. O problema como apareceu. O que você verificou e tentou. E o que resolveu e quão seguro você está. Diga “that's one, next case” para começar o próximo, ou “that's all” para terminar."
+            "value" : "Um caso por gravação. Diga o equipamento, a marca e o modelo se souber. O tipo de local, se importar. O problema como apareceu. O que você verificou e tentou. E o que resolveu e quão seguro você está. Diga “%1$@” para começar o próximo, ou “%2$@” para terminar."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Один случай на запись. Назовите оборудование, его марку и модель, если знаете. Тип объекта, если это важно. Неисправность, как она проявилась. Что вы проверили и попробовали. И что помогло, и насколько вы уверены. Скажите «that's one, next case», чтобы начать следующий, или «that's all», чтобы закончить."
+            "value" : "Один случай на запись. Назовите оборудование, его марку и модель, если знаете. Тип объекта, если это важно. Неисправность, как она проявилась. Что вы проверили и попробовали. И что помогло, и насколько вы уверены. Скажите «%1$@», чтобы начать следующий, или «%2$@», чтобы закончить."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ہر ریکارڈنگ میں ایک کیس۔ آلے کا نام بتائیں، اور اگر معلوم ہو تو اس کا برانڈ اور ماڈل۔ سائٹ کی قسم، اگر اہم ہو۔ مسئلہ جیسے سامنے آیا۔ آپ نے کیا جانچا اور کیا آزمایا۔ اور کس چیز نے اسے ٹھیک کیا، اور آپ کتنے یقین سے کہتے ہیں۔ اگلا شروع کرنے کے لیے “that's one, next case” کہیں، یا ختم کرنے کے لیے “that's all”۔"
+            "value" : "ہر ریکارڈنگ میں ایک کیس۔ آلے کا نام بتائیں، اور اگر معلوم ہو تو اس کا برانڈ اور ماڈل۔ سائٹ کی قسم، اگر اہم ہو۔ مسئلہ جیسے سامنے آیا۔ آپ نے کیا جانچا اور کیا آزمایا۔ اور کس چیز نے اسے ٹھیک کیا، اور آپ کتنے یقین سے کہتے ہیں۔ اگلا شروع کرنے کے لیے “%1$@” کہیں، یا ختم کرنے کے لیے “%2$@”۔"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每段录音一个案例。说出设备，如果知道，再说品牌和型号。现场类型（如有关系）。问题是如何表现出来的。你检查和尝试了什么。以及是什么修好的，你有多确定。说“that's one, next case”开始下一个，或说“that's all”结束。"
+            "value" : "每段录音一个案例。说出设备，如果知道，再说品牌和型号。现场类型（如有关系）。问题是如何表现出来的。你检查和尝试了什么。以及是什么修好的，你有多确定。说“%1$@”开始下一个，或说“%2$@”结束。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每段錄音一個案例。說出設備，如果知道，再說品牌和型號。現場類型（如有關係）。問題是如何表現出來的。你檢查和嘗試了什麼。以及是什麼修好的，你有多確定。說「that's one, next case」開始下一個，或說「that's all」結束。"
+            "value" : "每段錄音一個案例。說出設備，如果知道，再說品牌和型號。現場類型（如有關係）。問題是如何表現出來的。你檢查和嘗試了什麼。以及是什麼修好的，你有多確定。說「%1$@」開始下一個，或說「%2$@」結束。"
           }
         }
       }
@@ -468167,84 +468167,84 @@
         }
       }
     },
-    "Records one case. Say “that's one, next case” to start the next." : {
+    "Records one case. Say “%@” to start the next." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "يسجّل حالة واحدة. قل «that's one, next case» لبدء الحالة التالية."
+            "value" : "يسجّل حالة واحدة. قل «%@» لبدء الحالة التالية."
           }
         },
         "es-MX" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Graba un caso. Di “that's one, next case” para empezar el siguiente."
+            "value" : "Graba un caso. Di “%@” para empezar el siguiente."
           }
         },
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Enregistre un cas. Dites « that's one, next case » pour commencer le suivant."
+            "value" : "Enregistre un cas. Dites « %@ » pour commencer le suivant."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Egy esetet rögzít. Mondja, hogy „that's one, next case”, a következő elkezdéséhez."
+            "value" : "Egy esetet rögzít. Mondja, hogy „%@”, a következő elkezdéséhez."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Registra un caso. Di «that's one, next case» per iniziare il successivo."
+            "value" : "Registra un caso. Di «%@» per iniziare il successivo."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "1件の事例を録音します。次の事例を始めるには「that's one, next case」と言ってください。"
+            "value" : "1件の事例を録音します。次の事例を始めるには「%@」と言ってください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "한 사례를 녹음합니다. 다음 사례를 시작하려면 “that's one, next case”라고 말하세요."
+            "value" : "한 사례를 녹음합니다. 다음 사례를 시작하려면 “%@”라고 말하세요."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Neemt één geval op. Zeg “that's one, next case” om het volgende te beginnen."
+            "value" : "Neemt één geval op. Zeg “%@” om het volgende te beginnen."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Grava um caso. Diga “that's one, next case” para começar o próximo."
+            "value" : "Grava um caso. Diga “%@” para começar o próximo."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Записывает один случай. Скажите «that's one, next case», чтобы начать следующий."
+            "value" : "Записывает один случай. Скажите «%@», чтобы начать следующий."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ایک کیس ریکارڈ کرتا ہے۔ اگلا شروع کرنے کے لیے “that's one, next case” کہیں۔"
+            "value" : "ایک کیس ریکارڈ کرتا ہے۔ اگلا شروع کرنے کے لیے “%@” کہیں۔"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "录制一个案例。说“that's one, next case”开始下一个。"
+            "value" : "录制一个案例。说“%@”开始下一个。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "錄製一個案例。說「that's one, next case」開始下一個。"
+            "value" : "錄製一個案例。說「%@」開始下一個。"
           }
         }
       }
@@ -502308,6 +502308,88 @@
         }
       }
     },
+    "Say “%@” to start the next, or “%@” to finish. Each recording stops at ten minutes." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "قل «%1$@» لبدء الحالة التالية، أو «%2$@» للإنهاء. يتوقف كل تسجيل عند عشر دقائق."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di “%1$@” para empezar el siguiente, o “%2$@” para terminar. Cada grabación se detiene a los diez minutos."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dites « %1$@ » pour commencer le suivant, ou « %2$@ » pour terminer. Chaque enregistrement s’arrête après dix minutes."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mondja, hogy „%1$@”, a következő elkezdéséhez, vagy „%2$@”, a befejezéshez. Minden felvétel tíz percnél leáll."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di «%1$@» per iniziare il successivo, o «%2$@» per finire. Ogni registrazione si ferma a dieci minuti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次を始めるには「%1$@」、終えるには「%2$@」と言ってください。各録音は10分で停止します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음을 시작하려면 “%1$@”, 끝내려면 “%2$@”라고 말하세요. 녹음은 각각 10분에 멈춥니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeg “%1$@” om het volgende te beginnen, of “%2$@” om af te ronden. Elke opname stopt na tien minuten."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diga “%1$@” para começar o próximo, ou “%2$@” para terminar. Cada gravação para aos dez minutos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скажите «%1$@», чтобы начать следующий, или «%2$@», чтобы закончить. Каждая запись останавливается через десять минут."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اگلا شروع کرنے کے لیے “%1$@” کہیں، یا ختم کرنے کے لیے “%2$@”۔ ہر ریکارڈنگ دس منٹ پر رک جاتی ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "说“%1$@”开始下一个，或说“%2$@”结束。每段录音在十分钟时停止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "說「%1$@」開始下一個，或說「%2$@」結束。每段錄音在十分鐘時停止。"
+          }
+        }
+      }
+    },
     "Say \"Connecting to Avenkin AI\" at Voice Startup" : {
       "localizations" : {
         "ar" : {
@@ -503130,88 +503212,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "說“開始閱讀”並說出書名，眼鏡就會跟著進行。"
-          }
-        }
-      }
-    },
-    "Say “that's one, next case” to start the next, or “that's all” to finish. Each recording stops at ten minutes." : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "قل «that's one, next case» لبدء الحالة التالية، أو «that's all» للإنهاء. يتوقف كل تسجيل عند عشر دقائق."
-          }
-        },
-        "es-MX" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Di “that's one, next case” para empezar el siguiente, o “that's all” para terminar. Cada grabación se detiene a los diez minutos."
-          }
-        },
-        "fr-CA" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dites « that's one, next case » pour commencer le suivant, ou « that's all » pour terminer. Chaque enregistrement s’arrête après dix minutes."
-          }
-        },
-        "hu" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mondja, hogy „that's one, next case”, a következő elkezdéséhez, vagy „that's all”, a befejezéshez. Minden felvétel tíz percnél leáll."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Di «that's one, next case» per iniziare il successivo, o «that's all» per finire. Ogni registrazione si ferma a dieci minuti."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "次を始めるには「that's one, next case」、終えるには「that's all」と言ってください。各録音は10分で停止します。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "다음을 시작하려면 “that's one, next case”, 끝내려면 “that's all”라고 말하세요. 녹음은 각각 10분에 멈춥니다."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zeg “that's one, next case” om het volgende te beginnen, of “that's all” om af te ronden. Elke opname stopt na tien minuten."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diga “that's one, next case” para começar o próximo, ou “that's all” para terminar. Cada gravação para aos dez minutos."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Скажите «that's one, next case», чтобы начать следующий, или «that's all», чтобы закончить. Каждая запись останавливается через десять минут."
-          }
-        },
-        "ur" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "اگلا شروع کرنے کے لیے “that's one, next case” کہیں، یا ختم کرنے کے لیے “that's all”۔ ہر ریکارڈنگ دس منٹ پر رک جاتی ہے۔"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "说“that's one, next case”开始下一个，或说“that's all”结束。每段录音在十分钟时停止。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "說「that's one, next case」開始下一個，或說「that's all」結束。每段錄音在十分鐘時停止。"
           }
         }
       }
