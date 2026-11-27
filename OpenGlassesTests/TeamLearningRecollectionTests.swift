@@ -368,9 +368,10 @@ final class TeamLearningRecollectionTests: XCTestCase {
         // By the unit's own type when the turn names none.
         let unit = retriever(passages, active: ["dryer"]).retrieve(.init(turn: "it won't start", limit: 4))
         XCTAssertEqual(unit.passages.map(\.documentId), ["dryer-symptom", "model-learning"])
-        // Nothing resolves a type: like a model learning with no unit, nothing scopes it.
+        // Nothing resolves a type: nothing drops a symptom learning, but it ranks below the model
+        // learning (owner decision 2026-11-27).
         let unscoped = retriever(passages).retrieve(.init(turn: "it won't start", limit: 4))
-        XCTAssertEqual(unscoped.passages.map(\.documentId), ["dryer-symptom", "dishwasher-symptom", "model-learning"])
+        XCTAssertEqual(unscoped.passages.map(\.documentId), ["model-learning", "dryer-symptom", "dishwasher-symptom"])
         // A retriever without a scope is unchanged.
         let none = VaultRetriever(query: { _, _ in passages }, policy: RetrievalEvidencePolicy(similarityFloor: 0.3))
             .retrieve(.init(turn: "the dishwasher won't drain", limit: 4))
@@ -484,6 +485,65 @@ final class TeamLearningRecollectionTests: XCTestCase {
                       p("s1", .teamLearning), p("m2", .capturedManual), p("s2", .teamLearning)]
         XCTAssertEqual(VaultRetriever.learningsBySeenOnAJob(ranked).map(\.documentId), ["s1", "m1", "s2", "r1", "m2", "r2"])
         XCTAssertEqual(VaultRetriever.learningsBySeenOnAJob([]), [])
+    }
+
+    /// Owner decision 2026-11-27: with no equipment type resolved, a symptom learning ranks below
+    /// the model learnings, inside the existing order (job-confirmed ahead of recollections), and
+    /// never above a manual passage.
+    func testWithNoTypeResolvedSymptomLearningsRankBelowModelLearnings() {
+        let passages = [raw("manual", sim: 0.97, source: .manual),
+                        raw("confirmed-symptom", sim: 0.96, type: "dryer"),
+                        raw("recalled-symptom", sim: 0.95, type: "dryer", recalled: true),
+                        raw("recalled-model", sim: 0.7, recalled: true),
+                        raw("confirmed-model", sim: 0.6),
+                        raw("below-floor-model", sim: 0.1)]
+        let outcome = retriever(passages).retrieve(.init(turn: "it won't start", limit: 6))
+        XCTAssertEqual(outcome.passages.map(\.documentId),
+                       ["manual", "confirmed-model", "confirmed-symptom", "recalled-model", "recalled-symptom"])
+        XCTAssertEqual(outcome.passages.filter(\.isUnscopedSymptom).map(\.documentId),
+                       ["confirmed-symptom", "recalled-symptom"])
+        // With room for one learning beside the manual page, it is the model learning.
+        let one = retriever(passages).retrieve(.init(turn: "it won't start", limit: 2))
+        XCTAssertEqual(one.passages.map(\.documentId), ["manual", "confirmed-model"])
+        // A retriever with no scope at all resolves no type either: the same order.
+        let noScope = VaultRetriever(query: { _, _ in passages }, policy: RetrievalEvidencePolicy(similarityFloor: 0.3))
+            .retrieve(.init(turn: "it won't start", limit: 6))
+        XCTAssertEqual(noScope.passages.map(\.documentId), outcome.passages.map(\.documentId))
+        // An unscoped symptom learning that alone clears the floor still answers.
+        let alone = retriever([raw("recalled-symptom", sim: 0.95, type: "dryer", recalled: true),
+                               raw("weak", sim: 0.1)]).retrieve(.init(turn: "it won't start", limit: 4))
+        XCTAssertEqual(alone.passages.map(\.documentId), ["recalled-symptom"])
+        XCTAssertTrue(alone.isTeamLearningOnly)
+    }
+
+    /// When a type resolves, nothing changes: the turn's type ranks as any learning does, another
+    /// type's is dropped.
+    func testWhenATypeResolvesSymptomLearningsRankAsBefore() {
+        let passages = [raw("dryer-symptom", sim: 0.95, type: "dryer"),
+                        raw("dishwasher-symptom", sim: 0.9, type: "dishwasher"),
+                        raw("model-learning", sim: 0.6)]
+        let named = retriever(passages).retrieve(.init(turn: "the dryer won't heat", limit: 4))
+        XCTAssertEqual(named.passages.map(\.documentId), ["dryer-symptom", "model-learning"])
+        XCTAssertFalse(named.passages.contains(where: \.isUnscopedSymptom))
+        let unit = retriever(passages, active: ["dryer"]).retrieve(.init(turn: "it won't start", limit: 4))
+        XCTAssertEqual(unit.passages.map(\.documentId), ["dryer-symptom", "model-learning"])
+    }
+
+    /// The pure order: four groups, each keeping its own order, and manual slots untouched.
+    func testTheOrderPutsUnscopedSymptomsLastWithinEachGroup() {
+        func p(_ id: String, _ source: RetrievalSource, recalled: Bool = false, symptom: Bool = false) -> VaultRetriever.Passage {
+            var passage = VaultRetriever.Passage(documentId: id, documentName: id, chunkIndex: 0, text: id, page: nil,
+                                                 section: nil, similarity: 0.5, score: 0.5, matchedTokens: [], source: source)
+            passage.isUnconfirmedRecollection = recalled
+            passage.isUnscopedSymptom = symptom
+            return passage
+        }
+        let ranked = [p("rs1", .teamLearning, recalled: true, symptom: true), p("m1", .manual),
+                      p("cs1", .teamLearning, symptom: true), p("r1", .teamLearning, recalled: true),
+                      p("c1", .teamLearning), p("m2", .capturedManual), p("cs2", .teamLearning, symptom: true),
+                      p("c2", .teamLearning)]
+        XCTAssertEqual(VaultRetriever.learningsBySeenOnAJob(ranked).map(\.documentId),
+                       ["c1", "m1", "c2", "cs1", "cs2", "m2", "r1", "rs1"])
     }
 
     func testARecollectionOnlyAnswerOpensWithTheRecalledLeadIn() {

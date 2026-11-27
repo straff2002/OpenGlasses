@@ -286,7 +286,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                 self.pushUpcomingJob(id: id, spoken: spoken)
             case .recordExperience:
                 // Hands-free from here: the prompts are read aloud, and "that's one, next case",
-                // "that's all" or the Stop row end a recording. No voice template: nothing said
+                // "that's all" (or the phone's language's own phrases) or the Stop row end a
+                // recording. No voice template: nothing said
                 // while recording reaches the assistant.
                 await appState.experienceRecorder.start(from: .carPlay)
             case .stopExperienceRecording:

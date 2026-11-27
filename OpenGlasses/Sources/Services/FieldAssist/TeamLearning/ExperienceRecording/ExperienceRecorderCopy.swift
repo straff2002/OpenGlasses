@@ -41,16 +41,38 @@ enum ExperienceRecorderCopy {
         String(localized: "Please leave out customer names and addresses.")
     }
 
+    /// The markers the technician is told to say: the phrases of the language the phone
+    /// transcribes in (`ExperienceRecordingMarkers.phrases(for:)`), which the recorder listens for
+    /// alongside English's. On an English phone they are English's, so the English copy reads as
+    /// it always has; each translation names its own language's phrases.
+    static func markerPhrases(speaking locale: Locale = SpeechLocaleResolver.current) -> ExperienceRecordingMarkers.Phrases {
+        ExperienceRecordingMarkers.phrases(for: locale)
+    }
+
     /// The card's title and its one line of how to move on.
     static var cardTitle: String { String(localized: "One case per recording") }
-    static var cardHowTo: String {
-        String(localized: "Say \u{201C}that's one, next case\u{201D} to start the next, or \u{201C}that's all\u{201D} to finish. Each recording stops at ten minutes.")
+    static var cardHowTo: String { cardHowTo(speaking: SpeechLocaleResolver.current) }
+    static func cardHowTo(speaking locale: Locale) -> String {
+        let phrases = markerPhrases(speaking: locale)
+        return String(localized: "Say \u{201C}\(phrases.nextCase)\u{201D} to start the next, or \u{201C}\(phrases.finish)\u{201D} to finish. Each recording stops at ten minutes.",
+                      comment: "Experience recorder card. The first placeholder is the spoken marker that ends one case and starts the next, the second the one that finishes; both are inserted in the language the phone transcribes in (in English, \u{201C}that's one, next case\u{201D} and \u{201C}that's all\u{201D}). Keep both placeholders inside quotation marks.")
     }
 
     /// What the car reads before the first case: the prompts, then how to move on. Nothing to read
     /// on the screen, nothing to tap.
-    static var carPlayPrompts: String {
-        String(localized: "One case per recording. Say the equipment, its brand and model if you know it. The kind of site, if it matters. The problem as it showed up. What you checked and tried. And what fixed it, and how sure you are. Say \u{201C}that's one, next case\u{201D} to start the next, or \u{201C}that's all\u{201D} to finish.")
+    static var carPlayPrompts: String { carPlayPrompts(speaking: SpeechLocaleResolver.current) }
+    static func carPlayPrompts(speaking locale: Locale) -> String {
+        let phrases = markerPhrases(speaking: locale)
+        return String(localized: "One case per recording. Say the equipment, its brand and model if you know it. The kind of site, if it matters. The problem as it showed up. What you checked and tried. And what fixed it, and how sure you are. Say \u{201C}\(phrases.nextCase)\u{201D} to start the next, or \u{201C}\(phrases.finish)\u{201D} to finish.",
+                      comment: "Read aloud in the car before an experience recording. The first placeholder is the spoken marker that ends one case and starts the next, the second the one that finishes; both are inserted in the language the phone transcribes in (in English, \u{201C}that's one, next case\u{201D} and \u{201C}that's all\u{201D}). Keep both placeholders inside quotation marks.")
+    }
+
+    /// The Record button's accessibility hint on the phone.
+    static var recordHint: String { recordHint(speaking: SpeechLocaleResolver.current) }
+    static func recordHint(speaking locale: Locale) -> String {
+        let phrases = markerPhrases(speaking: locale)
+        return String(localized: "Records one case. Say \u{201C}\(phrases.nextCase)\u{201D} to start the next.",
+                      comment: "Accessibility hint on the Record experience button. The placeholder is the spoken marker that ends one case and starts the next, inserted in the language the phone transcribes in (in English, \u{201C}that's one, next case\u{201D}). Keep it inside quotation marks.")
     }
 
     /// The cue that recording has begun.

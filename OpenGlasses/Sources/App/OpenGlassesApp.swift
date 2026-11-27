@@ -3533,6 +3533,9 @@ class AppState: ObservableObject, AppStateProtocol {
         retentionSources.erasureLedger = erasureLedger
         // Plan KM P2: each handover sent to this phone's owner as an expert, on its own period.
         retentionSources.assistingHandovers = AssistingHandoverStore.shared
+        // Plan IM decision 2: experience-recording audio goes 30 days after it was recorded, on the
+        // scheduler's cadence as well as at launch and when the recorder opens.
+        retentionSources.experienceRecordings = ExperienceRecordingStore.shared
         let scheduler = RetentionScheduler(
             targets: RetentionScheduler.targets(sources: retentionSources),
             audit: hipaaService)

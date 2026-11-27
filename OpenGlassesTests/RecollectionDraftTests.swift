@@ -375,6 +375,17 @@ final class RecollectionDraftTests: XCTestCase {
         XCTAssertEqual(segments.map(\.modelName), ["RX-200", "DW-450"])
     }
 
+    /// The drafting pass reads the markers in every language the recorder translates them into,
+    /// because a transcript carries no record of the language it was spoken in.
+    func testTheMarkersAreReadInTheRecordingsLanguageToo() throws {
+        let index = try Self.vault().index
+        let text = "Acme RX-200 zumba. Cambié el condensador. Esa es una, siguiente caso. Acme DW-450 gotea por la puerta. "
+            + "Eso es todo. Esto no."
+        let segments = RecollectionSegmenter.segments(in: text, index: index)
+        XCTAssertEqual(segments.map(\.text), ["Acme RX-200 zumba. Cambié el condensador.", "Acme DW-450 gotea por la puerta."])
+        XCTAssertEqual(segments.map(\.modelName), ["RX-200", "DW-450"])
+    }
+
     func testASentenceNamingTwoModelsDoesNotSplitTheCase() throws {
         let index = try Self.vault().index
         let text = "The Acme RX-200 trips its fuse. It's like the RX-200 and the RX-300 share the fan. Swapped the fan."

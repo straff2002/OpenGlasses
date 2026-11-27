@@ -109,6 +109,12 @@ struct VaultRetriever {
         /// A team learning known from recollection that no recorded job has confirmed (Plan IM
         /// decision 5): it gives way to any learning seen on a job (`learningsBySeenOnAJob`).
         var isUnconfirmedRecollection = false
+        /// A symptom learning answering a turn for which no equipment type resolved (owner
+        /// decision 2026-11-27, Plan IM): nothing bounds it to this machine, so it gives way to
+        /// every other learning (`learningsBySeenOnAJob`). Never set when a type resolves: then a
+        /// symptom learning of another type is dropped and one of the turn's type ranks as any
+        /// learning does.
+        var isUnscopedSymptom = false
 
         typealias Source = RetrievalSource
 
@@ -332,9 +338,10 @@ struct VaultRetriever {
     /// named in the turn, else named in the job's context, else the active unit's types — what its
     /// approved model entries say it is. A symptom learning then answers only within one of them,
     /// and is dropped otherwise, never ranked down: unlike another model's figure, another
-    /// equipment type's fix has nothing to say about this machine. With no type resolved, a
-    /// symptom learning is treated as a model learning is with no unit active: nothing scopes it,
-    /// and its passage names its equipment (`Equipment: …`) for the answer to say.
+    /// equipment type's fix has nothing to say about this machine. With no type resolved, nothing
+    /// drops a symptom learning, but it ranks below the other learnings (`isUnscopedSymptom`,
+    /// owner decision 2026-11-27), and its passage names its equipment (`Equipment: …`) for the
+    /// answer to say.
     struct EquipmentTypeScope: Equatable {
         /// The vault's `equipment_types`, as it spells them.
         var vocabulary: [String]
@@ -379,10 +386,20 @@ struct VaultRetriever {
     /// job has confirmed, each group keeping its order; manual passages keep their places. Applied
     /// before the gate, which judges each passage on its own, so of two learnings that both clear
     /// the floor the job-confirmed one is the one a limit keeps.
+    ///
+    /// Within each of those two groups, a symptom learning no equipment type scoped
+    /// (`isUnscopedSymptom`, owner decision 2026-11-27) goes after the group's other learnings:
+    /// job-confirmed, then job-confirmed unscoped symptoms, then recollections, then unscoped
+    /// symptom recollections. Only learnings move, so a symptom learning never takes a manual
+    /// passage's place, and the safety-note rules are untouched.
     static func learningsBySeenOnAJob(_ ranked: [Passage]) -> [Passage] {
         let slots = ranked.indices.filter { ranked[$0].source == .teamLearning }
         let learnings = slots.map { ranked[$0] }
-        let ordered = learnings.filter { !$0.isUnconfirmedRecollection } + learnings.filter(\.isUnconfirmedRecollection)
+        func group(recalled: Bool, unscoped: Bool) -> [Passage] {
+            learnings.filter { $0.isUnconfirmedRecollection == recalled && $0.isUnscopedSymptom == unscoped }
+        }
+        let ordered = group(recalled: false, unscoped: false) + group(recalled: false, unscoped: true)
+            + group(recalled: true, unscoped: false) + group(recalled: true, unscoped: true)
         var out = ranked
         for (slot, passage) in zip(slots, ordered) { out[slot] = passage }
         return out
@@ -736,6 +753,9 @@ struct VaultRetriever {
                 tableMatch = true
             }
             var candidate = scored(raw, matched: matched)
+            // No type resolved: a symptom learning still answers, ranked below the others.
+            candidate.isUnscopedSymptom = raw.source == .teamLearning && raw.subjectEquipmentType != nil
+                && turnTypes == nil
             candidate.clauseMatch = clauseMatch
             candidate.tableMatch = tableMatch
             candidate.matchedModels = matched.filter(notEvidence.contains)

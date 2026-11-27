@@ -417,6 +417,98 @@ final class RetentionSchedulerTests: XCTestCase {
         XCTAssertTrue(outcome.skips.isEmpty)
     }
 
+    // MARK: - Experience-recording audio (Plan IM decision 2)
+
+    private func experienceStore() -> (ExperienceRecordingStore, URL) {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RetentionExperienceAudio-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        // Opened long before `now`, so the store's own sweep at open removes nothing.
+        return (ExperienceRecordingStore(directory: folder, now: Date(timeIntervalSince1970: 0)), folder)
+    }
+
+    private func keepRecording(in store: ExperienceRecordingStore, folder: URL, at created: Date) -> ExperienceRecording {
+        let audio = folder.appendingPathComponent("\(UUID().uuidString).m4a")
+        FileManager.default.createFile(atPath: audio.path, contents: Data(repeating: 7, count: 32))
+        let recording = ExperienceRecording(createdAt: created, duration: 60, transcript: "the board throws E7",
+                                            redactions: [], vaultId: "refrigeration")
+        store.add(recording, audioFrom: audio)
+        return recording
+    }
+
+    /// The 30 days is fixed (decision 2): a recording made exactly 30 days ago is inside its period
+    /// and keeps its audio, one made a second earlier loses it, and the transcript always stays.
+    func testExperienceAudioKeepsTheBoundaryAndGoesASecondPastIt() {
+        let (store, folder) = experienceStore()
+        let atCutoff = keepRecording(in: store, folder: folder,
+                                     at: now.addingTimeInterval(-ExperienceRecorderRules.audioRetention))
+        let pastCutoff = keepRecording(in: store, folder: folder,
+                                       at: now.addingTimeInterval(-ExperienceRecorderRules.audioRetention - 1))
+        var sources = RetentionScheduler.Sources()
+        sources.experienceRecordings = store
+        let targets = RetentionScheduler.targets(sources: sources, fileSystem: FakeFileSystem())
+            .filter { $0.id == .experienceAudio }
+        XCTAssertEqual(targets.count, 1)
+        let scheduler = RetentionScheduler(targets: targets, settings: { self.settings(clinical: 0, history: 0) },
+                                           runStore: MemoryRunStore(), clock: { self.now })
+
+        let outcome = scheduler.run()
+
+        XCTAssertEqual(outcome.filesRemoved, 1, "audio counts as files, not rows")
+        XCTAssertEqual(outcome.rowsRemoved, 0)
+        XCTAssertEqual(outcome.completed, [.experienceAudio])
+        XCTAssertTrue(store.hasAudio(atCutoff.id), "exactly 30 days is inside the period")
+        XCTAssertNil(store.recording(id: atCutoff.id)?.audioDeletedAt)
+        XCTAssertFalse(store.hasAudio(pastCutoff.id))
+        XCTAssertEqual(store.recording(id: pastCutoff.id)?.audioDeletedAt, now)
+        XCTAssertEqual(store.recording(id: pastCutoff.id)?.transcript, "the board throws E7")
+    }
+
+    /// The period is not a setting: "keep everything" for the wearer's history and a clinical
+    /// period of zero do not keep experience audio, and the class's cap-on-write policy does not
+    /// skip it.
+    func testExperienceAudioAnswersToItsOwnFixedPeriodNotItsClassOrASetting() {
+        let (store, folder) = experienceStore()
+        let old = keepRecording(in: store, folder: folder, at: now.addingTimeInterval(-40 * 86_400))
+        let target = RetentionScheduler.experienceAudio(store)
+        XCTAssertEqual(target.policyOverride?.trigger, .maxAge(ExperienceRecorderRules.audioRetention))
+        XCTAssertEqual(ExperienceRecorderRules.audioRetention, 30 * 86_400)
+        let scheduler = RetentionScheduler(targets: [target], settings: { self.settings(clinical: 0, history: 0) },
+                                           runStore: MemoryRunStore(), clock: { self.now })
+
+        let outcome = scheduler.run()
+
+        XCTAssertTrue(outcome.skips.isEmpty, "a fixed period is never skipped as off or capped")
+        XCTAssertFalse(store.hasAudio(old.id))
+    }
+
+    /// An app left running for weeks: the store's open-time sweep found nothing, and the
+    /// scheduler's later pass deletes on time without the store being reopened.
+    func testAnAppLeftRunningStillDeletesExperienceAudioOnTheSchedulersCadence() {
+        let (store, folder) = experienceStore()
+        let recording = keepRecording(in: store, folder: folder, at: now)
+        let clock = ClockBox(now)
+        let runs = MemoryRunStore()
+        let scheduler = RetentionScheduler(targets: [RetentionScheduler.experienceAudio(store)],
+                                           settings: { self.settings() }, runStore: runs,
+                                           clock: { clock.value })
+
+        XCTAssertEqual(scheduler.runIfDue()?.filesRemoved, 0)
+        clock.value = now.addingTimeInterval(ExperienceRecorderRules.audioRetention)
+        XCTAssertEqual(scheduler.runIfDue()?.filesRemoved, 0, "day 30 is still inside the period")
+        XCTAssertTrue(store.hasAudio(recording.id))
+        clock.value = now.addingTimeInterval(ExperienceRecorderRules.audioRetention + RetentionDefaults.interval)
+        XCTAssertEqual(scheduler.runIfDue()?.filesRemoved, 1)
+        XCTAssertFalse(store.hasAudio(recording.id))
+    }
+
+    /// Without the store wired in there is no target, as with the other optional sources.
+    func testNoExperienceStoreMeansNoExperienceAudioTarget() {
+        let targets = RetentionScheduler.targets(sources: RetentionScheduler.Sources(), fileSystem: FakeFileSystem())
+        XCTAssertFalse(targets.contains { $0.id == .experienceAudio })
+    }
+
     // MARK: - The receipt
 
     func testTheReceiptCarriesCountsAndTargetNamesAndNothingElse() {

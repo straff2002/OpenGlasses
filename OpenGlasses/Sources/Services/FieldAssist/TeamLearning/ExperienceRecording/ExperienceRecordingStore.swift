@@ -12,7 +12,8 @@ import Foundation
 /// slips out, so the store is treated as able to hold a third party: first-unlock protection
 /// (recordings are made from the car with the phone locked), excluded from backup, walked by the
 /// subject erasure, and cleared when the phone leaves its organisation. The audio goes 30 days
-/// after it was recorded (decision 2) — swept when the store opens and whenever the app asks.
+/// after it was recorded (decision 2) — swept when the store opens, whenever the app asks, and
+/// on the retention scheduler's cadence.
 @MainActor
 final class ExperienceRecordingStore: ObservableObject {
 
@@ -131,13 +132,28 @@ final class ExperienceRecordingStore: ObservableObject {
     /// Delete the audio of every recording made more than 30 days before `now` (decision 2). The
     /// transcript stays — it is what the reviewer reads — and the recording says when its audio
     /// went. Audio files no recording names are removed too. Returns how many files went.
+    ///
+    /// Run when the store opens, when the recorder page opens, at launch, and on the retention
+    /// scheduler's own cadence (`RetentionTargetID.experienceAudio`), so an app left running for
+    /// weeks still deletes audio on time.
     @discardableResult
     func sweepExpiredAudio(now: Date = Date()) -> Int {
+        sweepExpiredAudio(before: now.addingTimeInterval(-ExperienceRecorderRules.audioRetention), now: now)
+    }
+
+    /// The sweep against a cutoff already resolved — the retention scheduler's call. A recording
+    /// made exactly at the cutoff is inside its 30 days and keeps its audio: the comparison is
+    /// `RetentionPlan`'s ("strictly older expires"), reused rather than restated. `now` is only
+    /// what the recording is stamped with.
+    @discardableResult
+    func sweepExpiredAudio(before cutoff: Date, now: Date) -> Int {
         var removed = 0
         var changed = false
-        let cutoff = now.addingTimeInterval(-ExperienceRecorderRules.audioRetention)
-        for index in recordings.indices where recordings[index].createdAt <= cutoff
-            && recordings[index].audioDeletedAt == nil {
+        let candidates = recordings.filter { $0.audioDeletedAt == nil }
+            .map { RetentionCandidate(id: $0.id, created: $0.createdAt) }
+        let resolved = RetentionPolicy(dataClass: .operationalAudit, trigger: .maxAge(0), source: "resolved")
+        let expired = Set(RetentionPlan.expired(candidates, policy: resolved, now: cutoff).map(\.id))
+        for index in recordings.indices where expired.contains(recordings[index].id) {
             if hasAudio(recordings[index].id) {
                 removeAudio(recordings[index].id)
                 removed += 1
