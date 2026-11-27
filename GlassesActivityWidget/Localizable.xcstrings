@@ -63,6 +63,12 @@
             "value" : ", батарея %@"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : ", акумулятор %@"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -143,6 +149,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : ", заряжается"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : ", заряджається"
           }
         },
         "ur" : {
@@ -234,6 +246,12 @@
             "value" : "Быстрый переключатель «Слушать», а также подключение и заряд ваших очков, когда вы ими пользуетесь."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Швидкий перемикач «Слухати», а також підключення й заряд ваших окулярів, коли ви ними користуєтеся."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -316,6 +334,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Спросить Avenkin"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запитати Avenkin"
           }
         },
         "ur" : {
@@ -424,6 +448,12 @@
             "value" : "Avenkin"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -506,6 +536,12 @@
             "value" : "Avenkin: прослушивание"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin слухає"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -586,6 +622,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Подключить"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Підключити"
           }
         },
         "ur" : {
@@ -782,6 +824,12 @@
             "value" : "Подключение…"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Підключення…"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -862,6 +910,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Отключить прослушивание"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вимкнути прослуховування"
           }
         },
         "ur" : {
@@ -946,6 +1000,12 @@
             "value" : "Завершить сеанс живых подсказок."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершити сеанс підказок наживо."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1026,6 +1086,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Очки подключены"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Окуляри підключено"
           }
         },
         "ur" : {
@@ -1110,6 +1176,12 @@
             "value" : "Очки подключаются"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Окуляри підключаються"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1190,6 +1262,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Очки последний раз были подключены в %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Окуляри востаннє були підключені о %@"
           }
         },
         "ur" : {
@@ -1274,6 +1352,12 @@
             "value" : "Очки не подключены"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Окуляри не підключено"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1354,6 +1438,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Очки на паузе"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Окуляри призупинено"
           }
         },
         "ur" : {
@@ -1438,6 +1528,12 @@
             "value" : "Последнее подключение: %@"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Востаннє підключено: %@"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1520,6 +1616,12 @@
             "value" : "Слушать"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Слухати"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1600,6 +1702,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Слушаю"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Слухаю"
           }
         },
         "ur" : {
@@ -1685,6 +1793,12 @@
             "value" : "Живые подсказки: слушаю"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Підказки наживо: слухаю"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1765,6 +1879,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Очки не добавлены"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Окуляри не додано"
           }
         },
         "ur" : {
@@ -1851,6 +1971,12 @@
             "value" : "Выкл."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вимк."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1931,6 +2057,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Вкл."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Увімк."
           }
         },
         "ur" : {
@@ -2017,6 +2149,12 @@
             "value" : "Открыть Avenkin и сразу начать слушать, без слова активации."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Відкрити Avenkin і одразу почати слухати, без фрази активації."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2097,6 +2235,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Открыть Avenkin и включить прослушивание слова активации."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Відкрити Avenkin і увімкнути прослуховування фрази активації."
           }
         },
         "ur" : {
@@ -2293,6 +2437,12 @@
             "value" : "Повторить"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Повторити"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2375,6 +2525,12 @@
             "value" : "Повторить подсказку"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Повторити підказку"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2452,6 +2608,12 @@
           }
         },
         "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Повтор"
+          }
+        },
+        "uk" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Повтор"
@@ -2539,6 +2701,12 @@
             "value" : "Снова произнести или показать последнюю подсказку."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ще раз озвучити або показати останню підказку."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2619,6 +2787,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Задать состояние прослушивания"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Задати стан прослуховування"
           }
         },
         "ur" : {
@@ -2703,6 +2877,12 @@
             "value" : "Пропустить"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пропустити"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2783,6 +2963,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Пропустить подсказку"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пропустити підказку"
           }
         },
         "ur" : {
@@ -2979,6 +3165,12 @@
             "value" : "Остановить"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зупинити"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3059,6 +3251,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Остановить прослушивание"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перестати слухати"
           }
         },
         "ur" : {
@@ -3143,6 +3341,12 @@
             "value" : "Остановить живые подсказки"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зупинити підказки наживо"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3225,6 +3429,12 @@
             "value" : "Остановить произносимую подсказку."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зупинити озвучування поточної підказки."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3305,6 +3515,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Остановить обнаружение слова активации."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зупинити розпізнавання фрази активації."
           }
         },
         "ur" : {
@@ -3390,6 +3606,12 @@
             "value" : "Веду вас по шагам работы"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Покроковий супровід завдання"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3470,6 +3692,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Переключить прослушивание"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перемкнути прослуховування"
           }
         },
         "ur" : {
@@ -3554,6 +3782,12 @@
             "value" : "Включить или выключить прослушивание слова активации."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Увімкнути або вимкнути прослуховування фрази активації."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3636,6 +3870,12 @@
             "value" : "Включить или выключить прослушивание слова активации. Avenkin остаётся в фоновом режиме."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Увімкнути або вимкнути прослуховування фрази активації. Avenkin залишається у фоні."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3716,6 +3956,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Включить или выключить прослушивание слова активации. При включении откроется Avenkin."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Увімкнути або вимкнути прослуховування фрази активації. Увімкнення відкриває Avenkin."
           }
         },
         "ur" : {
