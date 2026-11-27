@@ -1044,12 +1044,14 @@ struct VaultRetriever {
 
     /// One numbered passage as the model reads it: a team learning is labelled as one before its
     /// text, so it is never read as the manual's words.
-    static func passageLine(_ index: Int, _ p: Passage) -> String {
+    static func passageLine(_ index: Int, _ p: Passage, forReport: Bool = false) -> String {
         let label = p.source == .teamLearning ? Passage.teamLearningLabel + " "
             : (p.source == .capturedManual ? "PHOTOGRAPHED MANUAL (unreviewed; original job/date in citation) " : "")
                 + (p.kindLabel.map { $0 + " " } ?? "")
                 + (p.editionLabel.map { "(edition: \($0)) " } ?? "")
-        return "[\(index + 1)] \(label)\(p.markedText)\nSource: \(p.citation)"
+        // A support report shows where each passage is from, never its words (Plan NI).
+        let body = forReport ? "[passage left out of the report: \(p.markedText.count) characters]" : p.markedText
+        return "[\(index + 1)] \(label)\(body)\nSource: \(p.citation)"
             + (p.recognisedFromScan ? " " + Passage.provenanceNote : "")
     }
 
@@ -1122,17 +1124,28 @@ struct VaultRetriever {
     /// Tool-result rendering: same passages, numbered, with an instruction the model can act on.
     static func toolResult(_ outcome: RetrievalOutcome, query: String, leadIn: String? = nil) -> String {
         let bounded = boundedOutcome(outcome, characterLimit: 12_000)
-        return unboundedToolResult(bounded.outcome, query: query, leadIn: leadIn) + bounded.notice
+        return unboundedToolResult(bounded.outcome, query: query, leadIn: leadIn, forReport: false) + bounded.notice
     }
 
-    private static func unboundedToolResult(_ outcome: RetrievalOutcome, query: String, leadIn: String?) -> String {
+    /// `toolResult` as a support report may show it (Plan NI, owner decision D1): every passage's
+    /// words replaced by its size, its citation kept. `leftOut` is the characters replaced. Pure.
+    static func reportToolResult(_ outcome: RetrievalOutcome, query: String,
+                                 leadIn: String? = nil) -> (text: String, leftOut: Int) {
+        let bounded = boundedOutcome(outcome, characterLimit: 12_000)
+        let leftOut = bounded.outcome.passages.reduce(0) { $0 + $1.markedText.count }
+        return (unboundedToolResult(bounded.outcome, query: query, leadIn: leadIn, forReport: true) + bounded.notice,
+                leftOut)
+    }
+
+    private static func unboundedToolResult(_ outcome: RetrievalOutcome, query: String, leadIn: String?,
+                                            forReport: Bool) -> String {
         switch outcome {
         case .sufficient(let passages):
-            let body = passages.enumerated().map { passageLine($0, $1) }.joined(separator: "\n\n")
+            let body = passages.enumerated().map { passageLine($0, $1, forReport: forReport) }.joined(separator: "\n\n")
             let rule = rules(for: passages)
             return "Manual passages for '\(query)' — answer using only these and cite each Source line you rely on:\n\n\(body)" + rule
         case .teamLearningOnly(let passages):
-            let body = passages.enumerated().map { passageLine($0, $1) }.joined(separator: "\n\n")
+            let body = passages.enumerated().map { passageLine($0, $1, forReport: forReport) }.joined(separator: "\n\n")
             return "No manual passage for '\(query)'. " + teamLearningOnlyInstruction(leadIn: leadIn) + "\n\n" + body
         case .insufficient(let reason):
             return reason

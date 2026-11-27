@@ -58,8 +58,17 @@ final class TableLookupTool: NativeTool {
 
     func execute(args: [String: Any]) async throws -> String {
         if !Config.fieldAssistActive {
+            // Records nothing for a support report, so the report shows its size only (Plan NI).
             return PersonalManualLibrary.shared.table(args, documentStore: documentStore)
         }
+        let result = lookUp(args)
+        // Everything `lookUp` returns without recording is its own words (Plan NI): a refusal, a
+        // question back, a miss. A cell it found recorded the version without the book's text.
+        ToolReportText.recordIfNone(.asReturned)
+        return result
+    }
+
+    private func lookUp(_ args: [String: Any]) -> String {
         guard Config.fieldAssistActive else {
             return "Field Assist is disabled. Enable it in Settings → Field Assist."
         }
@@ -84,6 +93,7 @@ final class TableLookupTool: NativeTool {
         let outcome = TableLookup.resolve(.init(table: table, row: row, column: column?.isEmpty == true ? nil : column,
                                                 document: document), in: sources)
         noteForShowing(outcome, session: session, documentStore: documentStore)
+        ToolReportText.record(TableLookup.reportEntry(outcome))
         return TableLookup.render(outcome)
     }
 

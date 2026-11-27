@@ -86,8 +86,17 @@ final class ManualLookupTool: NativeTool {
 
     func execute(args: [String: Any]) async throws -> String {
         if !Config.fieldAssistActive {
+            // Records nothing for a support report, so the report shows its size only (Plan NI).
             return PersonalManualLibrary.shared.lookup(args, documentStore: documentStore)
         }
+        let result = await lookUp(args)
+        // Everything `lookUp` returns without recording is its own words (Plan NI): a refusal, a
+        // miss and its retry guidance. Passages it found recorded the version without their words.
+        ToolReportText.recordIfNone(.asReturned)
+        return result
+    }
+
+    private func lookUp(_ args: [String: Any]) async -> String {
         guard Config.fieldAssistActive else {
             return "Field Assist is disabled. Enable it in Settings → Field Assist."
         }
@@ -175,6 +184,7 @@ final class ManualLookupTool: NativeTool {
         }
         let label = query.flatMap { $0.isEmpty ? nil : $0 } ?? "what the label says"
         var result = VaultRetriever.toolResult(outcome, query: label, leadIn: disclosure?.leadIn)
+        let passagesBlock = result
         // The book's way in (Plan IV P5): what its own index names for these words, when a manual
         // has one and the passages don't already carry it; and on a first miss, the headings of
         // the nearest sections, so the one retry #763 allows is in the book's terms.
@@ -214,7 +224,22 @@ final class ManualLookupTool: NativeTool {
         if let ocrText {
             result = "Read from the label: \(ocrText.replacingOccurrences(of: "\n", with: " "))\n\n" + result
         }
+        if !outcome.passages.isEmpty {
+            ToolReportText.record(Self.reportEntry(result: result, passagesBlock: passagesBlock,
+                                                   report: VaultRetriever.reportToolResult(outcome, query: label,
+                                                                                          leadIn: disclosure?.leadIn)))
+        }
         return result
+    }
+
+    /// What a support report may show of a result that carries passages (Plan NI): the result with
+    /// its passages block swapped for the version without their words, and the lines around it
+    /// (hints, the label read, the edition) kept. Size only when the block cannot be found in the
+    /// result, so a passage's words never reach a report by accident. Pure.
+    static func reportEntry(result: String, passagesBlock: String,
+                            report: (text: String, leftOut: Int)) -> ToolReportText.Entry {
+        guard !passagesBlock.isEmpty, let range = result.range(of: passagesBlock) else { return .sizeOnly }
+        return .bookTextLeftOut(result.replacingCharacters(in: range, with: report.text), leftOut: report.leftOut)
     }
 
     /// The book's own index pointing elsewhere than the passages.

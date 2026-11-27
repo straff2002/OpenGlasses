@@ -762,9 +762,23 @@ enum TableLookup {
                 + "Do not answer from memory. Tell the technician, and offer to show the page (open it with show_source only if they ask).\n"
                 + sourceLine(documentName: source.documentName, label: table.label, pages: [table.page])
         case .found(let found):
-            return renderFound(found)
+            return renderFound(found, forReport: false).text
         }
     }
+
+    /// What a support report may show of `render(outcome)` (Plan NI, owner decision D1). A lookup
+    /// that found its cell shows the table, row, column and page it found, with each cell's text
+    /// and the table's notes replaced by a count: those are the licensed book's own words. Every
+    /// other outcome gave nothing from the book, only the app's words and the headings it lists,
+    /// so it is shown as it is. Pure.
+    static func reportEntry(_ outcome: Outcome) -> ToolReportText.Entry {
+        guard case .found(let found) = outcome else { return .asReturned }
+        let report = renderFound(found, forReport: true)
+        return .bookTextLeftOut(report.text, leftOut: report.leftOut)
+    }
+
+    /// What stands in a report for a cell's text (Plan NI).
+    static let leftOutCell = "[left out of the report]"
 
     /// What a row found by number or by words says when it is not the row asked for (Plan KD P0):
     /// "4/0" answered from row 4 was the retest's wrong answer. Row matching no longer does that,
@@ -871,17 +885,23 @@ enum TableLookup {
         return text
     }
 
-    private static func renderFound(_ found: Found) -> String {
+    /// The found cell's text; `forReport` replaces each cell and the notes with a count of what
+    /// was left out (Plan NI), and `leftOut` is that count, in characters.
+    private static func renderFound(_ found: Found, forReport: Bool) -> (text: String, leftOut: Int) {
         let source = found.source
         let table = source.table
         let pictured = table.source.isRecognised
+        var leftOut = 0
         var lines = ["\(table.displayName), \(source.documentName):"]
         if let mismatch = mismatchLine(found) { lines.append(mismatch) }
         func rowLine(_ row: ManualTable.Row) -> String {
             let cells = found.columns.map { index -> String in
                 let cell = index < row.cells.count ? row.cells[index] : ManualTable.Cell(text: "")
                 let column = index < table.columns.count ? columnName(table.columns[index]) : "column \(index + 1)"
-                return "column \(column): \(cellText(cell))"
+                let text = cellText(cell)
+                guard forReport else { return "column \(column): \(text)" }
+                leftOut += text.count
+                return "column \(column): \(leftOutCell)"
             }
             let aught = aughtNote(found, row: row).map { " (\($0))" } ?? ""
             let line = "row \(rowName(row))\(aught) (\(spokenPage(row.page))) — " + cells.joined(separator: "; ")
@@ -902,9 +922,15 @@ enum TableLookup {
         }
         let notes = notes(for: found)
         if !notes.isEmpty {
-            lines.append("Notes: " + notes.map { note in
+            let printed = "Notes: " + notes.map { note in
                 (note.marker.map { "[\(TableExtractor.superscripted($0))] " } ?? "") + note.text
-            }.joined(separator: " | "))
+            }.joined(separator: " | ")
+            if forReport {
+                leftOut += printed.count
+                lines.append("Notes: \(notes.count) \(notes.count == 1 ? "note" : "notes") \(leftOutCell)")
+            } else {
+                lines.append(printed)
+            }
         }
         if !found.unreadPages.isEmpty {
             lines.append("Part of this table, on " + found.unreadPages.map(spokenPage).joined(separator: ", ")
@@ -933,7 +959,7 @@ enum TableLookup {
         lines.append("Read the value out as printed, with its row, column and page. Do not interpolate, round, "
                      + "or move to another row.")
         lines.append(sourceLine(documentName: source.documentName, label: table.label, pages: pages(of: found)))
-        return lines.joined(separator: "\n")
+        return (lines.joined(separator: "\n"), leftOut)
     }
 }
 
