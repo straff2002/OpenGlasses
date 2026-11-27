@@ -236,10 +236,30 @@ enum TechnicianRequest {
         return !weighed.isDisjoint(with: said)
     }
 
-    /// How a technician asks to be taken through the work.
+    /// A walk-through asked for over two turns: the technician asked to be helped through the
+    /// work ("help me size this cable"), the assistant asked which case it is ("copper or aluminum?"),
+    /// and this turn's answer settles it ("copper, three in the pipe"). The request carries the asking; the two turns together carry the chain's task
+    /// and material, as one turn must for `asksToRunChain`. An answer that opens by turning it
+    /// down asks for nothing. Pure.
+    ///
+    /// The tester's sizing request was refused this way at both turns: "help me size this cable"
+    /// had no material, and the answer that gave it had no request.
+    static func asksToBeWalkedThrough(chain name: String, request: String, answer: String) -> Bool {
+        let requestWords = words(request)
+        let answerWords = words(answer)
+        guard containsPhrase(requestWords, among: guidedWalkPhrases),
+              !answerWords.prefix(2).contains(where: decliningWords.contains) else { return false }
+        return asksToBeWalkedThrough(chain: name, words: requestWords + answerWords)
+    }
+
+    private static let decliningWords: Set<String> = ["no", "nah", "nope", "dont", "stop", "cancel", "forget", "never"]
+
+    /// How a technician asks to be taken through the work. "Help me" with the chain's task is the
+    /// same request ("help me size this cable").
     private static let guidedWalkPhrases: [[String]] = [
         ["walk", "me", "through"], ["walk", "us", "through"], ["talk", "me", "through"], ["take", "me", "through"],
         ["step", "me", "through"], ["guide", "me"], ["step", "by", "step"], ["lets", "work", "it", "out"],
+        ["help", "me"], ["help", "us"],
     ]
 
     /// The task a word names, as one key: "sizing" and "size" are one task, "fit" and "fill"

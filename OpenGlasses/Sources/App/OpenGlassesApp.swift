@@ -1407,6 +1407,12 @@ class AppState: ObservableObject, AppStateProtocol {
     /// answer per turn, and never in the turn its question was put (Plan KD P2,
     /// `TechnicianWords.currentTurn()`).
     private(set) var turnSerial = 0
+    /// The words that opened the turn before this one, paired with `lastResponse` (the reply to
+    /// them): a rule chain asked for in one turn ("help me size this cable") and settled in the answer
+    /// to the assistant's question ("copper, three in the pipe") starts on that answer
+    /// (`TechnicianWords.previousUtterance()`). Set only when a fresh turn opens, and cleared with
+    /// the history.
+    private(set) var previousTurnUtterance: String = ""
     @Published var lastResponse: String = ""
     /// Plan LU: the private conversation — a conversation Avenkin keeps nothing of. Its state and
     /// in-memory transcript, observed by the phone and the watch. Started and ended only through
@@ -2495,6 +2501,7 @@ class AppState: ObservableObject, AppStateProtocol {
         currentLLMTask = nil
         speechService.stopSpeaking()
         llmService.clearHistory()
+        previousTurnUtterance = ""
         liveActivator.stop(currentMode, source: .appUI)
         manualFigureRequest = nil
         vaultFileRequest = nil
@@ -9448,6 +9455,7 @@ class AppState: ObservableObject, AppStateProtocol {
         }
 
         currentTranscription = heard
+        previousTurnUtterance = turnUtterance
         turnUtterance = heard
         isListening = false
         errorMessage = nil
@@ -10098,6 +10106,7 @@ class AppState: ObservableObject, AppStateProtocol {
         if recordUserTurn { noteUserInteraction() }
 
         currentTranscription = query
+        previousTurnUtterance = turnUtterance
         turnUtterance = query
         isListening = false
         errorMessage = nil
