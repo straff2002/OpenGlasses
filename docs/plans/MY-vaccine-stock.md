@@ -15,8 +15,13 @@ number. **2026-11-27, P4:** the catalog sync is done: 118 keys in the 13 complet
 add-only, the EMR named by each language's usual short term. Owed: a simulator check of the scan sheet, the count sheet, the report and the EMR check sheet; the device
 pass (a real carton scanned, and the reminder seen on a phone); P5 the pilot; a
 takeover workbook still drops lots (it carries lines and figures only); tapping the count reminder
-opens the app but not the count sheet. The clinic's process details are due the week of
-2026-11-23, and some decisions may change when they arrive.
+opens the app but not the count sheet. **2026-11-27, the clinic's brief (P3c):** the clinic set
+out the table it has in mind (immunization number, category, description, tariff, brand names,
+quantity on hand) and how it expects stock to move: a tariff billed in the EMR uses one bottle. The
+table imports as it is: `Category` is kept on the line, and `Immunization #` joins its codes (§8).
+Stock lowered by billing is not built and is set out as Decision 13 (§8a), with the question of
+whether a tariff is a dose or a bottle (§2). One new screen string (*Category*) is owed to a
+catalog sync.
 **Track:** Field Assist stock, for a medical clinic. The phone, not the glasses (Decision 10).
 **Builds on:**
 - Plan [IH](IH-van-stock.md): the phone's own stock list. That means the append-only movement log
@@ -132,6 +137,13 @@ remembers **doses per carton** once, the first time it is received. *"Two boxes 
 doses on a 10-dose line. A multi-dose vial is one carton of N doses, and the doses left in an
 opened vial that must be thrown out are wasted doses (§3).
 
+**A tariff is a dose, not a bottle (2026-11-27).** The clinic's brief says a billed tariff "would
+use 1 bottle". That holds for a single-dose vial or a prefilled syringe, where a dose and a bottle
+are the same thing. For a multi-dose vial it doesn't: ten claims come from one vial, and the doses
+left when it is thrown out are waste. The app keeps counting doses. A single-dose product has
+`dosesPerCarton` set to its pack size, and a bottle is then one dose. Which products the fridge
+holds as multi-dose vials is still open (question 4).
+
 ### 3 · Given, wasted, and the rest
 
 A new movement kind, **`wasted`**, with its own reasons:
@@ -228,6 +240,17 @@ The app reads it and forgets it:
   form or a brand finds the line with no mapping step. Where one tariff code covers brands with
   different carton sizes, the clinic splits that row into one line per brand (`dosesPerCarton` is
   per line).
+- **The clinic's own table (P3c, 2026-11-27).** The clinic's brief names six fields: Immunization #
+  (5 letters and digits), Category (40), Description (75), Tariff (4 digits), Brand Names (50) and
+  Quantity on Hand (4 digits). The widths are its database design, not limits the app enforces.
+  `Quantity on Hand` (and `Qty on hand`, `Stock on hand`) now reads as on hand, so a row's figure
+  is its count; before, only the bare words *quantity* and *on hand* did. A `Category` heading (or `Group`, `Vaccine category`) is kept on the line as
+  `VanStockItem.category`: shown under the line's name on the Stock screen and editable on the
+  line, but read in only, as the other names are. An empty cell on a later import leaves the line's
+  own, a changed one is an edit an undo takes back, and a cell over 60 characters is not a category.
+  An `Immunization #` heading (also `No.`, `Number`, `Code`, `ID`, and the same for `Vaccine`) joins
+  the line's codes ahead of its brands, so the EMR check also finds a line by it. A bare
+  `Immunization` heading is not one, as it may hold the vaccine's name.
 - **Compare per day × line × lot (`ImmunisationReconciliation`, pure):**
   - **Given here, not in the EMR:** *"3 flu doses on 24 November, lot ABC123, are not in the
     EMR."* These are the likely missed claims.
@@ -237,6 +260,52 @@ The app reads it and forgets it:
     after midnight is common.
 - **What it gives back:** a list for staff to work through in the EMR. The app says which counts
   differ, never which patient. Finding the patient is done in the EMR, by the people allowed to.
+
+### 8a · What the clinic asked for: stock lowered by billing
+
+The brief has the app interface with the EMR so that billing a tariff lowers the stock: tariff 8161
+billed is one COVID-19 Moderna dose gone. That is not built, for two reasons.
+
+- **It needs an EMR connector**, which needs the EMR's name, its vendor's documentation and its
+  permission (Decision 9). The EMR is still unknown (question 1).
+- **It hides the missed claims, the clinic's own third problem.** When billing drives the stock, a
+  dose nobody billed never leaves the stock either. The weekly count then comes out over, with no
+  day and no lot to start from. When staff record the dose in the app as they give it, the check
+  against the EMR (§8) names the day, the vaccine and the lot of each dose that was given and
+  never claimed.
+
+A smaller step needs no connector: the check reads the EMR's **billing export** (date and tariff
+per claim) in place of its immunisation list. `ImmunisationLineAliases` already matches the tariff,
+because it is the line's number. A billing export carries no lot, so the comparison would be by day
+and line only, and `ImmunisationListReader` today requires a lot column. Decision 13.
+
+### 8b · One fridge, several staff (2026-11-27)
+
+Several staff take vaccines from the same fridge, so a list kept on each phone, as a technician
+keeps a van's, does not work: the count must be one shared record, and the check against the EMR
+needs that same record. Staff record what they take ("gave 2 flu doses"), never a new total, so
+entries from two people at once or from a phone that was offline add up without conflict; only a
+count states a total, and it is ordered by when it was taken.
+
+Where that shared record lives:
+
+- **Not on a server of ours.** A central record we host holds clinic data, even with no patient
+  names: a dose's time and who gave it can be matched to an EMR appointment. That could bring
+  data residency and health-privacy obligations and a host other than the portal's current one,
+  at a cost out of proportion to a pilot.
+- **Not on one shared device at the fridge.** It needs no sync, but it doesn't fit how the
+  clinic works.
+- **In the clinic's own software, preferred.** If the EMR holds inventory, the phone keeps no count
+  for that place and works through it on MM's pattern (Decision 9): it answers from the EMR's
+  figure and sends doses given and wasted back through the offline queue, once each. The data
+  stays in a system the clinic already controls. That needs the EMR's name, an API that can write
+  stock, and the vendor's permission.
+- **Else the clinic's own shared spreadsheet,** if its stock is tracked in one on Microsoft 365 or
+  Google today: each dose is a row added to it, and the totals are read back. A new connector, no
+  vendor agreement beyond the clinic's own sign-in. Not built.
+
+Which of the last two depends on open questions 1 and 10. Separate places within a company
+(clinics, buildings, fridges) follow MK's places once the record is chosen.
 
 This check runs only while medical mode is on, because the file in the person's hand carries
 patient data even though the app keeps none of it (Decision 8).
@@ -315,6 +384,11 @@ The house rhythm puts P0–P3 in one PR, with the device-only edges named as owe
   and brand names as codes, the EMR check matching the number. One reworded refusal (*"A list with no
   quantities yet needs both Part number and Description."*) joins P4's keys. Owed: importing the
   clinic's real list on a phone (P5).
+- **P3c — the clinic's own table (headless).** ✅ Built 2026-11-27, after the clinic's brief:
+  `VanStockItem.category` (stored, logged as an edit, undone with its batch, read by an older line
+  as none), the `Category` and `Immunization #` headings on import, and the category on the Stock
+  screen's row and the line's details. Owed: the *Category* key in a catalog sync; a sheet export
+  does not write the category (read in only, like the other names).
 - **P4 — the catalog sync (its own PR).** ✅ Done 2026-11-27: 118 keys from the clinic screens,
   harvested from a build's `.stringsdata`, translated into the 13 complete languages, add-only
   (+9,731/−0), the stock-system keys in the same files left for their own sync.
@@ -378,7 +452,8 @@ The house rhythm puts P0–P3 in one PR, with the device-only edges named as owe
 9. **When the EMR already counts the stock.** *Recommend:* MM's pattern. The phone keeps no count
    for that place, answers from the EMR and sends doses given and wasted back. That is an EMR
    connector, a later plan, and only with the EMR vendor's documentation and permission. P0–P3 here
-   are for an EMR without a stock module, or one the clinic doesn't use.
+   are for an EMR without a stock module, or one the clinic doesn't use. *2026-11-27:* the clinic's
+   brief asks for the EMR's billing to lower the stock. That is this connector, not built (§8a).
 10. **Phone or glasses.** *Recommend:* the phone (and a shared iPad at the fridge, if they have
     one) for the pilot. The glasses stay out of consult rooms. *Later:* scanning a carton by
     looking at it, from a pair worn at the fridge only.
@@ -388,8 +463,20 @@ The house rhythm puts P0–P3 in one PR, with the device-only edges named as owe
 12. **Clinical wording.** *Recommend:* a list-level clinical flag with a locked profile key
     `organizationStockClinical` (§9). *Alternative:* follow the place kind alone, which can't tell
     a clinic's storeroom from a shop's.
+13. **Stock lowered by billing (2026-11-27, §8a).** *Recommend:* staff record each dose in the app
+    as now, and the check also accepts the EMR's billing export (date and tariff, the lot column
+    optional), comparing by day and line where there is no lot. *Alternative:* the billing export
+    is where doses come from: its claims lower the stock, the oldest lot first, and only the weekly
+    count catches what was given and never billed, as a total. That suits a clinic whose staff
+    won't record doses twice, but it gives up naming the missed claim, and the lot is a guess.
+    *Later:* a live EMR connector (Decision 9).
 
 ## Open questions (for the clinic, the week of 2026-11-23)
+
+*2026-11-27, from the clinic's brief:* the field list and the tariff-to-stock rule are answered
+(§8, §8a). New: is a billed tariff one dose or one bottle, product by product (§2)? Is the
+Immunization # the short form (MMR, Tdap) or a number of the clinic's own? Do privately paid
+vaccines have a billing code in the EMR? Can the EMR export billed tariffs for a date range?
 
 1. Which EMR, which version, cloud or installed? Does it have a vaccine stock module, and does the
    clinic use it? (Decision 9.)
@@ -406,6 +493,9 @@ The house rhythm puts P0–P3 in one PR, with the device-only edges named as owe
 8. What devices are at the fridge and in the treatment rooms? Who at the clinic approves a new app
    handling clinic data?
 9. How many days ahead counts as "expiring soon" for them?
+10. *2026-11-27:* several staff share one fridge (§8b). Does the EMR store inventory? How is stock
+    monitored today, and if in a spreadsheet, where does it live (Microsoft 365, Google, a file on
+    one PC)?
 
 ## Not in scope
 

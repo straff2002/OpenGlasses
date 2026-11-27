@@ -81,6 +81,8 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
         case verified
         /// Doses per carton (Plan MY §2).
         case dosesPerCarton = "doses_per_carton"
+        /// The line's category (Plan MY §8).
+        case category
     }
 
     let id: String
