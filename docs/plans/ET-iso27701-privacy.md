@@ -88,6 +88,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | diagnosticExports | `DiagnosticExportCoordinator` | exportArtifact | wearer | complete | yes | TTL sweep | none — released on share, background and launch scavenge | n/a — no subject linkage |
 | erasureLedger | `ErasureLedger` | operationalAudit | thirdPartySubject | completeUntilFirstUserAuthentication | yes | cap 200 | `ErasureLedger.clear()` | none — the entry is what makes the erasure survive; removing it would let a restore bring the subject back |
 | evolvedSkills | `EvolvedSkillStore` | skillDefinition | wearer | completeUntilFirstUserAuthentication | yes | none | `EvolvedSkillStore.deleteAll()` | `EvolvedSkillStore.deleteMatching(_:)` |
+| experienceRecordings | `ExperienceRecordingStore` | operationalAudit | thirdPartySubject | completeUntilFirstUserAuthentication | yes | audio deleted 30 days after recording; cap 200 | `ExperienceRecordingStore.removeAll()` | `ExperienceRecordingStore.deleteMatching(_:)` |
 | expertCard | `ExpertCardStore` | preference | wearer | platformDefault | no | none | `ExpertCardStore.remove()` | n/a — no subject linkage |
 | expertLedger | `ExpertLedgerStore` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | rows older than 400 days go; cap 2000 | `ExpertLedgerStore.removeAll()` | n/a — no subject linkage |
 | expertList | `ExpertListStore` | preference | wearer | platformDefault | no | none | `ExpertListStore.removeAll()` | n/a — no subject linkage |

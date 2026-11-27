@@ -111,6 +111,9 @@ enum SensitiveStore: String, CaseIterable {
     /// Parts noted on the phone for that system and not yet confirmed (Plan MM P3).
     case stagedStockUse
     case learningCandidates
+    /// Experience recordings (Plan IM P1): what a technician recorded of what they already know,
+    /// with its audio for 30 days.
+    case experienceRecordings
     case capturedManuals
     /// The My Manuals new-manual allowance (Plan JK §8): the iCloud copy of the history.
     case manualAdditionHistory
@@ -1000,6 +1003,24 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "LearningCandidateStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/TeamLearning/LearningCandidateStore.swift"],
                           location: "Application Support/FieldAssist/team-learning-candidates.json")
+
+        case .experienceRecordings:
+            // Experience recordings (Plan IM P1): one case per recording, transcribed on the phone
+            // and redacted at capture, kept here until a reviewer drafts candidates from it (P2–P3),
+            // with its audio for 30 days on the phone that recorded it (decision 2). The recorder
+            // asks for no customer names or addresses, but a recording of someone talking about
+            // their work is exactly where one slips out, so — like the candidates — it is treated as
+            // able to hold a third party, walked by the subject erasure, protected, kept out of
+            // backup and cleared when the phone leaves its organisation. Nothing leaves the phone in
+            // P1. A recording made while a job is open is not kept here: it files a candidate.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .thirdPartySubject,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("audio deleted 30 days after recording; cap \(ExperienceRecorderRules.entryCap)"),
+                          deleteAll: .api("ExperienceRecordingStore.removeAll()"),
+                          deleteSubject: .api("ExperienceRecordingStore.deleteMatching(_:)"),
+                          owner: "ExperienceRecordingStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/TeamLearning/ExperienceRecording/ExperienceRecordingStore.swift"],
+                          location: "Application Support/FieldAssist/experience-recordings.json and ExperienceRecordings/ (audio)")
 
         case .learningEntries:
             // Approved team learnings (Plan FP P2): the live entries whose documents answer from the

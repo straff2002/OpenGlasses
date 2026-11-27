@@ -26,6 +26,9 @@ enum JobRoute: Hashable {
     /// What is on the van (Plan IH P2), and one line of it.
     case vanStock
     case vanStockItem(id: String)
+    /// "Record experience" (Plan IM P1): the five-prompt card and the recorder, with or without a
+    /// job open.
+    case recordExperience
 }
 
 /// One field session, as the list needs it: the day card's to-do facts plus what a row prints and

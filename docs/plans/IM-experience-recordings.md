@@ -1,6 +1,6 @@
 # Plan IM — Experience Recordings (what the crew already knows, one case per recording)
 
-**Status:** 🚧 P0 built 2026-11-27, PR pending ([below](#p0--contract-amendment-and-the-model-headless)): team-learning §13, the candidate's `tried`/`outcome` and `recording` evidence, the manifest's `equipment_types`, symptom matching in retrieval, recollections ranked below job-confirmed learnings, and the recalled lead-in. Part of P0 was built by Plan NF P0 (2026-11-25): `LearningCandidate.Origin.recollection`, the entry fields `tried`/`outcome`, `LearningEntry.Subject.symptom(equipmentType:phrase:)` and §11. P1–P4 not built. Drafted 2026-10-16.
+**Status:** 🚧 P0 built 2026-11-27, PR pending ([below](#p0--contract-amendment-and-the-model-headless)): team-learning §13, the candidate's `tried`/`outcome` and `recording` evidence, the manifest's `equipment_types`, symptom matching in retrieval, recollections ranked below job-confirmed learnings, and the recalled lead-in. Part of P0 was built by Plan NF P0 (2026-11-25): `LearningCandidate.Origin.recollection`, the entry fields `tried`/`outcome`, `LearningEntry.Subject.symptom(equipmentType:phrase:)` and §11. 🚧 P1 built 2026-11-27, PR pending ([below](#p1--the-recorder-record-experience-phone-and-carplay)): the recorder on the phone and CarPlay. P2–P4 not built. Drafted 2026-10-16.
 **Track:** Field Assist (B2B).
 **Depends on:** Plan [FP](FP-team-learnings.md) P0–P3 (shipped: candidate, review, entry, corpus,
 bundle) and FP P4 (the review queue on a screen) before anything here is usable by a supervisor.
@@ -177,6 +177,34 @@ Fixtures in `Contracts/fixtures/team-learning-v1/`; tests in `TeamLearningRecoll
 - **Exit tests:** store lifecycle, erasure and redaction; the CarPlay template contract; the
   "next case" split; HIPAA withholding; and the `.teamLearnings` capability gate, plus Plan IP's
   switch once it exists.
+
+**Built 2026-11-27, PR pending.** Decisions 1, 2 and 6 as recommended. `ExperienceRecording` (id,
+created, whole-second duration, redacted transcript, redaction names, the default vault, optional
+spoken model and site, which P1 leaves empty for P2, status forward-only `recorded → sent → drafted →
+reviewed`, and when its audio went) lives in `ExperienceRecordingStore`: an index beside the
+candidates and one `.m4a` per recording, first-unlock protected and backup-excluded, registered as
+`experienceRecordings` (third-party subject, like `learningCandidates`), walked by the subject erasure
+with its audio, and cleared in the organisation departure beside the candidates. The audio is deleted
+30 days after recording (swept at launch and when the recorder opens; the transcript stays), and
+nothing leaves the phone. `ExperienceRecorder` is FO §6's debrief without the model: it starts only
+when no conversation is listening, and nothing said reaches the assistant. `LiveExperienceCapture`
+records through `CaptureAudioRouter` and transcribes with `requiresOnDeviceRecognition` always on: a
+phone that cannot transcribe its language on the device is refused, never sent to Apple's servers. A
+stretch is what was said between pauses (1.6 s); `ExperienceRecordingMarkers` reads "that's one, next
+case" (anywhere in a stretch, or a bare "next case" alone or as its last sentence) and "that's all"
+(only as a whole stretch or its last sentence, so "that's all it needed" stays in the case). The standing line
+"Please leave out customer names and addresses" is spoken once per session; in the car the five
+prompts are read aloud too, and the card's second prompt asks for the kind of site rather than the
+customer. With a job open a recording files `spoken` candidates on that job through
+`LearningCandidateService.note` (in parts of at most 2,000 scalars when long), keeps no audio, and is
+kept on the phone instead if the filing is refused or the job closes mid-recording. Plan IP has no
+switch built, so the `.teamLearnings` capability is the only organisation gate
+(`ExperienceRecordingAvailability`); Medical Compliance withholds it wherever `team_learning` is
+withheld. On the phone it is a row on the Jobs list and a link in Field Assist settings; in the car a
+Jobs-list row that becomes Stop while recording. The markers are English only. Tests in
+`ExperienceRecordingTests` (store, transcript, markers, availability, the car's row, the recorder,
+the job path). Owed: a device pass (CarPlay audio route for recording, the wake word during a
+recording, recogniser stretches on hardware).
 
 ### P2 — The drafting pass (pure segmentation, model extraction, validation)
 

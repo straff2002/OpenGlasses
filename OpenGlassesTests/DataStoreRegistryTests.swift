@@ -373,6 +373,7 @@ final class DataStoreRegistryTests: XCTestCase {
             (.upcomingJobs, UpcomingJobStore.fileProtection),
             (.clientSiteLinks, ClientSiteLinkStore.fileProtection),
             (.learningCandidates, LearningCandidateStore.fileProtection),
+            (.experienceRecordings, ExperienceRecordingStore.fileProtection),
             (.learningEntries, LearningEntryStore.fileProtection),
             (.vanStock, VanStockStore.fileProtection),
             (.stockSystemSnapshot, StockSystemSnapshotStore.fileProtection),
@@ -390,6 +391,21 @@ final class DataStoreRegistryTests: XCTestCase {
             XCTAssertEqual(store.record.protection, .completeUntilFirstUserAuthentication,
                            "\(store.rawValue): the registry must describe the class the owner writes")
         }
+    }
+
+    /// Plan IM P1: the index, the audio folder and each audio file are protected and kept out of
+    /// backup — a recording finished on CarPlay is saved with the phone locked.
+    @MainActor
+    func testExperienceRecordingAttributesMatchTheRegistry() throws {
+        let store = ExperienceRecordingStore(directory: workspace)
+        let audio = workspace.appendingPathComponent("capture.m4a")
+        XCTAssertTrue(FileManager.default.createFile(atPath: audio.path, contents: Data("audio".utf8)))
+        store.add(ExperienceRecording(createdAt: Date(), duration: 30, transcript: "Registry probe",
+                                      redactions: [], vaultId: "refrigeration"), audioFrom: audio)
+        let id = try XCTUnwrap(store.recordings.first?.id)
+        try assertAttributes(of: store.fileLocation, match: .experienceRecordings)
+        try assertAttributes(of: store.audioLocation, match: .experienceRecordings)
+        try assertAttributes(of: store.audioURL(for: id), match: .experienceRecordings)
     }
 
     @MainActor

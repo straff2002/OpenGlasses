@@ -512,6 +512,26 @@ struct FieldAssistSettingsView: View {
                     Text("\u{201C}Take me there\u{201D} opens this app with directions to the job's address. If it isn't installed, Apple Maps is used and you're told so. The brief is always one tap or one sentence away; switching it on here also reads it when the car connects.")
                 }
 
+                // ──────────────── Record experience (Plan IM P1)
+                if appState.experienceRecorder.verdict.isOffered {
+                    Section {
+                        NavigationLink {
+                            ExperienceRecorderView(
+                                recorder: appState.experienceRecorder, store: .shared,
+                                openJob: sessionService.activeSession.map { session in
+                                    session.jobReference.flatMap { $0.isEmpty ? nil : String(localized: "Job \($0)") }
+                                        ?? String(localized: "Open job")
+                                })
+                        } label: {
+                            Label("Record experience", systemImage: "mic")
+                        }
+                    } header: {
+                        Text("Your Experience")
+                    } footer: {
+                        Text("Record what you already know about a machine, one case per recording, for your team to review. Also in the Jobs list, and on CarPlay.")
+                    }
+                }
+
                 // ──────────────── Job reports (Plan EM P2)
                 jobReportSection
 

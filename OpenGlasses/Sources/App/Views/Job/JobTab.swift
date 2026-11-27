@@ -139,6 +139,7 @@ private struct JobTabContent: View {
                         openJobPrompt: $openJobPrompt,
                         onOpen: { path.append($0) },
                         showsVanStock: !Config.organizationForbidsVanStock,
+                        showsRecordExperience: appState.experienceRecorder.verdict.isOffered,
                         onAdd: addNewJob,
                         onAnswer: answer,
                         transcriptDays: appState.reportActivityDays,
@@ -312,6 +313,10 @@ private struct JobTabContent: View {
             VanStockView(store: .shared, stockSystem: appState.stockSystem, onOpen: { path.append(.vanStockItem(id: $0)) })
         case .vanStockItem(let id):
             VanStockItemView(store: .shared, itemID: id)
+        case .recordExperience:
+            ExperienceRecorderView(recorder: appState.experienceRecorder, store: .shared,
+                                   openJob: model.state.active.map { $0.jobNumber.map { String(localized: "Job \($0)") }
+                                       ?? String(localized: "Open job") })
         }
     }
 

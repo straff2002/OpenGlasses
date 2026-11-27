@@ -20,6 +20,9 @@ struct JobListView: View {
     /// Whether the van's stock is offered here (Plan IH P2). Off when the organisation has
     /// switched it off.
     var showsVanStock = false
+    /// Whether "Record experience" is offered here (Plan IM P1): withheld under Medical
+    /// Compliance and without team learnings in the licence.
+    var showsRecordExperience = false
     let onAdd: () -> Void
     let onAnswer: (OpenJobPrompt.Answer) -> Void
     /// Days with jobs, for "Export a day…".
@@ -73,6 +76,7 @@ struct JobListView: View {
                 if !list.older.isEmpty { olderSection }
             }
             if showsVanStock, !isSearching { vanStockSection }
+            if showsRecordExperience, !isSearching { recordExperienceSection }
             toolsSection
         }
         .ogFormStyle()
@@ -202,6 +206,20 @@ struct JobListView: View {
         }
     }
 
+    private var recordExperienceSection: some View {
+        Section {
+            Button { onOpen(.recordExperience) } label: {
+                Label("Record experience", systemImage: "mic")
+                    .foregroundStyle(Color.primary)
+                    .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
+            }
+            .accessibilityIdentifier("record-experience-row")
+            .accessibilityHint(Self.hint(.recordExperience))
+        } footer: {
+            Text("What you already know about a machine, one case per recording, for your team to review.")
+        }
+    }
+
     @ViewBuilder
     private var toolsSection: some View {
         if onSendToday != nil || (onExportDay != nil && !transcriptDays.isEmpty) {
@@ -274,6 +292,7 @@ struct JobListView: View {
         case .transcript: return String(localized: "Opens the conversation.")
         case .vanStock: return String(localized: "Opens the stock list.")
         case .vanStockItem: return String(localized: "Opens this line: its count, details and history.")
+        case .recordExperience: return String(localized: "Opens the prompts and the recorder.")
         }
     }
 }
