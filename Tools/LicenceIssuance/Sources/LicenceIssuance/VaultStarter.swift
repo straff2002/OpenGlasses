@@ -194,9 +194,12 @@ public enum VaultStarter {
         let sourceAttributionFormat: String
         let sourceAttributionRequired: Bool
         let trades: [String]?
+        /// The closed equipment-type list (`equipment_types`); absent when nil.
+        var equipmentTypes: [String]? = nil
 
         enum CodingKeys: String, CodingKey {
             case id, name, version, files, documents, gating, trades
+            case equipmentTypes = "equipment_types"
             case documentsDir = "documents_dir"
             case promptRules = "prompt_rules"
             case sourceAttributionFormat = "source_attribution_format"

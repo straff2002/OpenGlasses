@@ -419,6 +419,26 @@ final class CrewExperienceTests: XCTestCase {
         XCTAssertLessThan(models.range(of: "## QXRT-990")!.lowerBound, models.range(of: "## ZPL-2040")!.lowerBound)
     }
 
+    func testTheExperienceOnlyStarterWritesItsEquipmentTypes() throws {
+        let vault = try CrewModelsFile.experienceOnlyVault(name: "Fixture Crew Units", id: "fixture-crew-units", models: Self.crewModels,
+                                                           equipmentTypes: ["rooftop unit", "walk-in cooler"])
+        let manifest = try XCTUnwrap(VaultPackRules.Manifest(json: vault.manifestJSON))
+        XCTAssertEqual(VaultPackRules.manifestIssues(manifest), [])
+        XCTAssertEqual(manifest.equipmentTypes, ["rooftop unit", "walk-in cooler"])
+        // No list, no key: the golden fixture's bytes are unchanged.
+        let bare = try CrewModelsFile.experienceOnlyVault(name: "Fixture Crew Units", id: "fixture-crew-units", models: Self.crewModels)
+        XCTAssertEqual(bare.manifestJSON, try fixture("experience-only-vault/manifest.json"))
+        XCTAssertFalse(String(decoding: bare.manifestJSON, as: UTF8.self).contains("equipment_types"))
+    }
+
+    func testTheExperienceOnlyStarterRefusesTypesThePhoneWouldRefuse() {
+        XCTAssertThrowsError(try CrewModelsFile.experienceOnlyVault(name: "Fixture Crew Units", models: Self.crewModels,
+                                                                    equipmentTypes: ["rooftop unit", "Rooftop  Unit"])) {
+            guard case .equipmentTypes(let issues)? = $0 as? CrewModelsFile.Problem else { return XCTFail("\($0)") }
+            XCTAssertEqual(issues.count, 1)
+        }
+    }
+
     // MARK: - Not from fixtures
 
     func testTheSheetFileStandsAlone() throws {
