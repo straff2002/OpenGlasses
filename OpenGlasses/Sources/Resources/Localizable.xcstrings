@@ -5057,6 +5057,88 @@
         }
       }
     },
+    "%@ · asked %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · طُلب في %2$@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · solicitado el %2$@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · demandé le %2$@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · kérve: %2$@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · richiesto il %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@ に依頼"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@에 요청"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · gevraagd op %2$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · solicitado em %2$@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · запрошено %2$@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@ کو پوچھا گیا"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@ 请求"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@ 請求"
+          }
+        }
+      }
+    },
     "%@ · median · n=%lld · mean %@" : {
       "localizations" : {
         "ar" : {
@@ -30045,6 +30127,88 @@
         }
       }
     },
+    "%lld models in your vault have no crew experience yet." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "عدد الطرازات في خزنتك التي ليس لها خبرة من الطاقم بعد: %lld."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld modelos de tu bóveda aún no tienen experiencia del equipo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld modèles de votre coffre n’ont pas encore d’expérience de l’équipe."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A tárolója %lld típusához még nincs csapattapasztalat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld modelli del tuo deposito non hanno ancora esperienza della squadra."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボールト内の %lld 機種にはまだチームの経験がありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "볼트의 모델 %lld개에 아직 팀 경험이 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld modellen in uw kluis hebben nog geen ervaring van de ploeg."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld modelos do seu cofre ainda não têm experiência da equipe."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Моделей в вашем хранилище без опыта бригады: %lld."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کے والٹ کے %lld ماڈلز کے لیے ابھی عملے کا تجربہ نہیں ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的保险库中有 %lld 个型号还没有团队经验。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的保險庫中有 %lld 個型號還沒有團隊經驗。"
+          }
+        }
+      }
+    },
     "%lld more — use search to narrow down" : {
       "localizations" : {
         "ar" : {
@@ -44095,6 +44259,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 個模型"
+          }
+        }
+      }
+    },
+    "1 model in your vault has no crew experience yet." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "طراز واحد في خزنتك ليس له خبرة من الطاقم بعد."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 modelo de tu bóveda aún no tiene experiencia del equipo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 modèle de votre coffre n’a pas encore d’expérience de l’équipe."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A tárolója 1 típusához még nincs csapattapasztalat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 modello del tuo deposito non ha ancora esperienza della squadra."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボールト内の 1 機種にはまだチームの経験がありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "볼트의 모델 1개에 아직 팀 경험이 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 model in uw kluis heeft nog geen ervaring van de ploeg."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 modelo do seu cofre ainda não tem experiência da equipe."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для 1 модели в вашем хранилище ещё нет опыта бригады."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کے والٹ کے 1 ماڈل کے لیے ابھی عملے کا تجربہ نہیں ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的保险库中有 1 个型号还没有团队经验。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的保險庫中有 1 個型號還沒有團隊經驗。"
           }
         }
       }
@@ -86687,6 +86933,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "其他"
+          }
+        }
+      }
+    },
+    "Anything local: settings someone changed, and faults you've seen come from the link between two units." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أي أمر خاص بالموقع: إعدادات غيّرها أحدهم، وأعطال رأيتها تنشأ من الربط بين وحدتين."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cualquier detalle local: ajustes que alguien cambió y fallas que has visto venir de la conexión entre dos equipos."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tout ce qui est propre au site : des réglages que quelqu’un a modifiés, et des défauts que vous avez vus venir du lien entre deux appareils."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bármi helyi sajátosság: beállítások, amelyeket valaki megváltoztatott, és hibák, amelyekről látta, hogy két egység kapcsolatából erednek."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qualsiasi particolarità locale: impostazioni che qualcuno ha cambiato e guasti che hai visto nascere dal collegamento tra due unità."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場特有のこと：誰かが変更した設定や、2台の機器の接続から生じるのを見た故障。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현장 고유의 사항: 누군가 바꾼 설정, 두 장비 사이의 연결에서 생기는 것을 본 고장."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alles wat plaatselijk is: instellingen die iemand heeft gewijzigd, en storingen die u zag ontstaan door de koppeling tussen twee units."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qualquer particularidade local: configurações que alguém alterou e falhas que você viu surgir da ligação entre duas unidades."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Всё местное: настройки, которые кто-то изменил, и неисправности, которые, как вы видели, возникают из-за связи между двумя блоками."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کوئی بھی مقامی بات: وہ سیٹنگز جو کسی نے بدلیں، اور وہ خرابیاں جو آپ نے دو یونٹس کے درمیان رابطے سے آتی دیکھیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任何现场特有的情况：有人改过的设置，以及你见过的由两台机组之间的连接引起的故障。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任何現場特有的情況：有人改過的設定，以及你見過的由兩台機組之間的連接引起的故障。"
           }
         }
       }
@@ -161492,6 +161820,88 @@
         }
       }
     },
+    "Could you record what you know about these?" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هل يمكنك تسجيل ما تعرفه عن هذه؟"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Podrías grabar lo que sabes de estos?"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pourriez-vous enregistrer ce que vous savez de ceux-ci?"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rögzítené, amit ezekről tud?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Potresti registrare ciò che sai di questi?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これらについて知っていることを録音してもらえますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이것들에 대해 알고 있는 것을 녹음해 주시겠어요?"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kunt u opnemen wat u over deze weet?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você poderia gravar o que sabe sobre estes?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не могли бы вы записать то, что знаете о них?"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کیا آپ ان کے بارے میں جو جانتے ہیں وہ ریکارڈ کر سکتے ہیں؟"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你能把你对这些的了解录下来吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你能把你對這些的了解錄下來嗎？"
+          }
+        }
+      }
+    },
     "Couldn't add the new manuals to %@. It tries again when the app opens." : {
       "localizations" : {
         "ar" : {
@@ -169496,6 +169906,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "團隊經驗 · 1 個解決方法 · %@ 更新"
+          }
+        }
+      }
+    },
+    "Crew experience coverage" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تغطية خبرة الطاقم"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cobertura de la experiencia del equipo"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couverture de l’expérience de l’équipe"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Csapattapasztalat lefedettsége"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copertura dell'esperienza della squadra"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チームの経験の網羅状況"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "팀 경험 범위"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dekking van de ervaring van de ploeg"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cobertura da experiência da equipe"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Охват опыта бригады"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "عملے کے تجربے کی کوریج"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "团队经验覆盖情况"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "團隊經驗涵蓋情況"
           }
         }
       }
@@ -215453,6 +215945,88 @@
         }
       }
     },
+    "Every model in your vault has crew experience." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لكل طراز في خزنتك خبرة من الطاقم."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todos los modelos de tu bóveda tienen experiencia del equipo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chaque modèle de votre coffre a de l’expérience de l’équipe."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A tárolója minden típusához van csapattapasztalat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni modello del tuo deposito ha esperienza della squadra."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボールト内のすべての機種にチームの経験があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "볼트의 모든 모델에 팀 경험이 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elk model in uw kluis heeft ervaring van de ploeg."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todos os modelos do seu cofre têm experiência da equipe."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для каждой модели в вашем хранилище есть опыт бригады."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کے والٹ کے ہر ماڈل کے لیے عملے کا تجربہ موجود ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的保险库中每个型号都有团队经验。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的保險庫中每個型號都有團隊經驗。"
+          }
+        }
+      }
+    },
     "Every picture sent to the display is made smaller by this much so it fits. The reading goes into your support report." : {
       "localizations" : {
         "ar" : {
@@ -217843,6 +218417,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "預期代碼（如有）"
+          }
+        }
+      }
+    },
+    "Experience recordings are drafted on the reviewer's device, not this one." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تُصاغ تسجيلات الخبرة على جهاز المراجِع، لا على هذا الجهاز."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las grabaciones de experiencia se redactan en el dispositivo de quien revisa, no en este."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les enregistrements d’expérience sont rédigés sur l’appareil du réviseur, pas sur celui-ci."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A tapasztalatfelvételekből az átnéző eszközén készül vázlat, nem ezen."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le registrazioni di esperienza vengono redatte sul dispositivo del revisore, non su questo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "経験の録音は、このデバイスではなく確認担当者のデバイスで下書きされます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "경험 녹음은 이 기기가 아니라 검토자의 기기에서 초안으로 작성됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ervaringsopnamen worden uitgewerkt op het apparaat van de beoordelaar, niet op dit apparaat."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As gravações de experiência são redigidas no dispositivo de quem revisa, não neste."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Записи опыта превращаются в черновики на устройстве проверяющего, а не на этом."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تجربے کی ریکارڈنگز کا مسودہ جائزہ لینے والے کے آلے پر بنتا ہے، اس آلے پر نہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "经验录音会在审核人的设备上起草，而不是在这台设备上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "經驗錄音會在審核人的裝置上起草，而不是在這台裝置上。"
+          }
+        }
+      }
+    },
+    "Experience recordings aren't drafted while Medical Compliance is on." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا تُصاغ تسجيلات الخبرة ما دام وضع «الامتثال الطبي» مفعّلًا."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las grabaciones de experiencia no se redactan mientras Cumplimiento médico está activado."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les enregistrements d’expérience ne sont pas rédigés tant que Conformité médicale est activée."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amíg az Orvosi megfelelőség be van kapcsolva, a tapasztalatfelvételekből nem készül vázlat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le registrazioni di esperienza non vengono redatte mentre Conformità medica è attiva."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "医療コンプライアンスがオンの間、経験の録音は下書きされません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "의료 규정 준수가 켜져 있는 동안에는 경험 녹음의 초안이 작성되지 않습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ervaringsopnamen worden niet uitgewerkt zolang Medische naleving aan staat."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As gravações de experiência não são redigidas enquanto Conformidade Médica está ativada."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пока включено «Медицинское соответствие», черновики из записей опыта не создаются."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "میڈیکل کمپلائنس آن ہونے کے دوران تجربے کی ریکارڈنگز کا مسودہ نہیں بنتا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启“医疗合规”时，不会起草经验录音。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟「醫療合規」時，不會起草經驗錄音。"
           }
         }
       }
@@ -270296,6 +271034,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "眼鏡視圖如何傳送給專家。MJPEG 將單向影片透過你運行的中繼傳送到瀏覽器檢視器。WebRTC 是點對點連線，具有雙向音訊，需要在下方配置信令 URL（以及跨網路使用的 TURN）。"
+          }
+        }
+      }
+    },
+    "How they connect, and which one controls which." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "كيف تتصل ببعضها، وأيّها يتحكم في أيّها."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cómo se conectan y cuál controla a cuál."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comment ils sont reliés, et lequel commande lequel."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hogyan kapcsolódnak, és melyik melyiket vezérli."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Come sono collegate e quale controlla quale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "どのようにつながっているか、どれがどれを制御しているか。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "어떻게 연결되어 있고 어느 것이 어느 것을 제어하는지."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hoe ze verbonden zijn, en welke welke aanstuurt."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Como elas se conectam e qual controla qual."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Как они соединены и какой блок каким управляет."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "وہ کیسے جڑے ہیں، اور کون سا کس کو کنٹرول کرتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它们如何连接，以及哪台控制哪台。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它們如何連接，以及哪台控制哪台。"
           }
         }
       }
@@ -340197,6 +341017,88 @@
         }
       }
     },
+    "Models with no crew experience yet" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "طرازات ليس لها خبرة من الطاقم بعد"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelos que aún no tienen experiencia del equipo"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modèles sans expérience de l’équipe pour l’instant"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Típusok, amelyekhez még nincs csapattapasztalat"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelli ancora senza esperienza della squadra"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだチームの経験がない機種"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "아직 팀 경험이 없는 모델"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modellen nog zonder ervaring van de ploeg"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelos ainda sem experiência da equipe"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Модели, для которых ещё нет опыта бригады"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "وہ ماڈلز جن کے لیے ابھی عملے کا تجربہ نہیں ہے"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有团队经验的型号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "還沒有團隊經驗的型號"
+          }
+        }
+      }
+    },
     "Models, personas, prompt, and behaviour" : {
       "localizations" : {
         "ar" : {
@@ -383052,6 +383954,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未套用任何內容：%@ 不在等待中的檔案裡。"
+          }
+        }
+      }
+    },
+    "Nothing was drafted from this site recording: no answer came back." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يُصَغ شيء من تسجيل الموقع هذا: لم تصل أي إجابة."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se redactó nada de esta grabación de sitio: no llegó ninguna respuesta."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rien n’a été rédigé à partir de cet enregistrement de site : aucune réponse n’est revenue."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebből a helyszínfelvételből nem készült vázlat: nem érkezett válasz."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Da questa registrazione del sito non è stato redatto nulla: non è arrivata alcuna risposta."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この現場の録音からは何も下書きされませんでした：応答がありませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 현장 녹음에서는 아무것도 초안으로 작성되지 않았습니다: 응답이 오지 않았습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Er is niets uitgewerkt uit deze locatieopname: er kwam geen antwoord terug."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nada foi redigido a partir desta gravação de local: nenhuma resposta voltou."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Из этой записи об объекте ничего не составлено: ответ не пришёл."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس سائٹ ریکارڈنگ سے کوئی مسودہ نہیں بنا: کوئی جواب واپس نہیں آیا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未能从这段现场录音起草任何内容：没有收到回复。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未能從這段現場錄音起草任何內容：沒有收到回覆。"
+          }
+        }
+      }
+    },
+    "Nothing was drafted from this site recording: the draft didn't keep to what was said or to the site document's rules." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يُصَغ شيء من تسجيل الموقع هذا: لم تلتزم المسودة بما قيل أو بقواعد وثيقة الموقع."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se redactó nada de esta grabación de sitio: el borrador no se ciñó a lo que se dijo ni a las reglas del documento del sitio."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rien n’a été rédigé à partir de cet enregistrement de site : le brouillon ne s’en est pas tenu à ce qui a été dit ou aux règles du document de site."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebből a helyszínfelvételből nem készült vázlat: a vázlat nem maradt az elhangzottaknál vagy a helyszíndokumentum szabályainál."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Da questa registrazione del sito non è stato redatto nulla: la bozza non si è attenuta a ciò che è stato detto o alle regole del documento del sito."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この現場の録音からは何も下書きされませんでした：下書きが話した内容または現場ドキュメントのルールに沿っていませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 현장 녹음에서는 아무것도 초안으로 작성되지 않았습니다: 초안이 말한 내용이나 현장 문서의 규칙을 지키지 않았습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Er is niets uitgewerkt uit deze locatieopname: het concept hield zich niet aan wat er is gezegd of aan de regels van het locatiedocument."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nada foi redigido a partir desta gravação de local: o rascunho não se ateve ao que foi dito ou às regras do documento do local."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Из этой записи об объекте ничего не составлено: черновик не придержался сказанного или правил документа объекта."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس سائٹ ریکارڈنگ سے کوئی مسودہ نہیں بنا: مسودہ جو کہا گیا اس پر یا سائٹ دستاویز کے قواعد پر قائم نہیں رہا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未能从这段现场录音起草任何内容：草稿没有遵循所说的内容或现场文档的规则。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未能從這段現場錄音起草任何內容：草稿沒有遵循所說的內容或現場文件的規則。"
           }
         }
       }
@@ -577547,6 +578613,88 @@
         }
       }
     },
+    "Tell me about this site" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أخبرني عن هذا الموقع"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuéntame sobre este sitio"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parlez-moi de ce site"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meséljen erről a helyszínről"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parlami di questo sito"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この現場について教えてください"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 현장에 대해 알려 주세요"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vertel me over deze locatie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conte-me sobre este local"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Расскажите об этом объекте"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مجھے اس سائٹ کے بارے میں بتائیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "介绍一下这个现场"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "介紹一下這個現場"
+          }
+        }
+      }
+    },
     "Tell me more about that" : {
       "localizations" : {
         "ar" : {
@@ -627719,6 +628867,88 @@
         }
       }
     },
+    "The units at the site: each one's brand and model, and where it is." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الوحدات في الموقع: علامة كل منها التجارية وطرازها ومكانها."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los equipos del sitio: la marca y el modelo de cada uno, y dónde está."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les appareils du site : la marque et le modèle de chacun, et où il se trouve."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A helyszín egységei: mindegyik márkája és típusa, és hogy hol van."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le unità del sito: marca e modello di ciascuna, e dove si trova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場にある機器：それぞれのブランドと型番、設置場所。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현장의 장비: 각각의 브랜드와 모델, 그리고 위치."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De units op de locatie: van elk het merk en model, en waar het staat."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As unidades do local: a marca e o modelo de cada uma, e onde ela fica."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оборудование на объекте: марка и модель каждого блока и где он стоит."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سائٹ پر موجود یونٹس: ہر ایک کا برانڈ اور ماڈل، اور وہ کہاں ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "现场的机组：每台的品牌和型号，以及所在位置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場的機組：每台的品牌和型號，以及所在位置。"
+          }
+        }
+      }
+    },
     "The URL scheme to open. Examples: weixin://, spotify://, shortcuts://" : {
       "comment" : "A description of the URL scheme field in the Quick Action Editor.",
       "isCommentAutoGenerated" : true,
@@ -640034,6 +641264,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這是安全過濾器：它檢查文字，無法回答問題。請為助理選擇聊天模型。"
+          }
+        }
+      }
+    },
+    "This is a site recording, so it drafts a site document, not team learnings." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هذا تسجيل موقع، لذا تُصاغ منه وثيقة موقع، لا دروس للفريق."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta es una grabación de sitio, así que se redacta un documento del sitio, no aprendizajes del equipo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "C’est un enregistrement de site : il donne un document de site, pas des apprentissages de l’équipe."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ez helyszínfelvétel, ezért helyszíndokumentum-vázlat készül belőle, nem csapattanulság."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa è una registrazione del sito, quindi se ne redige un documento del sito, non apprendimenti del team."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これは現場の録音なので、チームの学習ではなく現場ドキュメントが下書きされます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이것은 현장 녹음이므로 팀 학습 내용이 아니라 현장 문서의 초안이 작성됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dit is een locatieopname, dus er wordt een locatiedocument uitgewerkt, geen teamlessen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta é uma gravação de local, então ela gera um documento do local, não aprendizados da equipe."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это запись об объекте, поэтому из неё составляется документ объекта, а не опыт команды."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ سائٹ کی ریکارڈنگ ہے، اس لیے اس سے سائٹ کی دستاویز کا مسودہ بنتا ہے، ٹیم کی سیکھی ہوئی باتیں نہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这是现场录音，因此会起草现场文档，而不是团队经验。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這是現場錄音，因此會起草現場文件，而不是團隊心得。"
           }
         }
       }
@@ -653106,6 +654418,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此辨識器目前不允許執行。"
+          }
+        }
+      }
+    },
+    "This recording has no words to draft from." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا يحتوي هذا التسجيل على كلمات يمكن الصياغة منها."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta grabación no tiene palabras para redactar."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet enregistrement ne contient aucun mot à partir duquel rédiger."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebben a felvételben nincsenek szavak, amelyekből vázlat készülhetne."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa registrazione non contiene parole da cui redigere."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この録音には下書きのもとになる言葉がありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 녹음에는 초안을 작성할 말이 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze opname bevat geen woorden om uit te werken."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta gravação não tem palavras para redigir."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В этой записи нет слов, из которых можно сделать черновик."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس ریکارڈنگ میں مسودہ بنانے کے لیے کوئی الفاظ نہیں ہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这段录音中没有可用于起草的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這段錄音中沒有可用於起草的內容。"
+          }
+        }
+      }
+    },
+    "This recording is a case, so it drafts team learnings, not a site document." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هذا التسجيل حالة، لذا تُصاغ منه دروس للفريق، لا وثيقة موقع."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta grabación es un caso, así que se redactan aprendizajes del equipo, no un documento del sitio."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet enregistrement est un cas : il donne des apprentissages de l’équipe, pas un document de site."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ez a felvétel egy eset, ezért csapattanulság-vázlat készül belőle, nem helyszíndokumentum."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa registrazione è un caso, quindi se ne redigono apprendimenti del team, non un documento del sito."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この録音は事例なので、現場ドキュメントではなくチームの学習が下書きされます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 녹음은 사례이므로 현장 문서가 아니라 팀 학습 내용의 초안이 작성됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze opname is een geval, dus er worden teamlessen uitgewerkt, geen locatiedocument."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta gravação é um caso, então ela gera aprendizados da equipe, não um documento do local."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эта запись — случай, поэтому из неё составляется опыт команды, а не документ объекта."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ ریکارڈنگ ایک کیس ہے، اس لیے اس سے ٹیم کی سیکھی ہوئی باتوں کا مسودہ بنتا ہے، سائٹ کی دستاویز نہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这段录音是一个案例，因此会起草团队经验，而不是现场文档。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這段錄音是一個案例，因此會起草團隊心得，而不是現場文件。"
           }
         }
       }
