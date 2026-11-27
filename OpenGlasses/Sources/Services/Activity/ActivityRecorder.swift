@@ -152,7 +152,8 @@ enum ActivityFeed {
                                                    effectClass: effectClass) else { return nil }
             return ActivityEntry(
                 id: id, at: at, kind: plannedStep == nil ? .action : .plannedStep,
-                title: words.title, detail: plannedStep?.goal ?? words.detail, tool: tool,
+                title: RuleChainTool.trailTitle(words.title, tool: tool, actionKey: actionKey, outcome: outcome),
+                detail: plannedStep?.goal ?? words.detail, tool: tool,
                 goalID: goalID, stepID: stepID,
                 authorisation: scheduledTask == nil ? .asked : .scheduled, origin: origin,
                 outcome: self.outcome(of: outcome),

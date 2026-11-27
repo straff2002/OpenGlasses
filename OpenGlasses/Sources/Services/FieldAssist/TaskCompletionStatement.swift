@@ -214,4 +214,14 @@ enum TechnicianWords {
         let reply = app.lastResponse.trimmingCharacters(in: .whitespacesAndNewlines)
         return reply.isEmpty ? nil : reply
     }
+
+    /// What the technician said to open the turn before this one, which `previousReply()`
+    /// answered: a walk-through asked for there and settled in this turn's answer starts a rule
+    /// chain ("help me size this cable" → "copper, three in the pipe"). Nil outside a turn, as
+    /// `current()` is.
+    @MainActor static func previousUtterance() -> String? {
+        guard let app = AppStateProvider.shared, app.isProcessing else { return nil }
+        let words = app.previousTurnUtterance.trimmingCharacters(in: .whitespacesAndNewlines)
+        return words.isEmpty ? nil : words
+    }
 }

@@ -75,6 +75,9 @@ final class RuleChainTool: NativeTool {
     /// only when those words ask for it (Plan KD P0).
     private let currentUtterance: @MainActor () -> String?
     private let previousReply: @MainActor () -> String?
+    /// What the technician said the turn before, which `previousReply` answered: a walk-through
+    /// asked for there and settled in this turn's answer starts the chain.
+    private let previousUtterance: @MainActor () -> String?
     /// Which turn is in flight, when it opened with the technician's words: a chain's answer comes
     /// from a later turn than its question (Plan KD P2).
     private let currentTurn: @MainActor () -> Int?
@@ -84,6 +87,7 @@ final class RuleChainTool: NativeTool {
          exports: StagedExportCoordinator? = nil,
          currentUtterance: @escaping @MainActor () -> String? = { TechnicianWords.current() },
          previousReply: @escaping @MainActor () -> String? = { TechnicianWords.previousReply() },
+         previousUtterance: @escaping @MainActor () -> String? = { TechnicianWords.previousUtterance() },
          currentTurn: @escaping @MainActor () -> Int? = { TechnicianWords.currentTurn() }) {
         self.documentStore = documentStore
         self.injectedSession = sessionService
@@ -91,6 +95,7 @@ final class RuleChainTool: NativeTool {
         self.injectedExports = exports
         self.currentUtterance = currentUtterance
         self.previousReply = previousReply
+        self.previousUtterance = previousUtterance
         self.currentTurn = currentTurn
     }
 
@@ -267,7 +272,8 @@ final class RuleChainTool: NativeTool {
         // Asked for, or not started (Plan KD P0) — a new chain and one that replaces a running
         // chain alike, so a question about something else never stops the chain in hand either.
         if let refusal = Self.startRefusal(chain: chain.name, said: currentUtterance(), previousReply: previousReply(),
-                                           proposed: session.pendingProposal?.proposal.chain.name) {
+                                           proposed: session.pendingProposal?.proposal.chain.name,
+                                           previousRequest: previousUtterance()) {
             return refusal
         }
         let tables = self.tables(session)
@@ -298,22 +304,49 @@ final class RuleChainTool: NativeTool {
                                                   sources: entry.sources, turn: currentTurn())
             note(progress, session: session)
             let marked = entry.origin.marking.map { " (\($0))" } ?? ""
-            lines.append("Started the chain '\(chain.name)'\(marked).\n" + present(progress))
+            lines.append(Self.startedMarker + "\(chain.name)'\(marked).\n" + present(progress))
             return lines.joined(separator: " ")
         } catch {
             return (lines + [error.localizedDescription]).joined(separator: " ")
         }
     }
 
+    /// How a start that went ahead opens its line: the Activity trail tells it from a refusal by it.
+    nonisolated static let startedMarker = "Started the chain '"
+
+    /// The Activity trail's title for a `rule_chain` call (a tester's trail read "Started a rule
+    /// chain" three times for three refused starts, and nothing had run): a `start` whose result
+    /// does not say the chain started is recorded as not started. Every other call keeps `title`.
+    /// Pure, and nonisolated so the recorder can call it from anywhere.
+    nonisolated static func trailTitle(_ title: String, tool: String, actionKey: String?,
+                                       outcome: ToolExecutionOutcome) -> String {
+        guard tool == "rule_chain",
+              actionKey?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "start",
+              case .completed(let output) = outcome, !output.contains(startedMarker) else { return title }
+        return notStartedTitle
+    }
+
+    nonisolated static let notStartedTitle = "Didn't start a rule chain"
+
     /// Why the model's `start` is refused, or nil when the technician asked for the chain (Plan KD
     /// P0): their words name it, ask to run a chain, or say yes to the chain offered last turn —
     /// named in the assistant's last reply, or the proposal read back and waiting for go. The
     /// partner's retest had a chain start on a question it happened to answer, because the
     /// prompt told the model to start one whenever a chain fits. A turn with no captured words (a
-    /// live session) is not gated, as `TechnicianWords` documents. Pure.
-    static func startRefusal(chain name: String, said: String?, previousReply: String?, proposed: String?) -> String? {
+    /// live session) is not gated, as `TechnicianWords` documents.
+    ///
+    /// A walk-through asked for last turn (`previousRequest`, "help me size this cable") counts too
+    /// when the assistant answered it with a question and this turn's answer settles the chain
+    /// ("copper, three in the pipe"): the tester's sizing chain was refused at both turns, so
+    /// the model worked the table itself and gave up. Pure.
+    static func startRefusal(chain name: String, said: String?, previousReply: String?, proposed: String?,
+                             previousRequest: String? = nil) -> String? {
         guard let said else { return nil }
         if TechnicianRequest.names(chain: name, in: said) || TechnicianRequest.asksToRunChain(said, chain: name) { return nil }
+        if let previousRequest, let previousReply, previousReply.contains("?"),
+           TechnicianRequest.asksToBeWalkedThrough(chain: name, request: previousRequest, answer: said) {
+            return nil
+        }
         if TechnicianRequest.isShortAffirmative(said) {
             if proposed == name { return nil }
             if let previousReply, !TechnicianRequest.chainsMentioned(in: previousReply, among: [name]).isEmpty {

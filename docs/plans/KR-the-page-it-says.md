@@ -22,7 +22,9 @@ own AI turns, and a figure line says where the page went; every `van_stock` writ
 reply must say. **P1–P7 built headless; P8 device re-run owed.** **Follow-up built 2026-11-09:** the
 conduit-fill chain starts — a short table's counted headings, a heading that wraps and a heading over
 the rows are read (measured on the simulator's import of both editions); the corrected chain file is
-local, for the owner to send with the build that carries it.
+local, for the owner to send with the build that carries it. **Follow-up built 2026-11-27:** a
+walk-through asked in one turn and settled in the answer to the assistant's question starts the chain,
+and a refused start is no longer recorded as started.
 **Track:** Field Assist. Every turn that opens a manual page; every table lookup; every rule chain;
 every job close; the support report.
 **Related:** Plan [GB](GB-field-test-round-3.md) P1 (`FigureAutoOpenPolicy`), Plan
@@ -324,6 +326,30 @@ P3's "mm2" fold settled the chain's area step; its fill and conductor-area steps
   PDF text layer, a first row that names a row, the wrap rule's cases, a group heading over the rows on
   one page and on a concluded or carried-on page, and a chain over the fill table that starts — and
   is flagged in the list when the counts are not read.
+
+### Follow-up — a walk-through asked over two turns (build 770 report, 2026-11-26)
+
+A sizing request on build 770, phone only, asked to be helped through sizing a cable without naming
+its material; the assistant asked which case it was, and the answer settled it. Every `rule_chain`
+start was refused with the not-asked text (the report's three 217-character results): the first turn
+named no material, the second asked for nothing, and only a short yes counted as agreeing. The model
+then worked the table itself with `table_lookup`, could not settle it and said so. The Activity trail
+read "Started a rule chain" three times although nothing had run.
+
+- **Built:** `TechnicianRequest.asksToBeWalkedThrough(chain:request:answer:)` — a walk-through asked
+  for last turn, answered with a question by the assistant, and settled by this turn's answer starts
+  the chain; the two turns together must carry its task and material, as one turn must, and an
+  answer that opens by turning it down asks for nothing. "Help me" with the chain's task is a
+  walk-through request in one turn as well. `AppState.previousTurnUtterance` holds the turn before
+  (set only when a fresh turn opens, cleared with the history), read through
+  `TechnicianWords.previousUtterance()`. A refused `start` is recorded in the trail as "Didn't start a
+  rule chain" (`RuleChainTool.trailTitle`).
+- **Unchanged:** the chain still asks its own questions, the load included, and takes each answer
+  from the turn after its question (Plan KD P2), so a load said before the chain started is asked
+  again.
+- Tests: `ChainTwoTurnRequestTests` — the reported turns start the chain; the same answer with no
+  request, with no question in between, after a plain question, or turning it down, does not; the
+  wrong material or task does not; and the trail title.
 
 ### P8 — Device re-run (owed)
 
