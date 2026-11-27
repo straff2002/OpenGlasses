@@ -85,4 +85,33 @@ final class MedicalComplianceClaimsTests: XCTestCase {
         let paywall = try source("OpenGlasses/Sources/App/Views/MedicalCompliancePaywallView.swift")
         XCTAssertTrue(paywall.contains("A subscription does not certify legal compliance or clinical accuracy"))
     }
+
+    /// CMS's Promoting Interoperability Programs page: the Medicare programme (hospitals and CAHs)
+    /// and the MIPS category (clinicians) were preceded by the EHR Incentive Programs; the
+    /// Medicaid programme ended on 31 December 2021. It does not call them a rename.
+    func testHITECHNamesTheCurrentProgrammesAsCMSDoes() {
+        let duty = MedicalFramework.hitech.organisationalRequirements
+            .first { $0.contains("Promoting Interoperability") } ?? ""
+        XCTAssertTrue(duty.contains("Medicare Promoting Interoperability"), duty)
+        XCTAssertTrue(duty.contains("MIPS"), duty)
+        XCTAssertFalse(duty.localizedCaseInsensitiveContains("meaningful use"), duty)
+    }
+
+    /// The log has no per-user or per-patient-record field, so it says neither.
+    func testTheAuditLogSaysItNamesNoUserOrPatient() {
+        XCTAssertTrue(MedicalSafeguard.auditLog.detail.contains("names no user or patient"))
+    }
+
+    func testTheFrameworkFooterDoesNotClaimCompliance() throws {
+        let view = try source("OpenGlasses/Sources/App/Views/HIPAASettingsView.swift")
+        XCTAssertFalse(view.contains("implements the technical safeguards required by these frameworks"))
+        XCTAssertTrue(view.contains("It does not certify compliance."))
+    }
+
+    /// The cloud warning covers every service that holds clinical data, not only the AI provider.
+    func testTheCloudWarningCoversEveryServiceThatHoldsClinicalData() throws {
+        let view = try source("OpenGlasses/Sources/App/Views/HIPAASettingsView.swift")
+        XCTAssertFalse(view.contains("(BAA, DPA, or equivalent) with your provider.\")"))
+        XCTAssertTrue(view.contains("with your provider, and with any other service that holds clinical data for you."))
+    }
 }
