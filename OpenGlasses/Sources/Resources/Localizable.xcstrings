@@ -154840,7 +154840,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "HIPAA 모드가 켜져 있는 동안에는 클라우드 분할이 하드 비활성화되므로 임상 오디오가 장치 외부로 나가지 않습니다."
+            "value" : "HIPAA 모드가 켜져 있는 동안에는 클라우드 화자 분리가 하드 비활성화되므로 임상 오디오가 장치 외부로 나가지 않습니다."
           }
         },
         "nl" : {
@@ -193880,7 +193880,7 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diaphonie"
+            "value" : "Séparation des locuteurs"
           }
         },
         "hu" : {
@@ -193904,13 +193904,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "분할"
+            "value" : "화자 분리"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dagboekregistratie"
+            "value" : "Sprekerscheiding"
           }
         },
         "pt-BR" : {
@@ -217867,13 +217867,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "분할 활성화"
+            "value" : "화자 분리 활성화"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Schakel dagboekregistratie in"
+            "value" : "Schakel sprekerscheiding in"
           }
         },
         "pt-BR" : {
@@ -246567,13 +246567,13 @@
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gyakrabban találja meg a megfelelő oldalt a kézikönyveiben, mint a Szabványos. A váltás egyszer újraindexeli a kézikönyveket a háttérben, és a keresés a jelenlegi indexet használja, amíg ez be nem fejeződik. Első alkalommal a telefonja letölthet egy nyelvi modellt az Apple-től."
+            "value" : "Gyakrabban találja meg a megfelelő oldalt a kézikönyveiben, mint a Standard. A váltás egyszer újraindexeli a kézikönyveket a háttérben, és a keresés a jelenlegi indexet használja, amíg ez be nem fejeződik. Első alkalommal a telefonja letölthet egy nyelvi modellt az Apple-től."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trova la pagina giusta nei tuoi manuali più spesso di Norma. Cambiarlo reindicizza i tuoi manuali una volta in background, e la ricerca continua a usare l’indice attuale finché non ha finito. La prima volta, il tuo telefono potrebbe scaricare un modello linguistico da Apple."
+            "value" : "Trova la pagina giusta nei tuoi manuali più spesso di Standard. Cambiarlo reindicizza i tuoi manuali una volta in background, e la ricerca continua a usare l’indice attuale finché non ha finito. La prima volta, il tuo telefono potrebbe scaricare un modello linguistico da Apple."
           }
         },
         "ja" : {
@@ -382901,7 +382901,7 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucune clé Deepgram n’est enregistrée. Saisissez-en une sous Diaphonie, ci-dessous — la diarisation elle-même n’a pas besoin d’être activée."
+            "value" : "Aucune clé Deepgram n’est enregistrée. Saisissez-en une sous Séparation des locuteurs, ci-dessous — la diarisation elle-même n’a pas besoin d’être activée."
           }
         },
         "hu" : {
@@ -382925,7 +382925,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "저장된 Deepgram 키가 없습니다. 아래 '분할'에서 입력하세요. 분할 기능 자체를 켤 필요는 없습니다."
+            "value" : "저장된 Deepgram 키가 없습니다. 아래 '화자 분리'에서 입력하세요. 화자 분리 기능 자체를 켤 필요는 없습니다."
           }
         },
         "nl" : {
@@ -412903,7 +412903,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "nova-3는 가장 강력한 분할 기능을 가지고 있습니다. 스트리밍은 오디오의 분당 요금이 청구됩니다."
+            "value" : "nova-3는 가장 강력한 화자 분리 기능을 가지고 있습니다. 스트리밍은 오디오의 분당 요금이 청구됩니다."
           }
         },
         "nl" : {
@@ -466392,13 +466392,13 @@
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A Szabványosnál magasabb csomagok"
+            "value" : "A Standardnál magasabb csomagok"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Piani superiori a Norma"
+            "value" : "Piani superiori a Standard"
           }
         },
         "ja" : {
@@ -590089,13 +590089,13 @@
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Szabványos"
+            "value" : "Standard"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Norma"
+            "value" : "Standard"
           }
         },
         "ja" : {
@@ -590171,13 +590171,13 @@
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Szabványos · %@"
+            "value" : "Standard · %@"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Norma · %@"
+            "value" : "Standard · %@"
           }
         },
         "ja" : {
@@ -590581,13 +590581,13 @@
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A Szabványos megszünteti az asszisztens 15 perces napi limitjét, minden használt modellen. Előfizetés nélkül napi 15 perc ingyenes, és ezek éjfélkor visszajárnak. A Kézikönyveim, a Field Assist és az Orvosi megfelelőség szintén nem tartalmaz napi limitet."
+            "value" : "A Standard megszünteti az asszisztens 15 perces napi limitjét, minden használt modellen. Előfizetés nélkül napi 15 perc ingyenes, és ezek éjfélkor visszajárnak. A Kézikönyveim, a Field Assist és az Orvosi megfelelőség szintén nem tartalmaz napi limitet."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Norma rimuove il limite giornaliero di 15 minuti dell’assistente, su ogni modello che usi. Senza abbonamento, 15 minuti al giorno sono gratuiti e tornano a mezzanotte. Anche I miei manuali, Field Assist e Conformità medica sono senza limite giornaliero."
+            "value" : "Standard rimuove il limite giornaliero di 15 minuti dell’assistente, su ogni modello che usi. Senza abbonamento, 15 minuti al giorno sono gratuiti e tornano a mezzanotte. Anche I miei manuali, Field Assist e Conformità medica sono senza limite giornaliero."
           }
         },
         "ja" : {
@@ -590663,13 +590663,13 @@
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A Szabványos előfizetés visszaállítva."
+            "value" : "A Standard előfizetés visszaállítva."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Abbonamento Norma ripristinato."
+            "value" : "Abbonamento Standard ripristinato."
           }
         },
         "ja" : {
@@ -619747,13 +619747,13 @@
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Koppintson a Szabványos csomag megtekintéséhez, napi limit nélkül. Az ingyenes percek éjfélkor visszajárnak."
+            "value" : "Koppintson a Standard csomag megtekintéséhez, napi limit nélkül. Az ingyenes percek éjfélkor visszajárnak."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tocca per vedere Norma, senza limite giornaliero. I minuti gratuiti tornano a mezzanotte."
+            "value" : "Tocca per vedere Standard, senza limite giornaliero. I minuti gratuiti tornano a mezzanotte."
           }
         },
         "ja" : {
@@ -792358,7 +792358,7 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le microphone de votre téléphone écoute la pièce. Les sous-titres sont créés sur ce téléphone, sauf si vous avez activé Diaphonie ou les sous-titres traduits, qui envoient l’audio au service infonuagique que vous avez configuré."
+            "value" : "Le microphone de votre téléphone écoute la pièce. Les sous-titres sont créés sur ce téléphone, sauf si vous avez activé la séparation des locuteurs ou les sous-titres traduits, qui envoient l’audio au service infonuagique que vous avez configuré."
           }
         },
         "hu" : {
@@ -792382,13 +792382,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "휴대폰 마이크가 주변 소리를 듣습니다. 캡션은 이 휴대폰에서 만들어집니다. 단, '분할' 또는 번역 캡션을 켠 경우에는 설정한 클라우드 서비스로 오디오가 전송됩니다."
+            "value" : "휴대폰 마이크가 주변 소리를 듣습니다. 캡션은 이 휴대폰에서 만들어집니다. 단, '화자 분리' 또는 번역 캡션을 켠 경우에는 설정한 클라우드 서비스로 오디오가 전송됩니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "De microfoon van uw telefoon luistert naar de ruimte. Ondertiteling wordt op deze telefoon gemaakt, tenzij u Dagboekregistratie of vertaalde ondertiteling hebt ingeschakeld; die sturen de audio naar de clouddienst die u hebt ingesteld."
+            "value" : "De microfoon van uw telefoon luistert naar de ruimte. Ondertiteling wordt op deze telefoon gemaakt, tenzij u Sprekerscheiding of vertaalde ondertiteling hebt ingeschakeld; die sturen de audio naar de clouddienst die u hebt ingesteld."
           }
         },
         "pt-BR" : {
