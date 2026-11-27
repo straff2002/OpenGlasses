@@ -208,7 +208,11 @@ Stock screen still shows the exact count to the person holding it.
   `aiChoices`) and pins cloud dictation and the interpreter off, so a spoken patient name never
   reaches a cloud model.
 - **Built here:** the ceiling keys CT decided: `hipaaMode` (on, locked), `hipaaLocalOnly` (on,
-  locked) and `hipaaRetentionDays` (a floor). Each can only make a phone stricter, never looser.
+  locked) and `hipaaRetentionDays`. Each can only make a phone stricter, never looser.
+  `hipaaRetentionDays` is a ceiling: the longest a phone keeps Medical mode's transcripts and
+  recordings. A shorter setting on the phone stands, and "Never" is held to the figure. This
+  follows CT's rule that a ceiling only subtracts, and the expert-handover retention key. It does
+  not touch the stock store, whose four years come from §5 (2026-11-27; the draft said "a floor").
 
 ### 8 · Medical Compliance says only what the app does, and names Canada
 
