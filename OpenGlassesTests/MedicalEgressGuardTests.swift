@@ -48,11 +48,12 @@ final class MedicalEgressGuardTests: XCTestCase {
         for route in NetworkRoute.allCases where !route.medicalPolicy.blocksLocalOnly {
             XCTAssertTrue(MedicalEgressGuard.decide(route, mode: localOnly).isAllowed, route.rawValue)
         }
-        // The exceptions are on-device model acquisition, the loopback OAuth listener, and the
-        // operator's own FHIR system. Pin them so widening the set is a deliberate edit.
+        // The exceptions are on-device model acquisition, the loopback OAuth listener, the
+        // operator's own FHIR system and the clinic's own stock workbook (Plan NK). Pin them so
+        // widening the set is a deliberate edit.
         let open = NetworkRoute.allCases.filter { !$0.medicalPolicy.blocksLocalOnly }.map(\.rawValue).sorted()
         XCTAssertEqual(open, [
-            "asrModelDownload", "conversationRecallSummary", "fhirConnectionTest", "fhirExport",
+            "asrModelDownload", "clinicStockRecord", "conversationRecallSummary", "fhirConnectionTest", "fhirExport",
             "fingerspellingModelDownload", "localModelDownload", "localModelRepositoryMetadata",
             "loopbackOAuthCallback", "searchModelDownload", "ttsVoiceModelDownload"
         ])

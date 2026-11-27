@@ -16,6 +16,8 @@ struct VanStockView: View {
     /// The business's own stock system, when one is connected (Plan MM P2): the screen pulls its
     /// figures when it opens (at most every 10 minutes) and on pull-to-refresh.
     var stockSystem: StockSystemService? = nil
+    /// The clinic's own Microsoft 365 workbook (Plan NK P1), shown for a clinical list only.
+    var clinicWorkbook: ClinicWorkbookService? = nil
     /// Open one line's page.
     let onOpen: (String) -> Void
 
@@ -30,6 +32,7 @@ struct VanStockView: View {
     @State private var counting = false
     @State private var reporting = false
     @State private var checkingEMR = false
+    @State private var workbookSettings = false
 
     private var rows: [VanStockRow] { VanStockRows.rows(store.log, query: search) }
 
@@ -97,6 +100,9 @@ struct VanStockView: View {
                     Text("Tap a line to set its count or change its details. Anything said to the assistant shows here too.")
                 }
             }
+            if store.resolvedClinical.clinical, !store.isUnreadable, let clinicWorkbook {
+                ClinicWorkbookStockSection(service: clinicWorkbook) { workbookSettings = true }
+            }
             if store.resolvedClinical.clinical, !store.isUnreadable {
                 Section {
                     EmptyView()
@@ -149,6 +155,15 @@ struct VanStockView: View {
                         Label("Check against the EMR…", systemImage: "checkmark.rectangle.stack")
                     }
                     .disabled(store.isUnreadable || store.log.isEmpty)
+                }
+                if clinicWorkbook != nil {
+                    ToolbarItem(placement: .secondaryAction) {
+                        Button {
+                            workbookSettings = true
+                        } label: {
+                            Label("Clinic's workbook…", systemImage: "tablecells")
+                        }
+                    }
                 }
             }
             ToolbarItem(placement: .secondaryAction) {
@@ -205,6 +220,9 @@ struct VanStockView: View {
         }
         .sheet(isPresented: $checkingEMR) {
             ImmunisationCheckSheet(store: store)
+        }
+        .sheet(isPresented: $workbookSettings) {
+            if let clinicWorkbook { ClinicWorkbookSettingsView(service: clinicWorkbook) }
         }
         .confirmationDialog("Go back to the list from before the last takeover?",
                             isPresented: $confirmingRestore, titleVisibility: .visible) {

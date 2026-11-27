@@ -47,6 +47,10 @@ final class ImmunisationCheckService {
 
     var isAllowed: Bool { medicalMode() }
 
+    /// Called when a check has run to the end (Plan NK, Decision 3): the daily check is one of the
+    /// moments the clinic's workbook is sent its rows. Set by the app.
+    var onDone: (() -> Void)?
+
     /// The list's column names, to choose the mapping from. Refused outside medical mode.
     func header(_ data: Data, format: ImmunisationListReader.Format) -> Result<[String], ImmunisationCheckRefusal> {
         guard medicalMode() else { return .failure(.init(sentence: Self.medicalModeRefusal)) }
@@ -78,6 +82,7 @@ final class ImmunisationCheckService {
         let result = ImmunisationReconciliation.compare(doses: doses, records: list.records, items: log.items,
                                                         first: first, last: last, calendar: calendar)
         result.summary(ranAt: now()).store(defaults)
+        onDone?()
         return .done(result, skippedRows: list.skippedRows)
     }
 

@@ -33,6 +33,9 @@ enum OpKind: String, Codable {
     case teamLearningPortal
     /// Exact canonical captured-manual manifest; files remain immutable and Office-only.
     case capturedManual
+    /// A clinical list's stock rows on their way to the clinic's own workbook (Plan NK): the
+    /// workbook's ids and keyed `ClinicalStockShareRow`s (`ClinicStockQueuedBatch`), never a token.
+    case clinicStockRows
 }
 
 /// Where an operation is in its lifecycle.

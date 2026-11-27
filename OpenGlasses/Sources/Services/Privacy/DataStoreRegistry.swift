@@ -110,6 +110,9 @@ enum SensitiveStore: String, CaseIterable {
     case stockSystemSnapshot
     /// Parts noted on the phone for that system and not yet confirmed (Plan MM P3).
     case stagedStockUse
+    /// The clinic workbook connection (Plan NK P1): its sign-in, the workbook chosen, what this
+    /// phone has sent to it by row key, and the seat its row keys are made from.
+    case clinicStockWorkbook
     case learningCandidates
     /// Experience recordings (Plan IM P1): what a technician recorded of what they already know,
     /// with its audio for 30 days.
@@ -933,6 +936,23 @@ enum SensitiveStore: String, CaseIterable {
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/StockSystem/StockSystemConnectionStore.swift"],
                           location: "Keychain stockSystemConnection.<system>: key, environment, chosen locations and what goes back; "
                               + "the chosen system and any unfinished erase in UserDefaults")
+
+        case .clinicStockWorkbook:
+            // The clinic user's own Microsoft 365 sign-in (tokens, the account's name), the
+            // workbook chosen and its name, the organisation's country, and when rows last went;
+            // what this phone has sent to each workbook by row key (day, line, lot, kind and
+            // quantity, never a person); and a random seat id made on this phone. Three device-only
+            // Keychain items, so nothing reaches a backup or a profile. Sign out removes the first;
+            // the ledger and the seat stay so the same workbook never takes a row twice.
+            return Record(store: self, dataClass: .credential, subjectLinkage: .wearer,
+                          protection: .keychainAfterFirstUnlockThisDeviceOnly, backupExcluded: true,
+                          retention: .policy("ledger rows older than \(ClinicalStockSendPlan.windowDays) days are pruned at each send"),
+                          deleteAll: .api("ClinicWorkbookConnectionStore.removeAll()"),
+                          deleteSubject: .notSubjectLinked, owner: "ClinicWorkbookConnectionStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/ClinicWorkbook/ClinicWorkbookConnectionStore.swift"],
+                          location: "Keychain clinicStockWorkbook.connection (sign-in, workbook, country, last send), "
+                              + "clinicStockWorkbook.ledger (rows sent, by key) and clinicStockWorkbook.seat; "
+                              + "the clinic's own client id, if entered, in UserDefaults")
 
         case .stockSystemSnapshot:
             // The business's figures for the chosen locations (Plan MM §2): part numbers,

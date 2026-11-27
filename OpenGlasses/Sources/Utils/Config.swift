@@ -59,6 +59,8 @@ struct Config {
            let credential = try? JSONDecoder().decode(WorkizCredential.self, from: data) { values.append(credential.key) }
         // Every stock system key pasted on this phone (Plan MM P2), one Keychain item per system.
         values.append(contentsOf: StockSystemConnectionStore.knownKeys())
+        // The clinic workbook's sign-in (Plan NK P1).
+        values.append(contentsOf: ClinicWorkbookConnectionStore.knownTokens())
         // A licence is a bearer credential too; support files carry only its fingerprint.
         if let code = UserDefaults.standard.string(forKey: LicenseService.storageKey) { values.append(code) }
         // FHIR credentials live in their own protected store rather than the migration list, but a

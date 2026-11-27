@@ -215,6 +215,12 @@ targets:
         # Info.plist carries it as AvenkinDATExperimental, so a support report and
         # Scripts/check-archive-dat-experimental.sh can tell a flagged binary from a store candidate.
         AVENKIN_DAT_EXPERIMENTAL: "NO"
+        # The app's own Microsoft Entra registration (Plan NK, Decision 1): a multi-tenant public
+        # client a clinic's Microsoft 365 administrator consents to once. Empty until the owner
+        # registers it; while empty, the clinic workbook says it isn't set up in this build (a
+        # clinic that registered its own app can enter its client id on the phone). The Info.plist
+        # carries it as AvenkinEntraClientID. A public client id is not a secret.
+        AVENKIN_ENTRA_CLIENT_ID: ""
         SWIFT_VERSION: "5.9"
         CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: "YES"
         CODE_SIGN_STYLE: Automatic
