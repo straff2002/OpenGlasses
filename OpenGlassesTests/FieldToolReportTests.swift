@@ -188,7 +188,7 @@ final class FieldToolReportTests: XCTestCase {
         let outcome = TableLookup.resolve(.init(table: "Table 95", row: "QXRT"),
                                           in: [.init(documentId: "a", documentName: Self.book, table: table)])
         XCTAssertTrue(TableLookup.render(outcome).contains("Value for a dry location."))
-        guard case .bookTextLeftOut(let text, let leftOut) = TableLookup.reportEntry(outcome) else {
+        guard case .bookTextLeftOut(let text, let leftOut) = TableLookupTool.reportEntry(outcome) else {
             return XCTFail("a found cell has a report version")
         }
         XCTAssertFalse(text.contains("Value for a dry location."), text)

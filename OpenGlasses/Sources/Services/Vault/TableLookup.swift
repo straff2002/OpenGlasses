@@ -768,13 +768,13 @@ enum TableLookup {
 
     /// What a support report may show of `render(outcome)` (Plan NI, owner decision D1). A lookup
     /// that found its cell shows the table, row, column and page it found, with each cell's text
-    /// and the table's notes replaced by a count: those are the licensed book's own words. Every
-    /// other outcome gave nothing from the book, only the app's words and the headings it lists,
-    /// so it is shown as it is. Pure.
-    static func reportEntry(_ outcome: Outcome) -> ToolReportText.Entry {
-        guard case .found(let found) = outcome else { return .asReturned }
-        let report = renderFound(found, forReport: true)
-        return .bookTextLeftOut(report.text, leftOut: report.leftOut)
+    /// and the table's notes replaced by a count (`leftOut`, in characters): those are the licensed
+    /// book's own words. Nil for every other outcome, which gave nothing from the book, only the
+    /// app's words and the headings it lists, so it is shown as it is. Pure, and free of the
+    /// diagnostics types, because the eval harnesses compile this file on its own.
+    static func reportText(_ outcome: Outcome) -> (text: String, leftOut: Int)? {
+        guard case .found(let found) = outcome else { return nil }
+        return renderFound(found, forReport: true)
     }
 
     /// What stands in a report for a cell's text (Plan NI).

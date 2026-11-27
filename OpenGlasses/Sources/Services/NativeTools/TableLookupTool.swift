@@ -93,8 +93,15 @@ final class TableLookupTool: NativeTool {
         let outcome = TableLookup.resolve(.init(table: table, row: row, column: column?.isEmpty == true ? nil : column,
                                                 document: document), in: sources)
         noteForShowing(outcome, session: session, documentStore: documentStore)
-        ToolReportText.record(TableLookup.reportEntry(outcome))
+        ToolReportText.record(Self.reportEntry(outcome))
         return TableLookup.render(outcome)
+    }
+
+    /// What a support report may show of this lookup's result (Plan NI): the cell's version with
+    /// the book's text left out when it found one, else its own words as they are. Pure.
+    static func reportEntry(_ outcome: TableLookup.Outcome) -> ToolReportText.Entry {
+        guard let report = TableLookup.reportText(outcome) else { return .asReturned }
+        return .bookTextLeftOut(report.text, leftOut: report.leftOut)
     }
 
     /// Why a lookup is refused before it runs (Plan KD P0): the technician said an aught size —
