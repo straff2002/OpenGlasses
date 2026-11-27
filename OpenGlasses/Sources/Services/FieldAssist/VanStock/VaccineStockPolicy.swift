@@ -53,4 +53,63 @@ enum VaccineStockPolicy {
 
     /// The older lot in the fridge is pointed out at most once a day per line (Plan MY §4).
     static let oldestFirstOncePerDay = true
+
+    // MARK: - Inventory only (Plan NJ, owner 2026-11-27: every decision as recommended)
+
+    /// NJ Decision 4: a clinical list keeps four years of movements (1,461 days) until the
+    /// clinic's province sets its own figure; Quebec's is four years, the longest found. A van
+    /// keeps 400 days, as it always has. Levels are exact either way; only history folds.
+    nonisolated static let clinicalHistoryDays = 1_461
+    nonisolated static let vanHistoryDays = 400
+
+    /// How many days of movements a list keeps before they fold into its opening figure.
+    nonisolated static func historyDays(clinical: Bool) -> Int {
+        clinical ? clinicalHistoryDays : vanHistoryDays
+    }
+
+    /// NJ Decision 5: in a clinical list's reports and exports, a figure from 1 to 4 prints as
+    /// "fewer than 5", and a line marked sensitive is shown by the week, not the day. The phone's
+    /// own Stock screen shows the exact count to the person holding it.
+    nonisolated static let smallCellThreshold = 5
+
+    // NJ Decision 1: what a clinical list shares is one row per day, line, lot, kind and reason
+    // (`ClinicalStockShareRow`), never a movement with its time.
+    // NJ Decision 2: the phone keeps its own minute timestamps; the daily check and the count's
+    // order need them.
+    // NJ Decision 3: no staff on a dose given; a clinic's own code on a waste, a removal or a count
+    // that disagreed (`VanStockMovement.staffCode`), kept on the phone and never shared.
+    // NJ Decision 6: Canada is one framework with a province picker (`CanadianHealthAct`).
+    // NJ Decision 7: the vaccine records of NJ §9 (funding and supply source, returns, recall
+    // lookup, order form) are deferred.
+}
+
+/// The support report's lines for a clinic's stock and the medical mode's pins (Plan NJ P1): the
+/// history window in force, what a clinical list shares, and which Medical Compliance settings an
+/// organisation pinned. Case names and numbers only; never a line, a lot or a figure. Pure.
+enum ClinicalStockReportLines {
+
+    static func lines(clinical: Bool, clinicalSetByOrganisation: Bool, pinnedMode: Bool, pinnedLocalOnly: Bool,
+                      retentionCeilingDays: Int?) -> [String] {
+        var stock = "Stock list: " + (clinical ? "clinical" : "not clinical")
+        if clinicalSetByOrganisation { stock += " (set by the organisation)" }
+        stock += ", history kept \(VaccineStockPolicy.historyDays(clinical: clinical)) days"
+        if clinical {
+            stock += ", shared inventory-only (by day; sensitive lines by week; figures under "
+                + "\(VaccineStockPolicy.smallCellThreshold) as fewer than \(VaccineStockPolicy.smallCellThreshold))"
+        }
+        var pins: [String] = []
+        if pinnedMode { pins.append("hipaaMode on") }
+        if pinnedLocalOnly { pins.append("hipaaLocalOnly on") }
+        if let retentionCeilingDays { pins.append("hipaaRetentionDays at most \(retentionCeilingDays)") }
+        return [stock, "Medical Compliance pinned by the organisation: " + (pins.isEmpty ? "none" : pins.joined(separator: ", "))]
+    }
+
+    /// The lines for this phone now.
+    @MainActor static var current: [String] {
+        let clinical = VanStockStore.shared.resolvedClinical
+        return lines(clinical: clinical.clinical, clinicalSetByOrganisation: clinical.isLocked,
+                     pinnedMode: PolicyEnvelope.isLocked(.hipaaMode),
+                     pinnedLocalOnly: PolicyEnvelope.isLocked(.hipaaLocalOnly),
+                     retentionCeilingDays: Config.hipaaRetentionCeilingDays)
+    }
 }

@@ -1023,7 +1023,10 @@ struct GlassesPrivacySettingsScreen: View {
     var alsoShows: [SettingsCategoryID] = []
     @ObservedObject private var adminGate = AdminGate.shared
     @ObservedObject private var watch = WatchConnectivityManager.shared
-    @AppStorage("hipaaMode") private var hipaaMode = false
+    /// Observed so the view redraws when the mode changes; the value is `Config.hipaaMode`, which an
+    /// organisation's profile may pin on (Plan NJ §7).
+    @AppStorage("hipaaMode") private var hipaaModeStored = false
+    private var hipaaMode: Bool { Config.hipaaMode }
 
     @State private var micRoute = Config.micRoute
 

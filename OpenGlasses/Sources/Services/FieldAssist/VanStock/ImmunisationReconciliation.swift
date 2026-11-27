@@ -108,6 +108,30 @@ struct ImmunisationReconciliation: Equatable, Sendable {
 
     static func compare(doses: [Dose], records: [ImmunisationRecord], items: [VanStockItem],
                         first: StockDay, last: StockDay, calendar: Calendar) -> ImmunisationReconciliation {
+        var entries: [Entry] = []
+        var unmatched: [String: Int] = [:]
+        for record in records where first <= record.day && record.day <= last {
+            guard let item = ImmunisationLineAliases.line(for: record.vaccine, in: items) else {
+                unmatched[record.vaccine, default: 0] += 1
+                continue
+            }
+            entries.append(Entry(itemID: item.id, day: record.day, lot: record.lot))
+        }
+        return compare(doses: doses, entries: entries, unmatched: unmatched, items: items,
+                       first: first, last: last, calendar: calendar)
+    }
+
+    /// One row of the other record, already matched to a line: an EMR immunisation, or a billed
+    /// claim (Plan NJ §4). "" for a row with no lot.
+    struct Entry: Equatable, Sendable {
+        let itemID: String
+        let day: StockDay
+        let lot: String
+    }
+
+    /// The comparison over rows already matched to lines, with the names that matched none.
+    static func compare(doses: [Dose], entries: [Entry], unmatched: [String: Int], items: [VanStockItem],
+                        first: StockDay, last: StockDay, calendar: Calendar) -> ImmunisationReconciliation {
         struct Key: Hashable, Comparable {
             let day: StockDay
             let lot: String
@@ -123,14 +147,9 @@ struct ImmunisationReconciliation: Equatable, Sendable {
         }
         var emr: [String: [Key: Int]] = [:]
         var shownEMR: [String: String] = [:]
-        var unmatched: [String: Int] = [:]
-        for record in records where first <= record.day && record.day <= last {
-            guard let item = ImmunisationLineAliases.line(for: record.vaccine, in: items) else {
-                unmatched[record.vaccine, default: 0] += 1
-                continue
-            }
-            emr[item.id, default: [:]][Key(day: record.day, lot: lotKey(record.lot)), default: 0] += 1
-            shownEMR[lotKey(record.lot)] = shownEMR[lotKey(record.lot)] ?? record.lot
+        for entry in entries where first <= entry.day && entry.day <= last {
+            emr[entry.itemID, default: [:]][Key(day: entry.day, lot: lotKey(entry.lot)), default: 0] += 1
+            shownEMR[lotKey(entry.lot)] = shownEMR[lotKey(entry.lot)] ?? entry.lot
         }
 
         var findings: [Finding] = []

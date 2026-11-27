@@ -18,6 +18,7 @@ final class ProfileContractParityTests: XCTestCase {
         case .profileOwned(let t): return "owned:\(type(t))"
         case .ceiling(let pinned): return "ceiling:\(pinned)"
         case .stringCeiling(let pinned): return "stringCeiling:\(pinned)"
+        case .daysCeiling(let maximum): return "daysCeiling:\(maximum)"
         case .startingValue(let t): return "default:\(type(t))"
         }
     }
@@ -43,6 +44,12 @@ final class ProfileContractParityTests: XCTestCase {
             case .stringCeiling(let pinned):
                 XCTAssertNoThrow(try ProfileContract.checkSetting(key.rawValue, .init(value: .string(pinned), disposition: "ceiling")))
                 XCTAssertThrowsError(try ProfileContract.checkSetting(key.rawValue, .init(value: .string(pinned + "x"), disposition: "ceiling")))
+            case .daysCeiling(let maximum):
+                XCTAssertNoThrow(try ProfileContract.checkSetting(key.rawValue, .init(value: .string("30"), disposition: "ceiling")))
+                XCTAssertNoThrow(try ProfileContract.checkSetting(key.rawValue, .init(value: .string(String(maximum)), disposition: "ceiling")))
+                XCTAssertThrowsError(try ProfileContract.checkSetting(key.rawValue, .init(value: .string(String(maximum + 1)), disposition: "ceiling")))
+                XCTAssertThrowsError(try ProfileContract.checkSetting(key.rawValue, .init(value: .string("0"), disposition: "ceiling")))
+                XCTAssertThrowsError(try ProfileContract.checkSetting(key.rawValue, .init(value: .string("30"), disposition: "default")))
             default:
                 continue
             }
@@ -57,7 +64,7 @@ final class ProfileContractParityTests: XCTestCase {
         for name in editable {
             let key = try? XCTUnwrap(SettingKey(rawValue: name))
             switch key?.kind {
-            case .ceiling, .stringCeiling: XCTFail("\(name) is a ceiling; ceilings stay the vendor's")
+            case .ceiling, .stringCeiling, .daysCeiling: XCTFail("\(name) is a ceiling; ceilings stay the vendor's")
             default: break
             }
         }
@@ -200,6 +207,15 @@ final class ProfileContractParityTests: XCTestCase {
             ("expertHandoverRetentionDays", .string("31"), false),
             ("expertHandoverRetentionDays", .string(" 5"), false),
             ("expertHandoverRetentionDays", .string("5d"), false),
+            // Plan NJ §7: Medical Compliance's retention, a ceiling of 1 to 3650 days.
+            ("hipaaRetentionDays", .string("1"), true),
+            ("hipaaRetentionDays", .string("90"), true),
+            ("hipaaRetentionDays", .string("3650"), true),
+            ("hipaaRetentionDays", .string("0"), false),
+            ("hipaaRetentionDays", .string("3651"), false),
+            ("hipaaRetentionDays", .string(" 90"), false),
+            ("hipaaRetentionDays", .string("90d"), false),
+            ("hipaaRetentionDays", .bool(true), false),
             ("organizationReportRecipients", .strings(["office@fixture.example"]), true),
             ("organizationReportRecipients", .strings([]), false),
             ("organizationReportRecipients", .strings((0..<21).map { "o\($0)@fixture.example" }), false),
@@ -243,15 +259,21 @@ final class ProfileContractParityTests: XCTestCase {
         case .string(let text): appValue = .string(text)
         case .strings(let list): appValue = .strings(list)
         }
-        let disposition: ProfileDisposition = ProfileContract.allowList[key]?.hasPrefix("ceiling") == true ? .ceiling : .default
+        let disposition: ProfileDisposition = Self.isCeiling(key) ? .ceiling : .default
         let profile = ConfigProfile(keyId: "k", profileId: "p", organizationName: "P", issued: Date(), leaseDays: 30,
                                     settings: [key: RawSetting(appValue, disposition)])
         let result = ProfileApplier.apply(profile: profile, resolvableVaultIds: [])
         return result.drops.isEmpty
     }
 
+    /// Every ceiling kind, the days ceiling (Plan NJ §7) among them, is set with the ceiling disposition.
+    private static func isCeiling(_ key: String) -> Bool {
+        let kind = ProfileContract.allowList[key] ?? ""
+        return kind.hasPrefix("ceiling") || kind.hasPrefix("stringCeiling") || kind.hasPrefix("daysCeiling")
+    }
+
     private func contractAccepts(_ key: String, _ value: ProfileContract.Value) -> Bool {
-        let disposition = ProfileContract.allowList[key]?.hasPrefix("ceiling") == true ? "ceiling" : "default"
+        let disposition = Self.isCeiling(key) ? "ceiling" : "default"
         return (try? ProfileContract.checkSetting(key, .init(value: value, disposition: disposition))) != nil
     }
 

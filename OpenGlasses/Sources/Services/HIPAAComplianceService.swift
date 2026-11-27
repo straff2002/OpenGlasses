@@ -148,6 +148,29 @@ class HIPAAComplianceService: ObservableObject {
         onModeChanged?()
     }
 
+    /// Plan NJ §7: an organisation's profile pins the mode on. The pin never writes the person's
+    /// own switch; this runs, once per pin, what turning the mode on runs, and tells the mode's
+    /// dependants when the pin arrives or goes. Called at launch and on every policy change.
+    func applyOrganisationPin(defaults: UserDefaults = .standard) {
+        let action = MedicalModePin.action(pinned: PolicyEnvelope.isLocked(.hipaaMode),
+                                           storedOn: defaults.bool(forKey: "hipaaMode"),
+                                           applied: defaults.bool(forKey: MedicalModePin.appliedKey))
+        switch action {
+        case .none:
+            return
+        case .apply:
+            defaults.set(true, forKey: MedicalModePin.appliedKey)
+            append(AuditEvent(kind: .complianceModeEnabled, actorClass: .enterprise,
+                              targetClass: .complianceMode, purpose: .operations))
+            Task { @MainActor in await SpotlightIndexService.shared.purgeAll() }
+            Config.turnOffKeepCaptionSessionsForComplianceMode()
+            sweepRecordingArtefacts()
+        case .lift:
+            defaults.removeObject(forKey: MedicalModePin.appliedKey)
+        }
+        onModeChanged?()
+    }
+
     // MARK: - File Protection
 
     /// Apply HIPAA-compliant file protection to a file or directory that is only ever written in

@@ -153,8 +153,9 @@ enum ImmunisationListReader {
     }
 
     /// The rows of the file. With `keeping`, every row is cut to those columns before it is
-    /// returned (a CSV's other fields are never held at all).
-    private static func rows(_ data: Data, format: Format, keeping: [Int]?, headerOnly: Bool) -> Result<[[String]], Failure> {
+    /// returned (a CSV's other fields are never held at all). The billing export's reader shares
+    /// it (Plan NJ §4).
+    static func rows(_ data: Data, format: Format, keeping: [Int]?, headerOnly: Bool) -> Result<[[String]], Failure> {
         switch format {
         case .csv:
             // The header is read whole (column names only); after it, only the kept columns.

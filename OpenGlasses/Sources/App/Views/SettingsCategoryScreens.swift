@@ -71,7 +71,10 @@ struct CaptureStreamingSettingsScreen: View {
 /// The sections themselves, which Devices & Privacy draws on its own page (Plan KH P2).
 struct CaptureStreamingSections: View {
     @ObservedObject var appState: AppState
-    @AppStorage("hipaaMode") private var hipaaMode = false
+    /// Observed so the view redraws when the mode changes; the value is `Config.hipaaMode`, which an
+    /// organisation's profile may pin on (Plan NJ §7).
+    @AppStorage("hipaaMode") private var hipaaModeStored = false
+    private var hipaaMode: Bool { Config.hipaaMode }
     @AppStorage(Config.keepCaptionSessionsKey) private var keepCaptionSessions = false
 
     var body: some View {

@@ -7,9 +7,9 @@ struct MedicalEgressRefusal: Error, Equatable, LocalizedError, CustomStringConve
 
     var description: String {
         #if AVENKIN_PHONE_ONLY
-        return "\(route.rawValue) is blocked: Medical Compliance is in Local Only mode, so nothing derived from what was captured may leave this device."
+        return "\(route.rawValue) is blocked: Medical Compliance is in Local Only mode, so nothing derived from what was captured may leave this device, except to your own record system."
         #else
-        return "\(route.rawValue) is blocked: Medical Compliance is in Local Only mode, so nothing derived from what the glasses captured may leave this device."
+        return "\(route.rawValue) is blocked: Medical Compliance is in Local Only mode, so nothing derived from what the glasses captured may leave this device, except to your own record system."
         #endif
     }
 

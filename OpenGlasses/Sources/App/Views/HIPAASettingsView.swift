@@ -10,6 +10,9 @@ enum MedicalFramework: String, CaseIterable, Identifiable {
     case nzHIPC = "NZ HIPC"
     case gdprHealth = "GDPR (Health Data)"
     case pipeda = "PIPEDA"
+    /// The provincial and territorial health acts (Plan NJ §8, Decision 6): one entry with a
+    /// province picker over `CanadianHealthAct`. PIPEDA stays its own entry for the federal act.
+    case canadianHealthActs = "Canadian health acts"
     case ukDPA = "UK Data Protection Act"
 
     var id: String { rawValue }
@@ -20,7 +23,7 @@ enum MedicalFramework: String, CaseIterable, Identifiable {
         case .australianPrivacy, .myHealthRecords: return "🇦🇺"
         case .nzHIPC: return "🇳🇿"
         case .gdprHealth: return "🇪🇺"
-        case .pipeda: return "🇨🇦"
+        case .pipeda, .canadianHealthActs: return "🇨🇦"
         case .ukDPA: return "🇬🇧"
         }
     }
@@ -32,6 +35,7 @@ enum MedicalFramework: String, CaseIterable, Identifiable {
         case .nzHIPC: return String(localized: "New Zealand")
         case .gdprHealth: return String(localized: "European Union")
         case .pipeda: return String(localized: "Canada")
+        case .canadianHealthActs: return String(localized: "Canada, by province")
         case .ukDPA: return String(localized: "United Kingdom")
         }
     }
@@ -52,6 +56,8 @@ enum MedicalFramework: String, CaseIterable, Identifiable {
             return String(localized: "General Data Protection Regulation Article 9 — health data is a special category requiring explicit consent, data minimisation, encryption, and DPIAs.")
         case .pipeda:
             return String(localized: "Personal Information Protection and Electronic Documents Act — requires consent, limiting collection, and safeguards appropriate to the sensitivity of health information.")
+        case .canadianHealthActs:
+            return String(localized: "Each province and territory has its own act for a clinic's health information. Choose the clinic's province or territory to see its act, what it calls a supplier, the agreement that needs, who a breach is reported to, and the clinic's other duties.")
         case .ukDPA:
             return String(localized: "Data Protection Act 2018 (UK GDPR) — health data as special category, requires appropriate policy documents, encryption, and lawful basis for processing.")
         }
@@ -74,9 +80,16 @@ enum MedicalFramework: String, CaseIterable, Identifiable {
             return [.encryption, .accessControl, .auditLog, .dataRetention, .disableCloudLeakage, .dataMinimisation]
         case .pipeda:
             return [.encryption, .accessControl, .dataRetention, .disableCloudLeakage, .purposeLimitation]
+        case .canadianHealthActs:
+            return [.encryption, .accessControl, .auditLog, .dataRetention, .disableCloudLeakage, .dataMinimisation]
         case .ukDPA:
             return [.encryption, .accessControl, .auditLog, .dataRetention, .disableCloudLeakage, .dataMinimisation]
         }
+    }
+
+    /// The requirements, with the Canada entry's for the province or territory chosen.
+    func organisationalRequirements(in jurisdiction: CanadianJurisdiction) -> [String] {
+        self == .canadianHealthActs ? CanadianHealthAct.act(for: jurisdiction).duties : organisationalRequirements
     }
 
     /// Organisational requirements NOT covered by the app — the user's responsibility.
@@ -84,7 +97,7 @@ enum MedicalFramework: String, CaseIterable, Identifiable {
         switch self {
         case .hipaa:
             return [
-                String(localized: "Signed BAA with each cloud LLM provider"),
+                String(localized: "Signed BAA with each cloud AI provider and with any other service that receives PHI, including any the app's maker runs"),
                 String(localized: "Staff privacy and security training"),
                 String(localized: "Risk assessment and management plan"),
                 String(localized: "Policies and procedures documentation")
@@ -93,7 +106,7 @@ enum MedicalFramework: String, CaseIterable, Identifiable {
             return [
                 String(localized: "Breach notification procedures (60-day rule)"),
                 String(localized: "All HIPAA administrative requirements"),
-                String(localized: "Meaningful use attestation (if applicable)")
+                String(localized: "Promoting Interoperability attestation (formerly Meaningful Use), if applicable")
             ]
         case .australianPrivacy:
             return [
@@ -104,14 +117,13 @@ enum MedicalFramework: String, CaseIterable, Identifiable {
             ]
         case .myHealthRecords:
             return [
-                String(localized: "Registration with Australian Digital Health Agency"),
+                String(localized: "Registration with the Australian Digital Health Agency, only if you connect to My Health Record"),
                 String(localized: "Authorised representative management"),
                 String(localized: "Staff training on My Health Record obligations"),
                 String(localized: "Notifiable data breach reporting")
             ]
         case .nzHIPC:
             return [
-                String(localized: "Health agency registration"),
                 String(localized: "Patient consent processes"),
                 String(localized: "Staff training on HIPC obligations"),
                 String(localized: "Privacy breach notification to OPC")
@@ -128,9 +140,11 @@ enum MedicalFramework: String, CaseIterable, Identifiable {
             return [
                 String(localized: "Privacy officer designation"),
                 String(localized: "Meaningful consent documentation"),
-                String(localized: "Privacy breach reporting to OPC"),
+                String(localized: "Privacy breach reporting to the OPC where PIPEDA applies. A clinic in Ontario, Nova Scotia, New Brunswick or Newfoundland and Labrador reports health information breaches to its provincial commissioner or ombud instead: see Canadian health acts"),
                 String(localized: "Responding to access requests")
             ]
+        case .canadianHealthActs:
+            return CanadianHealthAct.act(for: .ontario).duties
         case .ukDPA:
             return [
                 String(localized: "Data Protection Impact Assessment (DPIA)"),
@@ -191,15 +205,15 @@ enum MedicalSafeguard: String, CaseIterable {
         case .accessControl:
             return String(localized: "Face ID, Touch ID, or device passcode is required every time the app returns to the foreground.")
         case .auditLog:
-            return String(localized: "All data access events are logged with timestamps — recordings started/stopped, files saved, shared, or deleted. Exportable for compliance review.")
+            return String(localized: "Data access events are logged with timestamps on this phone, while Medical mode is on: recordings started and stopped, files saved, shared or deleted. The log keeps its latest 1,000 entries and names no user. Exportable for compliance review.")
         case .dataRetention:
-            return String(localized: "Configurable auto-purge removes transcripts and recordings older than the retention period. Supports secure deletion (data overwrite before removal).")
+            return String(localized: "Configurable auto-purge removes transcripts and recordings older than the retention period. Files are deleted; flash storage cannot be overwritten; backups and shared copies are not reached.")
         case .baa:
-            return String(localized: "When cloud LLMs are used, a reminder is shown that a Business Associate Agreement (US) or Data Processing Agreement (EU/UK/AU/NZ) must be in place. Enable 'Local LLM Only' to avoid this requirement.")
+            return String(localized: "When cloud AI models are used, a reminder is shown that an agreement must be in place with the AI provider: a Business Associate Agreement (US), a Data Processing Agreement (EU, UK, Australia, New Zealand), or in Canada an agreement with the provider as your information manager or service provider. With 'Local LLM Only' on, no AI provider receives clinical data, so no agreement with one is needed. Agreements with your record system and any other service that receives patient data still apply.")
         case .disableCloudLeakage:
-            return String(localized: "Web search, external messaging, and cloud memory sync tools are disabled to prevent clinical data from leaving the device via uncontrolled channels.")
+            return String(localized: "Web search, external messaging, and cloud memory sync tools are disabled, so clinical data does not leave the phone through them. With Local Only on, captured data leaves the phone only to your own record system.")
         case .breachNotification:
-            return String(localized: "Audit log provides a record of all data access for breach investigation and notification requirements.")
+            return String(localized: "The audit log on this phone, kept while Medical mode is on, records data access events for a breach investigation and the notices it may need.")
         case .purposeLimitation:
             return String(localized: "Clinical recordings and transcripts are stored separately from general notes, with clear labelling of purpose.")
         case .dataMinimisation:
@@ -219,24 +233,44 @@ struct HIPAASettingsView: View {
     @State private var showConfirmEnable = false
     @State private var showConfirmDisable = false
     @State private var expandedFramework: MedicalFramework?
+    /// The province or territory the Canada entry shows (Plan NJ §8).
+    @AppStorage(CanadianJurisdiction.defaultsKey) private var jurisdictionRaw = CanadianJurisdiction.ontario.rawValue
 
     @ObservedObject var hipaaService: HIPAAComplianceService
     @ObservedObject var exportService: MedicalExportService
 
     private let retentionOptions = [30, 60, 90, 180, 365, 0]
 
+    private var jurisdiction: CanadianJurisdiction { CanadianJurisdiction(rawValue: jurisdictionRaw) ?? .ontario }
+
+    /// Plan NJ §7: an organisation's profile pins these; they are drawn locked, naming it.
+    private var modeLocked: Bool { PolicyEnvelope.isLocked(.hipaaMode) }
+    private var localOnlyLocked: Bool { PolicyEnvelope.isLocked(.hipaaLocalOnly) }
+    private var retentionLocked: Bool { PolicyEnvelope.isLocked(.hipaaRetentionDays) }
+
+    /// The choices, with the figure in force when an organisation set one that is not among them.
+    private var retentionChoices: [Int] {
+        retentionOptions.contains(retentionDays) ? retentionOptions : [retentionDays] + retentionOptions
+    }
+
     var body: some View {
         List {
             // MARK: - Master Toggle
             Section {
                 Toggle("Medical Compliance Mode", isOn: $complianceEnabled)
+                    .disabled(modeLocked)
                     .onChange(of: complianceEnabled) { _, newValue in
+                        // A pinned mode is not the person's to change; the switch is disabled.
+                        guard !modeLocked else { return }
                         if newValue {
                             showConfirmEnable = true
                         } else {
                             showConfirmDisable = true
                         }
                     }
+                if modeLocked {
+                    ManagedLockNote(organization: ManagedLockReason.organization)
+                }
             } header: {
                 Label("Clinical Data Protection", systemImage: "cross.case.fill")
             } footer: {
@@ -265,7 +299,7 @@ struct HIPAASettingsView: View {
                     changeRow(icon: "globe", color: OGTheme.warnLabel, title: "Caption Translation",
                               detail: "On-device only — audio never streams to the cloud")
                     changeRow(icon: "list.clipboard.fill", color: AppAccent.color, title: "Audit Logging",
-                              detail: "All data access events are recorded")
+                              detail: "Data access events are recorded on this phone, while Medical mode is on")
                     changeRow(icon: "calendar.badge.clock", color: AppAccent.color, title: "Auto-Purge",
                               detail: "Old data deleted after retention period")
                 } header: {
@@ -300,12 +334,17 @@ struct HIPAASettingsView: View {
                                     }
                                 }
 
+                                // Canada's health acts (Plan NJ §8): the province picks the act.
+                                if framework == .canadianHealthActs {
+                                    canadaPicker
+                                }
+
                                 // Organisation's responsibility
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Your organisation's responsibility")
                                         .font(.caption.bold())
                                         .foregroundStyle(OGTheme.warnLabel)
-                                    ForEach(framework.organisationalRequirements, id: \.self) { req in
+                                    ForEach(framework.organisationalRequirements(in: jurisdiction), id: \.self) { req in
                                         HStack(alignment: .top, spacing: 6) {
                                             Image(systemName: "person.fill")
                                                 .font(.caption2)
@@ -339,18 +378,23 @@ struct HIPAASettingsView: View {
                 Section {
                     Toggle("Local LLM Only", isOn: $localOnly)
                         .tint(AppAccent.color)
+                        .disabled(localOnlyLocked)
                         .onChange(of: localOnly) { _, val in
+                            guard !localOnlyLocked else { return }
                             Config.hipaaLocalOnly = val
                             // Compliance mode has its own teardown hook; this switch had none, so
                             // turning it on mid-session used to leave live sockets streaming until
                             // the next launch.
                             MedicalEgressCoordinator.announceModeChange()
                         }
+                    if localOnlyLocked {
+                        ManagedLockNote(organization: ManagedLockReason.organization)
+                    }
                 } header: {
                     Text("Data Routing")
                 } footer: {
                     if localOnly {
-                        Text("All AI queries are processed on-device. No clinical data is sent to cloud providers.")
+                        Text("All AI queries are processed on-device. No clinical data is sent to an AI provider; it leaves the phone only to your own record system.")
                     } else {
                         Label {
                             Text("Cloud LLM providers may process clinical data. Ensure you have a signed agreement (BAA, DPA, or equivalent) with your provider.")
@@ -364,12 +408,17 @@ struct HIPAASettingsView: View {
                 // MARK: - Data Retention
                 Section {
                     Picker("Auto-Purge After", selection: $retentionDays) {
-                        ForEach(retentionOptions, id: \.self) { days in
+                        ForEach(retentionChoices, id: \.self) { days in
                             Text(days == 0 ? "Never (manual only)" : "\(days) days").tag(days)
                         }
                     }
+                    .disabled(retentionLocked)
                     .onChange(of: retentionDays) { _, val in
+                        guard !retentionLocked else { return }
                         Config.hipaaRetentionDays = val
+                    }
+                    if retentionLocked {
+                        ManagedLockNote(organization: ManagedLockReason.organization)
                     }
 
                     Button {
@@ -501,6 +550,26 @@ struct HIPAASettingsView: View {
             }
         } message: {
             Text("Disabling compliance mode will remove encryption enforcement and allow clinical data to be sent to cloud services. Existing protected files will retain their encryption.")
+        }
+    }
+
+    // MARK: - Canada
+
+    /// The province or territory picker and its act (Plan NJ §8).
+    private var canadaPicker: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Picker("Province or territory", selection: $jurisdictionRaw) {
+                ForEach(CanadianJurisdiction.allCases) { place in
+                    Text(place.name).tag(place.rawValue)
+                }
+            }
+            .pickerStyle(.menu)
+            let act = CanadianHealthAct.act(for: jurisdiction)
+            Text(verbatim: act.title)
+                .font(.caption.bold())
+            Text("A supplier is the act's \(act.vendorTerm). A stock list that is inventory-only holds no patient's health information, so none of the duties below is triggered by it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

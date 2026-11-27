@@ -171,7 +171,8 @@ public enum ProfileContract {
 
     /// SettingKey, by kind — every case, in SettingKey's order. "owned" ignores the disposition;
     /// "ceiling:<Bool>" may only be pinned that way; "stringCeiling:<String>" may only be pinned to that
-    /// string; "default:<type>" is a starting value. `ProfileContractParityTests` (in the app's test bundle)
+    /// string; "daysCeiling:<max>" is a ceiling of 1 to max days, written as digits, that may only
+    /// shorten; "default:<type>" is a starting value. `ProfileContractParityTests` (in the app's test bundle)
     /// fails on any key, kind or direction that differs from the app.
     public static let allowList: [String: String] = [
         // Organisation identity
@@ -234,6 +235,10 @@ public enum ProfileContract {
         "preparedCardCustomerTexts": "ceiling:false",
         "conversationDigestsEnabled": "ceiling:false",
         "privateConversationsAllowed": "ceiling:false",
+        // Plan NJ §7: Medical Compliance pinned on, never off; retention held to at most N days.
+        "hipaaMode": "ceiling:true",
+        "hipaaLocalOnly": "ceiling:true",
+        "hipaaRetentionDays": "daysCeiling:3650",
         // Starting values the person may change
         "fieldAssistEnabled": "default:bool",
         "fieldAssistDefaultVaultId": "default:string",
@@ -395,6 +400,14 @@ public enum ProfileContract {
             guard setting.disposition == "ceiling" else { throw Invalid(message: "\(key) may only be a ceiling") }
             guard case .string(let text) = setting.value else { throw Invalid(message: "\(key) takes a string") }
             if text != parts[1] { throw Invalid(message: "\(key) may only be pinned to \(parts[1])") }
+        case "daysCeiling":
+            guard setting.disposition == "ceiling" else { throw Invalid(message: "\(key) may only be a ceiling") }
+            guard case .string(let text) = setting.value else { throw Invalid(message: "\(key) takes a string") }
+            let maximum = Int(parts[1]) ?? 0
+            guard !text.isEmpty, text.count <= 5, text.unicodeScalars.allSatisfy({ (48...57).contains($0.value) }),
+                  let days = Int(text), (1...maximum).contains(days) else {
+                throw Invalid(message: "\(key) must be a whole number of days from 1 to \(maximum)")
+            }
         default:
             guard setting.disposition == "default" else { throw Invalid(message: "\(key) may only be a default") }
             if setting.value.typeName != parts[1] { throw Invalid(message: "\(key) takes a \(parts[1])") }
