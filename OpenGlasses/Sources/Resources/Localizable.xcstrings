@@ -12585,6 +12585,88 @@
         }
       }
     },
+    "%@ is open, so a recording is filed on that job for your team, the way “note this for the team” is. Transcribed on this phone; its audio isn't kept." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ مفتوحة، لذا يُسجَّل التسجيل على تلك المهمة لفريقك، كما يحدث مع «دوّن هذا للفريق». يُفرَّغ نصيًا على هذا الهاتف؛ ولا يُحتفظ بصوته."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ está abierto, así que la grabación se registra en ese trabajo para tu equipo, igual que “anota esto para el equipo”. Se transcribe en este celular; su audio no se guarda."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ est ouvert, donc un enregistrement est consigné sur ce travail pour votre équipe, comme avec « note ceci pour l’équipe ». Transcrit sur ce téléphone; son audio n’est pas conservé."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A(z) %@ nyitva van, ezért a felvétel ehhez a munkához kerül a csapata számára, ahogy a „jegyezd fel ezt a csapatnak” is. Ezen a telefonon készül az átirat; a hangja nem marad meg."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ è aperto, quindi la registrazione viene archiviata su quel lavoro per il tuo team, come avviene con «annota questo per il team». Trascritto su questo telefono; il suo audio non viene conservato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ が開いているため、録音は「チームのためにメモして」と同じように、そのジョブにチーム向けとして登録されます。このiPhoneで文字起こしされ、音声は保存されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 작업이 열려 있으므로 녹음은 “팀을 위해 메모해 줘”처럼 그 작업에 팀용으로 등록됩니다. 이 휴대폰에서 받아쓰며 오디오는 보관하지 않습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is geopend, dus een opname wordt bij die taak voor uw team vastgelegd, zoals bij “noteer dit voor het team”. Uitgeschreven op deze telefoon; de audio wordt niet bewaard."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ está aberto, então a gravação é registrada nesse trabalho para sua equipe, como acontece com “anote isto para a equipe”. Transcrito neste telefone; o áudio não é mantido."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открыто %@, поэтому запись сохраняется в этом задании для вашей команды, как и «запиши это для команды». Расшифровывается на этом телефоне; аудио не сохраняется."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ کھلا ہے، اس لیے ریکارڈنگ آپ کی ٹیم کے لیے اسی جاب پر درج ہوتی ہے، جیسے “یہ ٹیم کے لیے نوٹ کرو” ہوتا ہے۔ اسی فون پر تحریر میں بدلا جاتا ہے؛ اس کی آڈیو نہیں رکھی جاتی۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已打开，因此录音会像“为团队记下这个”一样，登记在该作业上供你的团队使用。在这部手机上转写；不保留音频。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已開啟，因此錄音會像「為團隊記下這個」一樣，登記在該工作上供你的團隊使用。在這支手機上轉寫；不保留音訊。"
+          }
+        }
+      }
+    },
     "%@ is out of credit, so replies use another voice. Change voices in Settings › Connections › Services & Integrations." : {
       "localizations" : {
         "ar" : {
@@ -98122,6 +98204,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "音訊位元率"
+          }
+        }
+      }
+    },
+    "Audio deleted. The transcript stays." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حُذف الصوت. يبقى النص."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio eliminado. La transcripción se queda."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio supprimé. La transcription reste."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A hang törölve. Az átirat megmarad."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio eliminato. La trascrizione resta."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声は削除されました。文字起こしは残ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "오디오가 삭제되었습니다. 녹취록은 남아 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio verwijderd. Het transcript blijft."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Áudio apagado. A transcrição fica."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Аудио удалено. Расшифровка остаётся."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آڈیو حذف کر دی گئی۔ تحریر باقی رہتی ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音频已删除。转写文字保留。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音訊已刪除。轉寫文字保留。"
+          }
+        }
+      }
+    },
+    "Audio kept on this phone until %@." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يُحتفظ بالصوت على هذا الهاتف حتى %@."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El audio se guarda en este celular hasta el %@."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio conservé sur ce téléphone jusqu’au %@."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A hang eddig marad ezen a telefonon: %@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio conservato su questo telefono fino al %@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声は %@ までこのiPhoneに保存されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "오디오는 %@까지 이 휴대폰에 보관됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio bewaard op deze telefoon tot %@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Áudio mantido neste telefone até %@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Аудио хранится на этом телефоне до %@."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آڈیو %@ تک اس فون پر رکھی جائے گی۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音频保留在这部手机上，直到 %@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音訊保留在這支手機上，直到 %@。"
           }
         }
       }
@@ -196014,6 +196260,88 @@
         }
       }
     },
+    "Drafted" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مُسوَّد"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redactado"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rédigé"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Piszkozat kész"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bozza pronta"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下書き済み"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "초안 작성됨"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opgesteld"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rascunho pronto"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Черновик готов"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مسودہ تیار"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已起草"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已起草"
+          }
+        }
+      }
+    },
     "Drafted by %@" : {
       "comment" : "My Day card: the draft was written by the named AI provider.",
       "localizations" : {
@@ -207973,6 +208301,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "結束這個。你接下來說的話將開始新的對話。"
+          }
+        }
+      }
+    },
+    "Ends this recording and keeps what was said." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ينهي هذا التسجيل ويحتفظ بما قيل."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Termina esta grabación y conserva lo que se dijo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Termine cet enregistrement et conserve ce qui a été dit."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Befejezi ezt a felvételt, és megőrzi, ami elhangzott."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Termina questa registrazione e conserva ciò che è stato detto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この録音を終了し、話した内容を保存します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 녹음을 끝내고 말한 내용을 보관합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beëindigt deze opname en bewaart wat er is gezegd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encerra esta gravação e mantém o que foi dito."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершает эту запись и сохраняет сказанное."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ ریکارڈنگ ختم کرتا ہے اور جو کہا گیا وہ محفوظ رکھتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结束这段录音并保留所说的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "結束這段錄音並保留所說的內容。"
           }
         }
       }
@@ -230249,6 +230659,334 @@
         }
       }
     },
+    "Filed for your team on job %@, in %lld parts." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سُجّل لفريقك على المهمة %@، في %lld أجزاء."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrado para tu equipo en el trabajo %@, en %lld partes."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consigné pour votre équipe sur le travail %@, en %lld parties."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rögzítve a csapatának a(z) %@ munkán, %lld részben."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archiviato per il tuo team sul lavoro %@, in %lld parti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジョブ %@ にチーム向けとして %lld 件に分けて登録しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "작업 %@에 팀용으로 %lld개 부분으로 나누어 등록했습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vastgelegd voor uw team bij taak %@, in %lld delen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrado para sua equipe no trabalho %@, em %lld partes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранено для вашей команды в задании %@, частей: %lld."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جاب %@ پر آپ کی ٹیم کے لیے %lld حصوں میں درج کر دیا گیا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在作业 %@ 上分 %lld 部分登记，供你的团队使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在工作 %@ 上分 %lld 部分登記，供你的團隊使用。"
+          }
+        }
+      }
+    },
+    "Filed for your team on job %@." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سُجّل لفريقك على المهمة %@."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrado para tu equipo en el trabajo %@."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consigné pour votre équipe sur le travail %@."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rögzítve a csapatának a(z) %@ munkán."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archiviato per il tuo team sul lavoro %@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジョブ %@ にチーム向けとして登録しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "작업 %@에 팀용으로 등록했습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vastgelegd voor uw team bij taak %@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrado para sua equipe no trabalho %@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранено для вашей команды в задании %@."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جاب %@ پر آپ کی ٹیم کے لیے درج کر دیا گیا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在作业 %@ 上登记，供你的团队使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在工作 %@ 上登記，供你的團隊使用。"
+          }
+        }
+      }
+    },
+    "Filed for your team on this job, in %lld parts." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سُجّل لفريقك على هذه المهمة، في %lld أجزاء."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrado para tu equipo en este trabajo, en %lld partes."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consigné pour votre équipe sur ce travail, en %lld parties."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rögzítve a csapatának ezen a munkán, %lld részben."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archiviato per il tuo team su questo lavoro, in %lld parti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このジョブにチーム向けとして %lld 件に分けて登録しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 작업에 팀용으로 %lld개 부분으로 나누어 등록했습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vastgelegd voor uw team bij deze taak, in %lld delen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrado para sua equipe neste trabalho, em %lld partes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранено для вашей команды в этом задании, частей: %lld."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس جاب پر آپ کی ٹیم کے لیے %lld حصوں میں درج کر دیا گیا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在此作业上分 %lld 部分登记，供你的团队使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在此工作上分 %lld 部分登記，供你的團隊使用。"
+          }
+        }
+      }
+    },
+    "Filed for your team on this job." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سُجّل لفريقك على هذه المهمة."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrado para tu equipo en este trabajo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consigné pour votre équipe sur ce travail."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rögzítve a csapatának ezen a munkán."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archiviato per il tuo team su questo lavoro."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このジョブにチーム向けとして登録しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 작업에 팀용으로 등록했습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vastgelegd voor uw team bij deze taak."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrado para sua equipe neste trabalho."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранено для вашей команды в этом задании."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس جاب پر آپ کی ٹیم کے لیے درج کر دیا گیا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在此作业上登记，供你的团队使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在此工作上登記，供你的團隊使用。"
+          }
+        }
+      }
+    },
     "Files" : {
       "localizations" : {
         "ar" : {
@@ -232793,6 +233531,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請先完成設定，然後再次執行此檢查。"
+          }
+        }
+      }
+    },
+    "Finish the conversation first, then record your experience." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أنهِ المحادثة أولًا، ثم سجّل خبرتك."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Primero termina la conversación y luego graba tu experiencia."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminez d’abord la conversation, puis enregistrez votre expérience."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Előbb fejezze be a beszélgetést, aztán rögzítse a tapasztalatát."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prima termina la conversazione, poi registra la tua esperienza."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先に会話を終えてから、経験を記録してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "먼저 대화를 끝낸 다음 경험을 기록하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rond eerst het gesprek af en neem daarna uw ervaring op."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Termine a conversa primeiro e depois grave sua experiência."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сначала завершите разговор, затем запишите свой опыт."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "پہلے گفتگو ختم کریں، پھر اپنا تجربہ ریکارڈ کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先结束对话，再记录你的经验。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請先結束對話，再記錄你的經驗。"
           }
         }
       }
@@ -247193,6 +248013,88 @@
         }
       }
     },
+    "Getting ready…" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جارٍ التحضير…"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparando…"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Préparation…"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Előkészítés…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparazione…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "준비 중…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voorbereiden…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparando…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подготовка…"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تیاری ہو رہی ہے…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在準備…"
+          }
+        }
+      }
+    },
     "Getting the add-on…" : {
       "localizations" : {
         "ar" : {
@@ -260860,6 +261762,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "聽到的工作編號為 %@。說「是」以確認，或輸入正確的編號。"
+          }
+        }
+      }
+    },
+    "Heard so far" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ما سُمع حتى الآن"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo que se ha oído"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entendu jusqu’ici"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eddig elhangzott"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentito finora"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここまでの内容"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지금까지 들은 내용"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tot nu toe gehoord"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvido até agora"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Услышано на данный момент"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اب تک سنا گیا"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前听到的内容"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前聽到的內容"
           }
         }
       }
@@ -292916,6 +293900,88 @@
         }
       }
     },
+    "It's saved on this phone instead." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حُفظ على هذا الهاتف بدلًا من ذلك."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En su lugar, se guardó en este celular."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il est plutôt enregistré sur ce téléphone."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ehelyett ezen a telefonon lett mentve."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "È stato invece salvato su questo telefono."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代わりにこのiPhoneに保存しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대신 이 휴대폰에 저장했습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Het is in plaats daarvan op deze telefoon bewaard."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Em vez disso, foi salvo neste telefone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вместо этого запись сохранена на этом телефоне."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس کے بجائے یہ اس فون پر محفوظ کر دیا گیا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已改为保存在这部手机上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已改為儲存在這支手機上。"
+          }
+        }
+      }
+    },
     "It's still in the conversation where you said it. Delete that conversation to remove it there." : {
       "comment" : "Added after forgetting a fact that came from a conversation which still exists.",
       "localizations" : {
@@ -294893,6 +295959,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "它的範本把一來一往呈現成空白。"
+          }
+        }
+      }
+    },
+    "Its transcript and audio are removed from this phone. This can't be undone." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يُزال نصه وصوته من هذا الهاتف. لا يمكن التراجع عن ذلك."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su transcripción y su audio se eliminan de este celular. Esto no se puede deshacer."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sa transcription et son audio sont retirés de ce téléphone. Cette action est irréversible."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Az átirata és a hangja törlődik erről a telefonról. Ez nem vonható vissza."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La trascrizione e l'audio vengono rimossi da questo telefono. L'operazione non può essere annullata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文字起こしと音声がこのiPhoneから削除されます。この操作は取り消せません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "녹취록과 오디오가 이 휴대폰에서 삭제됩니다. 이 작업은 되돌릴 수 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Het transcript en de audio worden van deze telefoon verwijderd. Dit kan niet ongedaan worden gemaakt."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A transcrição e o áudio são removidos deste telefone. Isso não pode ser desfeito."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Её расшифровка и аудио удаляются с этого телефона. Это действие нельзя отменить."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس کی تحریر اور آڈیو اس فون سے ہٹا دی جاتی ہیں۔ یہ واپس نہیں ہو سکتا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其转写文字和音频将从这部手机上删除。此操作无法撤销。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其轉寫文字和音訊將從這支手機上刪除。此操作無法復原。"
           }
         }
       }
@@ -351409,6 +352557,88 @@
         }
       }
     },
+    "Next case. Recording." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الحالة التالية. جارٍ التسجيل."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siguiente caso. Grabando."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cas suivant. Enregistrement."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Következő eset. Felvétel indul."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Caso successivo. Registrazione in corso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次の事例。録音中。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음 사례. 녹음 중입니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volgend geval. Opname loopt."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Próximo caso. Gravando."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Следующий случай. Идёт запись."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اگلا کیس۔ ریکارڈنگ ہو رہی ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一个案例。正在录音。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一個案例。正在錄音。"
+          }
+        }
+      }
+    },
     "Next diagram ›" : {
       "comment" : "Glasses: show the page's next drawing.",
       "localizations" : {
@@ -381826,6 +383056,88 @@
         }
       }
     },
+    "Nothing was heard, so nothing was kept." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يُسمع شيء، لذا لم يُحفظ شيء."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se oyó nada, así que no se guardó nada."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rien n’a été entendu, donc rien n’a été conservé."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Semmi sem hallatszott, ezért semmi sem lett megőrizve."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non si è sentito nulla, quindi non è stato conservato nulla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "何も聞き取れなかったため、何も保存されませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "아무것도 들리지 않아 아무것도 보관하지 않았습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Er is niets gehoord, dus er is niets bewaard."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nada foi ouvido, então nada foi mantido."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ничего не было слышно, поэтому ничего не сохранено."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کچھ سنائی نہیں دیا، اس لیے کچھ محفوظ نہیں ہوا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有听到任何内容，因此没有保留任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有聽到任何內容，因此沒有保留任何內容。"
+          }
+        }
+      }
+    },
     "Nothing was recorded on this job." : {
       "localizations" : {
         "ar" : {
@@ -394948,6 +396260,170 @@
         }
       }
     },
+    "One case per recording" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حالة واحدة في كل تسجيل"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un caso por grabación"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un cas par enregistrement"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Felvételenként egy eset"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un caso per registrazione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1回の録音につき1件"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "녹음 한 번에 한 사례"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eén geval per opname"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um caso por gravação"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Один случай на запись"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ہر ریکارڈنگ میں ایک کیس"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每段录音一个案例"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每段錄音一個案例"
+          }
+        }
+      }
+    },
+    "One case per recording. Say the equipment, its brand and model if you know it. The kind of site, if it matters. The problem as it showed up. What you checked and tried. And what fixed it, and how sure you are. Say “that's one, next case” to start the next, or “that's all” to finish." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حالة واحدة في كل تسجيل. اذكر الجهاز، وعلامته التجارية وطرازه إن كنت تعرفهما. نوع الموقع، إن كان مهمًا. المشكلة كما ظهرت. ما فحصته وما جرّبته. وما الذي أصلحه، ومدى تأكدك. قل «that's one, next case» لبدء الحالة التالية، أو «that's all» للإنهاء."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un caso por grabación. Di el equipo, su marca y modelo si los conoces. El tipo de sitio, si importa. El problema tal como se presentó. Lo que revisaste y probaste. Y qué lo arregló y qué tan seguro estás. Di “that's one, next case” para empezar el siguiente, o “that's all” para terminar."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un cas par enregistrement. Nommez l’équipement, sa marque et son modèle si vous les connaissez. Le type de site, si c’est important. Le problème tel qu’il s’est présenté. Ce que vous avez vérifié et essayé. Et ce qui l’a réglé, et à quel point vous en êtes sûr. Dites « that's one, next case » pour commencer le suivant, ou « that's all » pour terminer."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Felvételenként egy eset. Mondja meg a berendezést, a márkáját és típusát, ha tudja. A helyszín jellegét, ha számít. A hibát, ahogyan jelentkezett. Mit ellenőrzött és mit próbált ki. És mi javította meg, és mennyire biztos benne. Mondja, hogy „that's one, next case”, a következő elkezdéséhez, vagy „that's all”, a befejezéshez."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un caso per registrazione. Indica l'apparecchio, marca e modello se li conosci. Il tipo di sito, se conta. Il problema così come si è presentato. Cosa hai controllato e provato. E cosa l'ha risolto e quanto ne sei sicuro. Di «that's one, next case» per iniziare il successivo, o «that's all» per finire."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1回の録音につき1件です。機器と、わかればブランドと型番を言ってください。関係があれば現場の種類。問題がどのように現れたか。確認したことと試したこと。そして何で直ったか、どのくらい確かか。次を始めるには「that's one, next case」、終えるには「that's all」と言ってください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "녹음 한 번에 한 사례입니다. 장비와, 알면 브랜드와 모델을 말하세요. 중요하다면 현장의 종류. 문제가 어떻게 나타났는지. 확인하고 시도한 것. 그리고 무엇으로 고쳤는지, 얼마나 확신하는지. 다음을 시작하려면 “that's one, next case”, 끝내려면 “that's all”라고 말하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eén geval per opname. Noem de apparatuur, met merk en model als u die weet. Het soort locatie, als dat ertoe doet. Het probleem zoals het zich voordeed. Wat u hebt gecontroleerd en geprobeerd. En wat het verhielp, en hoe zeker u bent. Zeg “that's one, next case” om het volgende te beginnen, of “that's all” om af te ronden."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um caso por gravação. Diga o equipamento, a marca e o modelo se souber. O tipo de local, se importar. O problema como apareceu. O que você verificou e tentou. E o que resolveu e quão seguro você está. Diga “that's one, next case” para começar o próximo, ou “that's all” para terminar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Один случай на запись. Назовите оборудование, его марку и модель, если знаете. Тип объекта, если это важно. Неисправность, как она проявилась. Что вы проверили и попробовали. И что помогло, и насколько вы уверены. Скажите «that's one, next case», чтобы начать следующий, или «that's all», чтобы закончить."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ہر ریکارڈنگ میں ایک کیس۔ آلے کا نام بتائیں، اور اگر معلوم ہو تو اس کا برانڈ اور ماڈل۔ سائٹ کی قسم، اگر اہم ہو۔ مسئلہ جیسے سامنے آیا۔ آپ نے کیا جانچا اور کیا آزمایا۔ اور کس چیز نے اسے ٹھیک کیا، اور آپ کتنے یقین سے کہتے ہیں۔ اگلا شروع کرنے کے لیے “that's one, next case” کہیں، یا ختم کرنے کے لیے “that's all”۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每段录音一个案例。说出设备，如果知道，再说品牌和型号。现场类型（如有关系）。问题是如何表现出来的。你检查和尝试了什么。以及是什么修好的，你有多确定。说“that's one, next case”开始下一个，或说“that's all”结束。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每段錄音一個案例。說出設備，如果知道，再說品牌和型號。現場類型（如有關係）。問題是如何表現出來的。你檢查和嘗試了什麼。以及是什麼修好的，你有多確定。說「that's one, next case」開始下一個，或說「that's all」結束。"
+          }
+        }
+      }
+    },
     "One clip goes with the report by %@." : {
       "localizations" : {
         "ar" : {
@@ -406642,6 +408118,88 @@
         }
       }
     },
+    "Opens the prompts and the recorder." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يفتح الإرشادات والمسجّل."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre las indicaciones y la grabadora."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvre les consignes et l’enregistreur."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Megnyitja a szempontokat és a felvevőt."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apre le indicazioni e il registratore."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ガイドとレコーダーを開きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "안내와 녹음기를 엽니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opent de aanwijzingen en de recorder."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre as orientações e o gravador."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открывает подсказки и диктофон."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "رہنما نکات اور ریکارڈر کھولتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开提示和录音器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟提示和錄音器。"
+          }
+        }
+      }
+    },
     "Opens the report in %@. Nothing leaves the phone until you tap Send." : {
       "comment" : "A hint for the accessibility assistant that the button",
       "isCommentAutoGenerated" : true,
@@ -416898,6 +418456,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已儲存停車位置"
+          }
+        }
+      }
+    },
+    "Part %lld of %lld: %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الجزء %1$lld من %2$lld: %3$@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parte %lld de %lld: %@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Partie %lld sur %lld : %@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld/%lld. rész: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parte %lld di %lld: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パート %lld/%lld：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "파트 %lld/%lld: %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deel %lld van %lld: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parte %lld de %lld: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Часть %lld из %lld: %@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حصہ %1$lld از %2$lld: %3$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %lld 部分，共 %lld 部分：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %lld 部分，共 %lld 部分：%@"
           }
         }
       }
@@ -433955,6 +435595,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請檢查已完成的內容，然後填寫你的名字並簽名。"
+          }
+        }
+      }
+    },
+    "Please leave out customer names and addresses." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يُرجى عدم ذكر أسماء العملاء وعناوينهم."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por favor, no menciones nombres ni direcciones de clientes."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Veuillez ne pas mentionner le nom ni l’adresse des clients."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kérjük, ügyfélneveket és címeket ne mondjon."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per favore, non citare nomi e indirizzi dei clienti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顧客の名前や住所は含めないでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "고객 이름과 주소는 빼 주세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laat namen en adressen van klanten weg."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por favor, não mencione nomes e endereços de clientes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пожалуйста, не называйте имена и адреса клиентов."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "براہ کرم کسٹمرز کے نام اور پتے شامل نہ کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请不要提及客户姓名和地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請不要提及客戶姓名和地址。"
           }
         }
       }
@@ -460947,6 +462669,88 @@
         }
       }
     },
+    "Record experience" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تسجيل الخبرة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabar experiencia"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrer votre expérience"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tapasztalat rögzítése"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registra esperienza"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "経験を記録"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "경험 기록"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ervaring opnemen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gravar experiência"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Записать опыт"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تجربہ ریکارڈ کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记录经验"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記錄經驗"
+          }
+        }
+      }
+    },
     "Record Glasses Video" : {
       "localizations" : {
         "ar" : {
@@ -461681,6 +463485,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "錄製影片"
+          }
+        }
+      }
+    },
+    "Record what you already know about a machine, one case per recording, for your team to review. Also in the Jobs list, and on CarPlay." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سجّل ما تعرفه بالفعل عن جهاز، حالة واحدة في كل تسجيل، ليراجعه فريقك. متاح أيضًا في قائمة المهام وعلى CarPlay."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Graba lo que ya sabes de una máquina, un caso por grabación, para que tu equipo lo revise. También en la lista de trabajos y en CarPlay."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrez ce que vous savez déjà d’un appareil, un cas par enregistrement, pour que votre équipe le révise. Aussi dans la liste des travaux et dans CarPlay."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rögzítse, amit már tud egy gépről, felvételenként egy esetet, hogy a csapata átnézze. A munkák listájában és a CarPlayen is elérhető."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registra ciò che sai già di una macchina, un caso per registrazione, perché il tuo team lo riveda. Anche nell'elenco dei lavori e su CarPlay."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "機器について既に知っていることを、1回の録音につき1件ずつ記録し、チームに確認してもらいます。ジョブ一覧とCarPlayからも使えます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기기에 대해 이미 알고 있는 것을 녹음 한 번에 한 사례씩 기록해 팀이 검토하게 합니다. 작업 목록과 CarPlay에서도 사용할 수 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neem op wat u al over een machine weet, één geval per opname, zodat uw team het kan beoordelen. Ook in de takenlijst en in CarPlay."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grave o que você já sabe sobre uma máquina, um caso por gravação, para sua equipe revisar. Também na lista de trabalhos e no CarPlay."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запишите то, что вы уже знаете об оборудовании, по одному случаю на запись, чтобы ваша команда это проверила. Также в списке заданий и в CarPlay."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کسی مشین کے بارے میں جو آپ پہلے سے جانتے ہیں وہ ریکارڈ کریں، ہر ریکارڈنگ میں ایک کیس، تاکہ آپ کی ٹیم اس کا جائزہ لے۔ جابز کی فہرست اور CarPlay میں بھی دستیاب ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记录你对某台设备已经了解的情况，每段录音一个案例，供你的团队审核。也可在作业列表和 CarPlay 中使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記錄你對某台設備已經了解的情況，每段錄音一個案例，供你的團隊審核。也可在工作清單和 CarPlay 中使用。"
           }
         }
       }
@@ -462669,6 +464555,88 @@
         }
       }
     },
+    "Recording case %lld · %@ of %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تسجيل الحالة %lld · %@ من %@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabando el caso %lld · %@ de %@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrement du cas %lld · %@ sur %@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld. eset rögzítése · %@ / %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrazione del caso %lld · %@ di %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "事例 %lld を録音中 · %@ / %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사례 %lld 녹음 중 · %@ / %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geval %lld wordt opgenomen · %@ van %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gravando o caso %lld · %@ de %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запись случая %lld · %@ из %@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کیس %lld ریکارڈ ہو رہا ہے · %@ از %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在录制案例 %lld · %@ / %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在錄製案例 %lld · %@ / %@"
+          }
+        }
+      }
+    },
     "Recording didn't start." : {
       "localizations" : {
         "ar" : {
@@ -462747,6 +464715,416 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "錄製未開始。"
+          }
+        }
+      }
+    },
+    "Recording experience" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جارٍ تسجيل الخبرة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabando experiencia"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrement de votre expérience"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tapasztalat rögzítése folyamatban"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrazione dell'esperienza"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "経験を録音中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "경험 녹음 중"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ervaring wordt opgenomen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gravando experiência"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запись опыта"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تجربہ ریکارڈ ہو رہا ہے"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在记录经验"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在記錄經驗"
+          }
+        }
+      }
+    },
+    "Recording experience isn't available on this phone." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تسجيل الخبرة غير متاح على هذا الهاتف."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabar experiencia no está disponible en este celular."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’enregistrement de votre expérience n’est pas offert sur ce téléphone."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A tapasztalat rögzítése nem érhető el ezen a telefonon."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La registrazione dell'esperienza non è disponibile su questo telefono."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このiPhoneでは経験の記録を利用できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 휴대폰에서는 경험 기록을 사용할 수 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ervaring opnemen is niet beschikbaar op deze telefoon."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gravar experiência não está disponível neste telefone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запись опыта недоступна на этом телефоне."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس فون پر تجربہ ریکارڈ کرنا دستیاب نہیں ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这部手机无法记录经验。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這支手機無法記錄經驗。"
+          }
+        }
+      }
+    },
+    "Recording experience needs speech recognition. Allow it for Avenkin in Settings." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يتطلب تسجيل الخبرة التعرّف على الكلام. اسمح به لـ Avenkin في الإعدادات."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para grabar experiencia se necesita el reconocimiento de voz. Permítelo para Avenkin en Configuración."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’enregistrement de votre expérience nécessite la reconnaissance vocale. Autorisez-la pour Avenkin dans Réglages."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A tapasztalat rögzítéséhez beszédfelismerés szükséges. Engedélyezze az Avenkin számára a Beállításokban."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per registrare l'esperienza serve il riconoscimento vocale. Consentilo per Avenkin in Impostazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "経験の記録には音声認識が必要です。「設定」でAvenkinに許可してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "경험을 기록하려면 음성 인식이 필요합니다. 설정에서 Avenkin에 허용하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voor het opnemen van ervaring is spraakherkenning nodig. Sta het toe voor Avenkin in Instellingen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gravar experiência exige o reconhecimento de fala. Permita-o para o Avenkin em Ajustes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для записи опыта нужно распознавание речи. Разрешите его для Avenkin в Настройках."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تجربہ ریکارڈ کرنے کے لیے اسپیچ ریکگنیشن درکار ہے۔ سیٹنگز میں Avenkin کے لیے اس کی اجازت دیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记录经验需要语音识别。请在“设置”中允许 Avenkin 使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記錄經驗需要語音辨識。請在「設定」中允許 Avenkin 使用。"
+          }
+        }
+      }
+    },
+    "Recording experience needs the microphone. Allow it for Avenkin in Settings." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يتطلب تسجيل الخبرة الميكروفون. اسمح به لـ Avenkin في الإعدادات."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para grabar experiencia se necesita el micrófono. Permítelo para Avenkin en Configuración."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’enregistrement de votre expérience nécessite le micro. Autorisez-le pour Avenkin dans Réglages."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A tapasztalat rögzítéséhez mikrofon szükséges. Engedélyezze az Avenkin számára a Beállításokban."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per registrare l'esperienza serve il microfono. Consentilo per Avenkin in Impostazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "経験の記録にはマイクが必要です。「設定」でAvenkinに許可してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "경험을 기록하려면 마이크가 필요합니다. 설정에서 Avenkin에 허용하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voor het opnemen van ervaring is de microfoon nodig. Sta het toe voor Avenkin in Instellingen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gravar experiência exige o microfone. Permita-o para o Avenkin em Ajustes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для записи опыта нужен микрофон. Разрешите его для Avenkin в Настройках."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تجربہ ریکارڈ کرنے کے لیے مائیکروفون درکار ہے۔ سیٹنگز میں Avenkin کے لیے اس کی اجازت دیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记录经验需要麦克风。请在“设置”中允许 Avenkin 使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記錄經驗需要麥克風。請在「設定」中允許 Avenkin 使用。"
+          }
+        }
+      }
+    },
+    "Recording experience needs the team or enterprise licence code your organisation issued." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يتطلب تسجيل الخبرة رمز رخصة الفريق أو المؤسسة الذي أصدرته مؤسستك."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para grabar experiencia se necesita el código de licencia de equipo o empresarial que emitió tu organización."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’enregistrement de votre expérience nécessite le code de licence d’équipe ou d’entreprise émis par votre organisation."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A tapasztalat rögzítéséhez a szervezete által kiadott csapat- vagy vállalati licenckód szükséges."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per registrare l'esperienza serve il codice di licenza team o enterprise emesso dalla tua organizzazione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "経験の記録には、組織が発行したチームまたはエンタープライズのライセンスコードが必要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "경험을 기록하려면 조직에서 발급한 팀 또는 엔터프라이즈 라이선스 코드가 필요합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voor het opnemen van ervaring is de team- of enterpriselicentiecode nodig die uw organisatie heeft uitgegeven."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gravar experiência exige o código de licença de equipe ou empresarial emitido pela sua organização."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для записи опыта нужен код командной или корпоративной лицензии, выданный вашей организацией."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تجربہ ریکارڈ کرنے کے لیے آپ کی تنظیم کا جاری کردہ ٹیم یا انٹرپرائز لائسنس کوڈ درکار ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记录经验需要你的组织签发的团队版或企业版许可证代码。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記錄經驗需要你的組織核發的團隊版或企業版授權代碼。"
           }
         }
       }
@@ -464067,6 +466445,88 @@
         }
       }
     },
+    "Recording." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جارٍ التسجيل."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabando."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrement."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Felvétel indul."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrazione in corso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録音中。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "녹음 중입니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opname loopt."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gravando."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Идёт запись."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ریکارڈنگ ہو رہی ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在录音。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在錄音。"
+          }
+        }
+      }
+    },
     "Recordings" : {
       "localizations" : {
         "ar" : {
@@ -464555,6 +467015,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "處理活動紀錄"
+          }
+        }
+      }
+    },
+    "Records one case. Say “that's one, next case” to start the next." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يسجّل حالة واحدة. قل «that's one, next case» لبدء الحالة التالية."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Graba un caso. Di “that's one, next case” para empezar el siguiente."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistre un cas. Dites « that's one, next case » pour commencer le suivant."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Egy esetet rögzít. Mondja, hogy „that's one, next case”, a következő elkezdéséhez."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registra un caso. Di «that's one, next case» per iniziare il successivo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1件の事例を録音します。次の事例を始めるには「that's one, next case」と言ってください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "한 사례를 녹음합니다. 다음 사례를 시작하려면 “that's one, next case”라고 말하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neemt één geval op. Zeg “that's one, next case” om het volgende te beginnen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grava um caso. Diga “that's one, next case” para começar o próximo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Записывает один случай. Скажите «that's one, next case», чтобы начать следующий."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ایک کیس ریکارڈ کرتا ہے۔ اگلا شروع کرنے کے لیے “that's one, next case” کہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "录制一个案例。说“that's one, next case”开始下一个。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "錄製一個案例。說「that's one, next case」開始下一個。"
           }
         }
       }
@@ -497135,6 +499677,88 @@
         }
       }
     },
+    "Saved on this phone for your team to review." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حُفظ على هذا الهاتف ليراجعه فريقك."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se guardó en este celular para que tu equipo lo revise."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistré sur ce téléphone pour que votre équipe le révise."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mentve ezen a telefonon, hogy a csapata átnézze."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvato su questo telefono perché il tuo team lo riveda."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チームの確認のため、このiPhoneに保存しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "팀이 검토할 수 있도록 이 휴대폰에 저장했습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Op deze telefoon bewaard zodat uw team het kan beoordelen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvo neste telefone para sua equipe revisar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранено на этом телефоне, чтобы ваша команда это проверила."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کی ٹیم کے جائزے کے لیے اس فون پر محفوظ کر دیا گیا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存在这部手机上，供你的团队审核。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已儲存在這支手機上，供你的團隊審核。"
+          }
+        }
+      }
+    },
     "Saved photographed manuals" : {
       "localizations" : {
         "ar" : {
@@ -498202,6 +500826,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "儲存會記錄一次清點，因此該數字會從現在起標記為已清點。"
+          }
+        }
+      }
+    },
+    "Saving…" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جارٍ الحفظ…"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardando…"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrement…"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mentés…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvataggio…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장 중…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opslaan…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvando…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранение…"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "محفوظ ہو رہا ہے…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在保存…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在儲存…"
           }
         }
       }
@@ -499276,6 +501982,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "說“開始閱讀”並說出書名，眼鏡就會跟著進行。"
+          }
+        }
+      }
+    },
+    "Say “that's one, next case” to start the next, or “that's all” to finish. Each recording stops at ten minutes." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "قل «that's one, next case» لبدء الحالة التالية، أو «that's all» للإنهاء. يتوقف كل تسجيل عند عشر دقائق."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di “that's one, next case” para empezar el siguiente, o “that's all” para terminar. Cada grabación se detiene a los diez minutos."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dites « that's one, next case » pour commencer le suivant, ou « that's all » pour terminer. Chaque enregistrement s’arrête après dix minutes."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mondja, hogy „that's one, next case”, a következő elkezdéséhez, vagy „that's all”, a befejezéshez. Minden felvétel tíz percnél leáll."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di «that's one, next case» per iniziare il successivo, o «that's all» per finire. Ogni registrazione si ferma a dieci minuti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次を始めるには「that's one, next case」、終えるには「that's all」と言ってください。各録音は10分で停止します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음을 시작하려면 “that's one, next case”, 끝내려면 “that's all”라고 말하세요. 녹음은 각각 10분에 멈춥니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeg “that's one, next case” om het volgende te beginnen, of “that's all” om af te ronden. Elke opname stopt na tien minuten."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diga “that's one, next case” para começar o próximo, ou “that's all” para terminar. Cada gravação para aos dez minutos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скажите «that's one, next case», чтобы начать следующий, или «that's all», чтобы закончить. Каждая запись останавливается через десять минут."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اگلا شروع کرنے کے لیے “that's one, next case” کہیں، یا ختم کرنے کے لیے “that's all”۔ ہر ریکارڈنگ دس منٹ پر رک جاتی ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "说“that's one, next case”开始下一个，或说“that's all”结束。每段录音在十分钟时停止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "說「that's one, next case」開始下一個，或說「that's all」結束。每段錄音在十分鐘時停止。"
           }
         }
       }
@@ -513528,6 +516316,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "作為 %1$@ 標頭發送。"
+          }
+        }
+      }
+    },
+    "Sent for review" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أُرسل للمراجعة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviado para revisión"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envoyé pour révision"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Átnézésre elküldve"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inviato per la revisione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認のため送信済み"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "검토를 위해 전송됨"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verzonden ter beoordeling"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviado para revisão"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправлено на проверку"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جائزے کے لیے بھیج دیا گیا"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已发送审核"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已傳送審核"
           }
         }
       }
@@ -589859,6 +592729,88 @@
         }
       }
     },
+    "That's ten minutes, the most one recording holds." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هذه عشر دقائق، أقصى ما يتسع له التسجيل الواحد."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son diez minutos, lo máximo que cabe en una grabación."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "C’est dix minutes, le maximum d’un enregistrement."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ez tíz perc, ennyi fér egy felvételbe."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sono dieci minuti, il massimo per una registrazione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10分になりました。1回の録音の上限です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10분이 되었습니다. 녹음 한 번의 최대 길이입니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dat is tien minuten, het maximum voor één opname."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "São dez minutos, o máximo de uma gravação."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прошло десять минут — это максимум для одной записи."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "دس منٹ ہو گئے، ایک ریکارڈنگ میں زیادہ سے زیادہ اتنا ہی آتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已到十分钟，这是一段录音的上限。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已到十分鐘，這是一段錄音的上限。"
+          }
+        }
+      }
+    },
     "That's turned off in Avenkin's settings." : {
       "localizations" : {
         "ar" : {
@@ -599252,6 +602204,88 @@
         }
       }
     },
+    "The equipment: its brand and model, or what it is if you don't know the model." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الجهاز: علامته التجارية وطرازه، أو نوعه إن لم تكن تعرف الطراز."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El equipo: su marca y modelo, o qué es si no conoces el modelo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’équipement : sa marque et son modèle, ou ce que c’est si vous ne connaissez pas le modèle."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A berendezés: márkája és típusa, vagy hogy mi az, ha nem ismeri a típust."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'apparecchio: marca e modello, o di cosa si tratta se non conosci il modello."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "機器：ブランドと型番。型番がわからなければ、何の機器か。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "장비: 브랜드와 모델, 모델을 모르면 어떤 장비인지."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De apparatuur: merk en model, of wat het is als u het model niet weet."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O equipamento: marca e modelo, ou o que é se você não souber o modelo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оборудование: марка и модель или что это, если модель неизвестна."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آلہ: اس کا برانڈ اور ماڈل، یا اگر ماڈل معلوم نہ ہو تو یہ کیا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备：品牌和型号；如果不知道型号，说明它是什么设备。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設備：品牌和型號；如果不知道型號，說明它是什麼設備。"
+          }
+        }
+      }
+    },
     "the escalation on %@ has no answer yet" : {
       "comment" : "Spoken list item: an escalation still unanswered.",
       "localizations" : {
@@ -605994,6 +609028,88 @@
         }
       }
     },
+    "The kind of site, if it matters." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نوع الموقع، إن كان مهمًا."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El tipo de sitio, si importa."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le type de site, si c’est important."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A helyszín jellege, ha számít."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tipo di sito, se conta."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場の種類（関係がある場合）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현장의 종류(중요한 경우)."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Het soort locatie, als dat ertoe doet."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O tipo de local, se importar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тип объекта, если это важно."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سائٹ کی قسم، اگر اہم ہو۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "现场类型（如有关系）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場類型（如有關係）。"
+          }
+        }
+      }
+    },
     "The last request carried the whole conversation, so no notes were needed." : {
       "localizations" : {
         "ar" : {
@@ -608209,6 +611325,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你尚未傳送給%@的訊息"
+          }
+        }
+      }
+    },
+    "The microphone couldn't start, so nothing was recorded." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تعذّر تشغيل الميكروفون، لذا لم يُسجَّل شيء."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo iniciar el micrófono, así que no se grabó nada."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le micro n’a pas pu démarrer, donc rien n’a été enregistré."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A mikrofon nem tudott elindulni, ezért semmi sem lett rögzítve."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non è stato possibile avviare il microfono, quindi non è stato registrato nulla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マイクを開始できなかったため、何も録音されませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마이크를 시작할 수 없어 아무것도 녹음되지 않았습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De microfoon kon niet starten, dus er is niets opgenomen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível iniciar o microfone, então nada foi gravado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось включить микрофон, поэтому ничего не записано."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مائیکروفون شروع نہیں ہو سکا، اس لیے کچھ ریکارڈ نہیں ہوا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风无法启动，因此没有录下任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麥克風無法啟動，因此沒有錄下任何內容。"
           }
         }
       }
@@ -615389,6 +618587,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此位置來自 %1$@ 儲存之前，因此可能不準確。"
+          }
+        }
+      }
+    },
+    "The problem as it showed up." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "المشكلة كما ظهرت."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El problema tal como se presentó."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le problème tel qu’il s’est présenté."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A hiba, ahogyan jelentkezett."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il problema così come si è presentato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "問題がどのように現れたか。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "문제가 어떻게 나타났는지."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Het probleem zoals het zich voordeed."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O problema como apareceu."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Неисправность, как она проявилась."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مسئلہ جیسے سامنے آیا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "问题是如何表现出来的。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "問題是如何表現出來的。"
           }
         }
       }
@@ -645692,6 +648972,88 @@
         }
       }
     },
+    "This phone can't transcribe your language without the internet, and a recording is only ever transcribed on the phone, so nothing can be recorded." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا يستطيع هذا الهاتف تفريغ لغتك نصيًا دون الإنترنت، والتسجيل لا يُفرَّغ إلا على الهاتف، لذا لا يمكن تسجيل أي شيء."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este celular no puede transcribir tu idioma sin internet, y una grabación solo se transcribe en el celular, así que no se puede grabar nada."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce téléphone ne peut pas transcrire votre langue sans Internet, et un enregistrement n’est jamais transcrit ailleurs que sur le téléphone, donc rien ne peut être enregistré."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ez a telefon internet nélkül nem tudja átírni az Ön nyelvét, a felvétel átirata pedig mindig csak a telefonon készül, ezért semmit sem lehet rögzíteni."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo telefono non può trascrivere la tua lingua senza internet, e una registrazione viene trascritta solo sul telefono, quindi non si può registrare nulla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このiPhoneはインターネットなしではあなたの言語を文字起こしできません。録音は常にiPhone上でのみ文字起こしされるため、何も録音できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 휴대폰은 인터넷 없이 사용자의 언어를 받아쓸 수 없고, 녹음은 항상 휴대폰에서만 받아쓰므로 아무것도 녹음할 수 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze telefoon kan uw taal niet zonder internet uitschrijven, en een opname wordt alleen op de telefoon uitgeschreven, dus er kan niets worden opgenomen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este telefone não consegue transcrever seu idioma sem internet, e uma gravação só é transcrita no telefone, então nada pode ser gravado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот телефон не может расшифровывать ваш язык без интернета, а запись расшифровывается только на телефоне, поэтому ничего нельзя записать."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ فون انٹرنیٹ کے بغیر آپ کی زبان کو تحریر میں نہیں بدل سکتا، اور ریکارڈنگ ہمیشہ صرف فون پر ہی تحریر میں بدلی جاتی ہے، اس لیے کچھ ریکارڈ نہیں ہو سکتا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这部手机无法在没有网络的情况下转写你的语言，而录音只会在手机上转写，因此无法录制任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這支手機無法在沒有網路的情況下轉寫你的語言，而錄音只會在手機上轉寫，因此無法錄製任何內容。"
+          }
+        }
+      }
+    },
     "This phone checked in and had heard nothing back by %@. It checks in again when the office next asks. If this stays, tell your office." : {
       "localizations" : {
         "ar" : {
@@ -649826,6 +653188,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此錄音保存在這支手機上。%@"
+          }
+        }
+      }
+    },
+    "This recording is no longer on this phone." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يعد هذا التسجيل على هذا الهاتف."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta grabación ya no está en este celular."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet enregistrement n’est plus sur ce téléphone."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ez a felvétel már nincs ezen a telefonon."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa registrazione non è più su questo telefono."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この録音はこのiPhoneにもうありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 녹음은 더 이상 이 휴대폰에 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze opname staat niet meer op deze telefoon."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta gravação não está mais neste telefone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этой записи больше нет на этом телефоне."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ ریکارڈنگ اب اس فون پر نہیں ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这段录音已不在这部手机上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這段錄音已不在這支手機上。"
           }
         }
       }
@@ -662810,6 +666254,88 @@
         }
       }
     },
+    "Transcribed on this phone and kept here for your team to review. The audio stays on this phone and is deleted after 30 days. Nothing is sent from this screen." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يُفرَّغ نصيًا على هذا الهاتف ويُحفظ هنا ليراجعه فريقك. يبقى الصوت على هذا الهاتف ويُحذف بعد 30 يومًا. لا يُرسل أي شيء من هذه الشاشة."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se transcribe en este celular y se guarda aquí para que tu equipo lo revise. El audio se queda en este celular y se elimina después de 30 días. Nada se envía desde esta pantalla."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transcrit sur ce téléphone et conservé ici pour que votre équipe le révise. L’audio reste sur ce téléphone et est supprimé après 30 jours. Rien n’est envoyé depuis cet écran."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ezen a telefonon készül az átirat, és itt marad, hogy a csapata átnézze. A hang ezen a telefonon marad, és 30 nap után törlődik. Erről a képernyőről semmi sem kerül elküldésre."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trascritto su questo telefono e conservato qui perché il tuo team lo riveda. L'audio resta su questo telefono e viene eliminato dopo 30 giorni. Da questa schermata non viene inviato nulla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このiPhoneで文字起こしされ、チームの確認のためここに保存されます。音声はこのiPhoneに残り、30日後に削除されます。この画面から送信されるものはありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 휴대폰에서 받아쓰고 팀이 검토할 수 있도록 여기에 보관합니다. 오디오는 이 휴대폰에 남아 있으며 30일 후 삭제됩니다. 이 화면에서는 아무것도 전송되지 않습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uitgeschreven op deze telefoon en hier bewaard zodat uw team het kan beoordelen. De audio blijft op deze telefoon en wordt na 30 dagen verwijderd. Vanuit dit scherm wordt niets verzonden."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transcrito neste telefone e mantido aqui para sua equipe revisar. O áudio fica neste telefone e é apagado após 30 dias. Nada é enviado desta tela."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Расшифровывается на этом телефоне и хранится здесь, чтобы ваша команда это проверила. Аудио остаётся на этом телефоне и удаляется через 30 дней. С этого экрана ничего не отправляется."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اسی فون پر تحریر میں بدلا جاتا ہے اور آپ کی ٹیم کے جائزے کے لیے یہیں رکھا جاتا ہے۔ آڈیو اسی فون پر رہتی ہے اور 30 دن بعد حذف ہو جاتی ہے۔ اس اسکرین سے کچھ نہیں بھیجا جاتا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在这部手机上转写，并保存在这里供你的团队审核。音频留在这部手机上，30 天后删除。此屏幕不会发送任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在這支手機上轉寫，並儲存在這裡供你的團隊審核。音訊留在這支手機上，30 天後刪除。此畫面不會傳送任何內容。"
+          }
+        }
+      }
+    },
     "Transcribing" : {
       "localizations" : {
         "ar" : {
@@ -663216,6 +666742,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "轉錄"
+          }
+        }
+      }
+    },
+    "Transcription stopped on this phone." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "توقف التفريغ النصي على هذا الهاتف."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La transcripción se detuvo en este celular."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La transcription s’est arrêtée sur ce téléphone."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Az átírás leállt ezen a telefonon."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La trascrizione si è interrotta su questo telefono."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このiPhoneでの文字起こしが停止しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 휴대폰에서 받아쓰기가 중지되었습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Het uitschrijven is op deze telefoon gestopt."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A transcrição parou neste telefone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Расшифровка на этом телефоне остановилась."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس فون پر تحریر میں بدلنا رک گیا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这部手机上的转写已停止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這支手機上的轉寫已停止。"
           }
         }
       }
@@ -702472,6 +706080,88 @@
         }
       }
     },
+    "What fixed it, and how sure you are." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ما الذي أصلحه، ومدى تأكدك."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qué lo arregló y qué tan seguro estás."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce qui l’a réglé, et à quel point vous en êtes sûr."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mi javította meg, és mennyire biztos benne."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cosa l'ha risolto e quanto ne sei sicuro."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "何で直ったか、そしてどのくらい確かか。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "무엇으로 고쳤는지, 그리고 얼마나 확신하는지."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wat het verhielp, en hoe zeker u bent."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que resolveu e quão seguro você está."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Что помогло и насколько вы уверены."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کس چیز نے اسے ٹھیک کیا، اور آپ کتنے یقین سے کہتے ہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "是什么修好的，以及你有多确定。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "是什麼修好的，以及你有多確定。"
+          }
+        }
+      }
+    },
     "What Gets Exported" : {
       "localizations" : {
         "ar" : {
@@ -705701,6 +709391,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你實際說的話"
+          }
+        }
+      }
+    },
+    "What you already know about a machine, one case per recording, for your team to review." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ما تعرفه بالفعل عن جهاز، حالة واحدة في كل تسجيل، ليراجعه فريقك."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo que ya sabes de una máquina, un caso por grabación, para que tu equipo lo revise."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce que vous savez déjà d’un appareil, un cas par enregistrement, pour que votre équipe le révise."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amit már tud egy gépről, felvételenként egy eset, hogy a csapata átnézze."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ciò che sai già di una macchina, un caso per registrazione, perché il tuo team lo riveda."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "機器について既に知っていること。1回の録音につき1件で、チームが確認します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기기에 대해 이미 알고 있는 것, 녹음 한 번에 한 사례씩, 팀이 검토합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wat u al over een machine weet, één geval per opname, zodat uw team het kan beoordelen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que você já sabe sobre uma máquina, um caso por gravação, para sua equipe revisar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "То, что вы уже знаете об оборудовании, по одному случаю на запись, чтобы ваша команда это проверила."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کسی مشین کے بارے میں جو آپ پہلے سے جانتے ہیں، ہر ریکارڈنگ میں ایک کیس، آپ کی ٹیم کے جائزے کے لیے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你对某台设备已经了解的情况，每段录音一个案例，供你的团队审核。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你對某台設備已經了解的情況，每段錄音一個案例，供你的團隊審核。"
+          }
+        }
+      }
+    },
+    "What you checked and tried." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ما فحصته وما جرّبته."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo que revisaste y probaste."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce que vous avez vérifié et essayé."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit ellenőrzött és mit próbált ki."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cosa hai controllato e provato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認したことと試したこと。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "확인하고 시도한 것."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wat u hebt gecontroleerd en geprobeerd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que você verificou e tentou."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Что вы проверили и попробовали."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ نے کیا جانچا اور کیا آزمایا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你检查和尝试了什么。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你檢查和嘗試了什麼。"
           }
         }
       }
@@ -726661,6 +730515,88 @@
         }
       }
     },
+    "Your Experience" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "خبرتك"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu experiencia"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre expérience"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Az Ön tapasztalata"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La tua esperienza"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたの経験"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "내 경험"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uw ervaring"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sua experiência"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш опыт"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کا تجربہ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的经验"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的經驗"
+          }
+        }
+      }
+    },
     "Your Expert Card" : {
       "localizations" : {
         "ar" : {
@@ -726821,6 +730757,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的 Field Assist 使用權已結束"
+          }
+        }
+      }
+    },
+    "Your Field Assist access has lapsed. Enter a renewal code from your administrator to record experience again." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "انتهت صلاحية وصولك إلى Field Assist. أدخل رمز تجديد من المسؤول لتسجيل الخبرة مجددًا."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu acceso a Field Assist expiró. Ingresa un código de renovación de tu administrador para volver a grabar experiencia."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre accès à Field Assist est échu. Saisissez un code de renouvellement fourni par votre administrateur pour enregistrer de nouveau votre expérience."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A Field Assist-hozzáférése lejárt. Adja meg a rendszergazdától kapott megújítási kódot, hogy ismét rögzíthessen tapasztalatot."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo accesso a Field Assist è scaduto. Inserisci un codice di rinnovo fornito dal tuo amministratore per registrare di nuovo l'esperienza."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Field Assistへのアクセス権が失効しました。経験を再び記録するには、管理者から受け取った更新コードを入力してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Field Assist 이용 권한이 만료되었습니다. 경험을 다시 기록하려면 관리자에게 받은 갱신 코드를 입력하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uw Field Assist-toegang is verlopen. Voer een verlengingscode van uw beheerder in om weer ervaring op te nemen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu acesso ao Field Assist expirou. Digite um código de renovação do seu administrador para gravar experiência novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Срок вашего доступа к Field Assist истёк. Введите код продления от вашего администратора, чтобы снова записывать опыт."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کی Field Assist تک رسائی کی میعاد ختم ہو گئی ہے۔ دوبارہ تجربہ ریکارڈ کرنے کے لیے اپنے منتظم سے تجدید کا کوڈ درج کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Field Assist 访问权限已过期。请输入管理员提供的续订代码，以再次记录经验。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Field Assist 使用權已到期。請輸入管理員提供的續約代碼，以再次記錄經驗。"
+          }
+        }
+      }
+    },
+    "Your Field Assist licence can't be checked right now, so nothing can be recorded. Try again when the phone is online." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا يمكن التحقق من رخصة Field Assist الآن، لذا لا يمكن تسجيل أي شيء. حاول مرة أخرى عندما يتصل الهاتف بالإنترنت."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se puede verificar tu licencia de Field Assist en este momento, así que no se puede grabar nada. Inténtalo de nuevo cuando el celular esté en línea."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre licence Field Assist ne peut pas être vérifiée pour le moment, donc rien ne peut être enregistré. Réessayez lorsque le téléphone sera en ligne."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A Field Assist licence most nem ellenőrizhető, ezért semmit sem lehet rögzíteni. Próbálja újra, amikor a telefon online lesz."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Al momento non è possibile verificare la tua licenza Field Assist, quindi non si può registrare nulla. Riprova quando il telefono è online."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在Field Assistのライセンスを確認できないため、何も録音できません。iPhoneがオンラインになってから再試行してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지금은 Field Assist 라이선스를 확인할 수 없어 아무것도 녹음할 수 없습니다. 휴대폰이 온라인 상태일 때 다시 시도하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uw Field Assist-licentie kan nu niet worden gecontroleerd, dus er kan niets worden opgenomen. Probeer het opnieuw wanneer de telefoon online is."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não é possível verificar sua licença Field Assist agora, então nada pode ser gravado. Tente novamente quando o telefone estiver online."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сейчас не удаётся проверить вашу лицензию Field Assist, поэтому ничего нельзя записать. Повторите попытку, когда телефон будет в сети."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کا Field Assist لائسنس ابھی جانچا نہیں جا سکتا، اس لیے کچھ ریکارڈ نہیں ہو سکتا۔ فون آن لائن ہونے پر دوبارہ کوشش کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前无法验证你的 Field Assist 许可证，因此无法录制任何内容。请在手机联网后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前無法驗證你的 Field Assist 授權，因此無法錄製任何內容。請在手機連網後再試一次。"
           }
         }
       }
