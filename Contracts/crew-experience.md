@@ -296,10 +296,14 @@ hyphens, at least five long, two digits and a letter, not the shape of a fault c
 bare size), or the file is refused by name. For a vault with manuals it adds only the models the
 administrator chose to add (§4.2.1); the layer rule already forbids it from replacing a publisher's file.
 
-An **experience-only vault** (`CrewModelsFile.experienceOnlyVault(name:id:models:)`) is a company vault
-whose core is its prompt rules — which carry the validator's "fabricate" and "cite" and the lead-in —
-and `crew-models.md`, and nothing else. On the phone it is an ordinary vault with no manual, so every
-answer from it rests on crew experience alone and opens with the lead-in.
+An **experience-only vault** (`CrewModelsFile.experienceOnlyVault(name:id:models:equipmentTypes:)`) is a
+company vault whose core is its prompt rules — which carry the validator's "fabricate" and "cite" and the
+lead-in — and `crew-models.md`, and nothing else. On the phone it is an ordinary vault with no manual, so
+every answer from it rests on crew experience alone and opens with the lead-in. Its manifest carries the
+vault's equipment types as `equipment_types` (team-learning §13; decided 2026-11-27), checked by
+`VaultPackRules.equipmentTypeIssues` and left out when there are none: the phone scopes a symptom learning
+by that list alone, so the portal's list for the vault is the manifest's, and changing it publishes a new
+version of the vault.
 
 ## 9. Citation and lead-in
 

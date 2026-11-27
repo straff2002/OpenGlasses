@@ -1316,6 +1316,9 @@ public enum CrewModelsFile {
         /// never be published to the vault.
         case notAModelNumber(String)
         case noModels
+        /// The equipment types would not pass the manifest's `equipment_types` rule
+        /// (`VaultPackRules.equipmentTypeIssues`), so the phone would refuse the vault.
+        case equipmentTypes([String])
     }
 
     /// Whether the phone's model index reads `spelling`, written in a heading, as one model token:
@@ -1368,10 +1371,20 @@ public enum CrewModelsFile {
 
     /// An experience-only vault (§7): a company vault whose core is its prompt rules and
     /// `crew-models.md`, and nothing else. On the phone it is an ordinary vault with no manual.
+    ///
+    /// `equipmentTypes` becomes the manifest's `equipment_types` (Plan IM decision 4, decided
+    /// 2026-11-27), the closed list the phone scopes a symptom learning by; it reads no other list,
+    /// so a starter that left it out would scope nothing. An empty list leaves the key out, as the
+    /// manifest rule asks.
     public static func experienceOnlyVault(name: String, id: String? = nil,
-                                           models: [VaultStarter.Model]) throws -> VaultStarter.Output {
+                                           models: [VaultStarter.Model],
+                                           equipmentTypes: [String] = []) throws -> VaultStarter.Output {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw VaultStarter.Failure.emptyName }
+        if !equipmentTypes.isEmpty {
+            let issues = VaultPackRules.equipmentTypeIssues(equipmentTypes)
+            guard issues.isEmpty else { throw Problem.equipmentTypes(issues) }
+        }
         let vaultName = trimmed.components(separatedBy: .newlines).joined(separator: " ")
         let vaultId = id ?? VaultStarter.vaultId(forName: vaultName)
         let file = VaultStarter.File(name: fileName, contents: try render(models: models))
@@ -1379,7 +1392,7 @@ public enum CrewModelsFile {
                                              documentsDir: VaultStarter.documentsDirectory, documents: [],
                                              gating: .init(iap: VaultStarter.gating), promptRules: experienceOnlyPromptRules,
                                              sourceAttributionFormat: "Source: {files}", sourceAttributionRequired: true,
-                                             trades: nil)
+                                             trades: nil, equipmentTypes: equipmentTypes.isEmpty ? nil : equipmentTypes)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         return VaultStarter.Output(id: vaultId, name: vaultName, manifestJSON: try encoder.encode(manifest), files: [file])
