@@ -1,8 +1,17 @@
 # Plan NK — Clinic Stock in the Clinic's Own Workbook (one fridge's count shared by several staff, kept in the clinic's Microsoft 365, with no server of ours)
 
-**Status:** 📝 Drafted 2026-11-27. Not scheduled. Nothing built. It waits on where the clinic's stock
-spreadsheet lives (MY open question 10) and comes after Plan [NJ](NJ-canada-inventory-only-clinic-stock.md),
-whose allow-listed row is the only thing this plan writes.
+**Status:** 🚧 P0–P1 built (headless) 2026-11-27; decisions 1–4 taken as recommended. Built: the
+workbook schema (`Movements`, `Counts`), row keys and the per-workbook send ledger (top-ups and
+corrections as new rows), the fold back with the phone's ledger semantics and a patient-column
+refusal, the comparison, `GraphRequestBuilder` and its transport, the `EntraOAuth` core, the
+tenant-country notice, the `clinicStockRows` op and its sink, the `clinicStockRecord` route, the
+sign-in, the connection sheet and the Stock screen's shared figure, and the support report line
+(see "Built" below). 77 new tests in 8 classes. **Owed:** the app's Entra registration and its
+client ID (owner; the build ships with `AVENKIN_ENTRA_CLIENT_ID` empty, so the feature says it isn't
+set up), P2 catalog sync, P3 a real Canadian tenant, and P3 confirming the narrowest Graph
+permission (whether the selected-files permission can replace `Files.ReadWrite`). It still waits on
+where the clinic's stock spreadsheet lives (MY open question 10). Comes after Plan
+[NJ](NJ-canada-inventory-only-clinic-stock.md), whose allow-listed row is the only thing this plan writes.
 **Track:** Field Assist stock, for a medical clinic.
 **Builds on:**
 - Plan [MY](MY-vaccine-stock.md) §8b: several staff, one fridge, one shared record. Staff record
@@ -91,7 +100,7 @@ as an ordinary spreadsheet.
   registration, which the clinic's administrator consents to once. The alternative is the clinic's
   own registration, the way `GoogleOAuth` takes the user's own client ID. Either way the token stays
   on the phone, in the Keychain (`…ThisDeviceOnly`), and never reaches us.
-- **The narrowest permission that reaches one workbook.** P0 confirms whether Graph's
+- **The narrowest permission that reaches one workbook.** P3 (on a real tenant) confirms whether Graph's
   selected-files permission works for an Excel table, or whether delegated `Files.ReadWrite` is
   needed. If it is the broader one, the request builder allows only the one workbook's table
   endpoints.
@@ -159,6 +168,50 @@ needs it.
   day offline and online; the clinic's administrator consent screen; a row inspected.
 
 **Rough size:** P0–P1 take 1–2 weeks for one developer. P2 takes a day.
+
+## Built (P0–P1, 2026-11-27)
+
+Code under `Services/FieldAssist/ClinicWorkbook/`, `Utils/EntraOAuth.swift` and
+`App/Views/Job/ClinicWorkbookViews.swift`. Where it differs from the design above, and why:
+
+- **Row keys** are `<seat>.<base>.<sequence>`: a hash of a random seat id made on the phone (kept in
+  the Keychain, not the licence seat, so nothing the vendor knows reaches the clinic's workbook), a
+  hash of what the row is about, and a sequence. The phone keeps a per-workbook ledger of what it
+  has sent by key, so a day sent twice adds nothing and a top-up or correction adds only the
+  difference under the next sequence. The sink also reads the tables' keys before adding, so a retry
+  after a lost reply adds nothing. A row taken back by undo becomes a row of the opposite quantity; a
+  count is never taken back (the next count replaces it). The first send covers the list's whole
+  history, later ones a 62-day window from the start of its first week. A phone with no ledger (a new
+  install) rebuilds it from its own seat's rows in the workbook.
+- **A count stands for the end of its day.** The workbook has the day, not the minute, so a dose given
+  after the day's count is in the record but the day closes at the figure counted; on that day the
+  shared figure and the phone's can differ by it, and the "differs" line says so. The rest of a day's
+  movements fold as one net change per lot, so the order rows sit in the table does not matter.
+- **Creating the tables needs two more writes** than §1 listed: the heading row of each new sheet
+  (exactly the fixed headings) and the new table's name (one of the two). Reading needs each table's
+  column names (`…/columns?$select=name`). The builder allows these and nothing else.
+- **Text cells go with a leading apostrophe** so Excel keeps a lot "1E5" or a line number "0123" as
+  text; numbers go as exact decimals. Reading accepts Excel's date serials too. P3 confirms both on a
+  tenant.
+- **Quantities are exact** in the workbook (the small-cell rule is for reports and exports); a
+  sensitive line still goes by the week.
+- **The opening figure of an imported list is not a movement**, so it does not reach the workbook; the
+  clinic's first count does.
+- **When rows go (Decision 3):** at the end of the check against the EMR, on demand ("Send to the
+  clinic's workbook"), and on the first launch of a day. Only a clinical list; a van's list is refused.
+- **Sign-in:** authority `organizations`, PKCE S256, redirect `avenkin-entra://auth` (registered in
+  the Info.plist), scopes `offline_access User.Read Files.ReadWrite`, an ephemeral browser session.
+  The client is the clinic's own when entered on the phone, else the build's
+  (`AvenkinEntraClientID`).
+
+**For the owner — the Entra registration:** in the Microsoft Entra admin centre, App registrations ›
+New registration; supported account types "Accounts in any organizational directory (multitenant)";
+platform "Mobile and desktop applications" with the redirect URI `avenkin-entra://auth`; Authentication ›
+Allow public client flows: Yes; API permissions › Microsoft Graph delegated `User.Read`,
+`Files.ReadWrite` and `offline_access` (no secret, no certificate). Put the Application (client) ID in
+`AVENKIN_ENTRA_CLIENT_ID` in `project.base.yml` and regenerate. A clinic's Microsoft 365 administrator
+then consents once (the app's sign-in shows them the consent screen, or they grant it from Enterprise
+applications).
 
 ## Tests
 
