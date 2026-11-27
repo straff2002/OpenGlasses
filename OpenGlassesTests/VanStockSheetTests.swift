@@ -322,6 +322,84 @@ final class VanStockSheetTests: XCTestCase {
         XCTAssertEqual(VanStockSheet.otherNames(in: String(repeating: "x", count: 61)), [], "a paragraph is not a name")
     }
 
+    // MARK: A clinic's own database layout: category and immunization number (Plan MY §8)
+
+    /// The fields a clinic named for its vaccine table: a five-character immunization number, a
+    /// category, a description, the tariff, brand names and the quantity on hand. Invented values.
+    private var clinicTable: [XLSXReader.Sheet] {
+        [XLSXReader.Sheet(name: "Table", isHidden: false, rows: [
+            ["Immunization #", "Category", "Description", "Tariff", "Brand Names", "Quantity on Hand"],
+            ["ZQ01A", "Respiratory", "Example respiratory vaccine", "9901", "Brandex, Brandix®", "12"],
+            ["ZQ02B", "Routine", "Example routine vaccine", "9902", "Routinol", ""],
+            ["ZQ03C", "", "Example other vaccine", "9903", "", "4"],
+        ])]
+    }
+
+    func testAClinicsTableReadsItsCategoryAndImmunizationNumber() throws {
+        let proposal = try VanStockSheet.proposal(from: clinicTable, log: VanStockLog()).get()
+        XCTAssertEqual(proposal.refusals, [])
+        XCTAssertEqual(proposal.newLines.map(\.number), ["9901", "9902", "9903"], "the tariff is still the line's number")
+        XCTAssertEqual(proposal.newLines.map(\.category), ["Respiratory", "Routine", nil])
+        XCTAssertEqual(proposal.newLines.map(\.otherNames), [["ZQ01A", "Brandex", "Brandix"], ["ZQ02B", "Routinol"], ["ZQ03C"]],
+                       "the immunization number is one of the line's codes, beside its brands")
+        XCTAssertEqual(proposal.newLines.map(\.onHand), [.whole(12), nil, .whole(4)])
+    }
+
+    func testACategoryIsKeptOnTheLineAndAnUndoTakesItBack() throws {
+        var log = VanStockLog()
+        VanStockSheet.apply(try VanStockSheet.proposal(from: clinicTable, log: log).get(), to: &log,
+                            at: time(0), batch: "import", verify: verify)
+        let line = try XCTUnwrap(log.items.first { $0.number == "9901" })
+        XCTAssertEqual(line.category, "Respiratory")
+        XCTAssertEqual(ImmunisationLineAliases.line(for: "zq01a", in: log.items)?.id, line.id,
+                       "the EMR check finds a line by its immunization number")
+        XCTAssertTrue(try VanStockSheet.proposal(from: clinicTable, log: log).get().changesNothing)
+
+        var rows = clinicTable[0].rows
+        rows[1][1] = "Respiratory  (seasonal)"
+        rows[2][1] = ""
+        let again = [XLSXReader.Sheet(name: "Table", isHidden: false, rows: rows)]
+        let proposal = try VanStockSheet.proposal(from: again, log: log).get()
+        XCTAssertEqual(proposal.edits.map(\.changes), [[.category("Respiratory (seasonal)")]],
+                       "a changed category is an edit; an emptied cell leaves the line's own")
+        VanStockSheet.apply(proposal, to: &log, at: time(60), batch: "again", verify: verify)
+        XCTAssertEqual(log.item(id: line.id)?.category, "Respiratory (seasonal)")
+        XCTAssertEqual(log.items.first { $0.number == "9902" }?.category, "Routine")
+
+        log.undoLastBatch(at: time(120), batch: "undo", source: .sheet)
+        XCTAssertEqual(log.item(id: line.id)?.category, "Respiratory")
+    }
+
+    func testOnlyANumberedImmunizationHeaderIsACode() throws {
+        for header in ["Immunization #", "Immunization#", "Immunisation No.", "Immunization Number", "Vaccine code"] {
+            XCTAssertTrue(VanStockSheet.immunisationCodeHeaders.contains(VanStockSheet.headerCode(header)), header)
+        }
+        XCTAssertFalse(VanStockSheet.immunisationCodeHeaders.contains(VanStockSheet.headerCode("Immunization")))
+
+        // A bare "Immunization" column may hold the vaccine's name; it is not read as codes.
+        let named = [XLSXReader.Sheet(name: "Stock", isHidden: false, rows: [
+            ["Immunization", "Tariff", "Qty"], ["Example vaccine", "9904", "3"],
+        ])]
+        let proposal = try VanStockSheet.proposal(from: named, log: VanStockLog()).get()
+        XCTAssertEqual(proposal.newLines.map(\.otherNames), [[]])
+    }
+
+    func testACategoryCellIsBounded() {
+        XCTAssertEqual(VanStockSheet.category(in: "  Routine \n "), "Routine")
+        XCTAssertNil(VanStockSheet.category(in: "   "))
+        XCTAssertNil(VanStockSheet.category(in: String(repeating: "x", count: 61)), "a paragraph is not a group")
+    }
+
+    func testALineStoredBeforeCategoriesReadsWithNone() throws {
+        let item = VanStockItem(id: "a", number: "9901", description: "Example", category: "Routine", createdBatch: "b")
+        let data = try JSONEncoder().encode(item)
+        XCTAssertEqual(try JSONDecoder().decode(VanStockItem.self, from: data).category, "Routine")
+        var stored = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        stored["category"] = nil
+        let older = try JSONSerialization.data(withJSONObject: stored)
+        XCTAssertNil(try JSONDecoder().decode(VanStockItem.self, from: older).category)
+    }
+
     // MARK: The list's place (Plan MK P0)
 
     private func meta(_ sheets: [XLSXReader.Sheet]) -> [[String]] {

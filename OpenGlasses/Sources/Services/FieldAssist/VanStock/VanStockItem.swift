@@ -64,6 +64,9 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
     /// is received, so "two boxes in" is 20 doses on a 10-dose line. Nil for every line that has
     /// never been given one, which is every line a van keeps.
     var dosesPerCarton: Int?
+    /// The group a list sorts the line under: "Respiratory", "Routine" in a clinic's vaccine
+    /// table (Plan MY §8). Nil for every line that has never been given one.
+    var category: String?
     /// The batch that created the line, so undoing that batch takes the line away again.
     let createdBatch: String
 
@@ -79,6 +82,7 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
          verified: Bool = false,
          verification: VanStockVerification? = nil,
          dosesPerCarton: Int? = nil,
+         category: String? = nil,
          createdBatch: String) {
         self.id = id
         self.number = number
@@ -91,6 +95,7 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
         self.codes = codes
         self.verification = verification ?? VanStockVerification(legacy: verified)
         self.dosesPerCarton = dosesPerCarton
+        self.category = category
         self.createdBatch = createdBatch
     }
 
@@ -107,7 +112,7 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, number, description, unit, minimum, standard, bin, codes, verified, verification
+        case id, number, description, unit, minimum, standard, bin, codes, verified, verification, category
         case standardSetBy = "standard_set_by"
         case createdBatch = "created_batch"
         case dosesPerCarton = "doses_per_carton"
@@ -132,6 +137,7 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
             verification = VanStockVerification(legacy: try container.decodeIfPresent(Bool.self, forKey: .verified) ?? false)
         }
         dosesPerCarton = try container.decodeIfPresent(Int.self, forKey: .dosesPerCarton)
+        category = try container.decodeIfPresent(String.self, forKey: .category)
         createdBatch = try container.decode(String.self, forKey: .createdBatch)
     }
 
@@ -151,6 +157,7 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
         try container.encode(verified, forKey: .verified)
         try container.encode(verification, forKey: .verification)
         try container.encodeIfPresent(dosesPerCarton, forKey: .dosesPerCarton)
+        try container.encodeIfPresent(category, forKey: .category)
         try container.encode(createdBatch, forKey: .createdBatch)
     }
 

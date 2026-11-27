@@ -160,6 +160,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
                           verified: Bool = false,
                           verification: VanStockVerification? = nil,
                           dosesPerCarton: Int? = nil,
+                          category: String? = nil,
                           batch: String) -> VanStockItem {
         let normalised = number.map(VaultPartsIndex.normalise).flatMap { $0.isEmpty ? nil : $0 }
         let item = VanStockItem(id: id, number: normalised,
@@ -168,6 +169,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
                                 standardSetBy: standard == nil ? nil : standardSetBy,
                                 bin: bin, codes: codes, verified: verified, verification: verification,
                                 dosesPerCarton: dosesPerCarton.flatMap { $0 > 0 ? $0 : nil },
+                                category: category?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
                                 createdBatch: batch)
         items.append(item)
         return item
@@ -293,6 +295,8 @@ struct VanStockLog: Codable, Equatable, Sendable {
         case verification(VanStockVerification)
         /// How many doses a carton holds (Plan MY §2); nil for none. Never zero or less.
         case dosesPerCarton(Int?)
+        /// The group a list sorts the line under (Plan MY §8); nil for none.
+        case category(String?)
     }
 
     /// Change one attribute of a line and note that it changed. False, and nothing noted, when the
@@ -352,6 +356,10 @@ struct VanStockLog: Codable, Equatable, Sendable {
             if let value, value <= 0 || value > 10_000 { return false }
             (attribute, old, new) = (.dosesPerCarton, item.dosesPerCarton.map(String.init), value.map(String.init))
             item.dosesPerCarton = value
+        case .category(let raw):
+            let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            (attribute, old, new) = (.category, item.category, value)
+            item.category = value
         }
 
         guard old != new else { return false }
@@ -468,6 +476,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
         // "true" and "false" from an older log, or a stored verification from a newer one.
         case .verified: items[index].verification = VanStockVerification(storedValue: old)
         case .dosesPerCarton: items[index].dosesPerCarton = old.flatMap(Int.init)
+        case .category: items[index].category = old
         }
     }
 

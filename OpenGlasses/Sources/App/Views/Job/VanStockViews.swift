@@ -356,10 +356,11 @@ private struct VanStockRowLabel: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    /// The part number and where it lives, when the description is not already the number.
+    /// The part number, its category and where it lives, when the description is not already
+    /// the number.
     private var detail: String? {
         let number = row.item.description.isEmpty ? nil : row.item.number
-        let parts = [number, row.item.bin].compactMap { $0 }
+        let parts = [number, row.item.category, row.item.bin].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -405,6 +406,7 @@ struct VanStockItemView: View {
     @State private var description = ""
     @State private var number = ""
     @State private var bin = ""
+    @State private var category = ""
     @State private var minimum = ""
     @State private var unit = VanStockUnit.each
     @State private var loaded = false
@@ -586,6 +588,10 @@ struct VanStockItemView: View {
                 refusalText(minimumRefusal, unit: unit)
             }
             TextField("Where it lives", text: $bin)
+            // Only a line given a category has one to change: a clinic's imported vaccine list.
+            if item.category != nil {
+                TextField("Category", text: $category)
+            }
             Button("Save details") { saveDetails() }
                 .disabled(changes(to: item).isEmpty && minimumIsTaken)
         } header: {
@@ -672,6 +678,7 @@ struct VanStockItemView: View {
         description = item.description
         number = item.number ?? ""
         bin = item.bin ?? ""
+        category = item.category ?? ""
         minimum = item.minimum.map { VanStockEntry.text($0, locale: locale) } ?? ""
         minimumRefusal = nil
         unit = item.unit
@@ -765,6 +772,8 @@ struct VanStockItemView: View {
         }
         let newBin = bin.trimmingCharacters(in: .whitespacesAndNewlines)
         if newBin != (item.bin ?? "") { changes.append(.bin(newBin.isEmpty ? nil : newBin)) }
+        let newCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
+        if newCategory != (item.category ?? "") { changes.append(.category(newCategory.isEmpty ? nil : newCategory)) }
         return changes
     }
 
