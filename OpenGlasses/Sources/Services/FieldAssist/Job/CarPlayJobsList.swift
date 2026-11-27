@@ -30,6 +30,25 @@ enum CarPlayJobsList {
         case readSendQueue
         /// Open a job ahead's two actions, Brief and Directions (Plan FO P3c).
         case openUpcomingJob(id: String)
+        /// Read the five prompts aloud and record hands-free (Plan IM P1).
+        case recordExperience
+        /// End the recording running now, keeping what was said.
+        case stopExperienceRecording
+    }
+
+    /// The "Record experience" row (Plan IM P1): not there, offered, or recording.
+    enum ExperienceRow: Equatable {
+        /// Withheld: Medical Compliance, Field Assist off, or a licence without team learnings.
+        case hidden
+        /// Shown. A lapsed licence is shown it too, and the recorder says why it can't start.
+        case offered
+        case recording
+    }
+
+    /// The row's state from the recorder's verdict and whether it is busy.
+    static func experienceRow(verdict: ExperienceRecordingAvailability.Verdict, recorderBusy: Bool) -> ExperienceRow {
+        guard verdict.isOffered else { return .hidden }
+        return recorderBusy ? .recording : .offered
     }
 
     /// What a job ahead offers on the car screen. Two rows, no more: the brief is spoken, and
@@ -60,6 +79,9 @@ enum CarPlayJobsList {
         if job.destination != nil { actions.append(.directions(jobId: job.id)) }
         return actions
     }
+
+    /// The experience row's id, stable across Record and Stop so the car keeps its place.
+    static let experienceRowId = "record-experience"
 
     /// How many jobs ahead the car screen carries.
     static let upcomingLimit = 5
@@ -105,7 +127,8 @@ enum CarPlayJobsList {
                      boundThreadId: String?,
                      debriefAvailable: Bool = false,
                      stagedSends: Int = 0,
-                     upcoming: [UpcomingJob] = []) -> [Row] {
+                     upcoming: [UpcomingJob] = [],
+                     experience: ExperienceRow = .hidden) -> [Row] {
         var rows: [Row] = []
         if stagedSends > 0 {
             rows.append(Row(id: "send-queue",
@@ -121,6 +144,24 @@ enum CarPlayJobsList {
                             detail: active.pausedAt == nil ? String(localized: "In progress") : String(localized: "Paused"),
                             isActiveJob: true,
                             selection: .resumeActiveJob(threadId: boundThreadId)))
+        }
+        // Record experience (Plan IM P1), after the open job: drive time is when a technician
+        // records what they know, and a recording made with a job open files on that job.
+        switch experience {
+        case .hidden:
+            break
+        case .offered:
+            rows.append(Row(id: experienceRowId,
+                            title: String(localized: "Record experience"),
+                            detail: String(localized: "One case per recording"),
+                            isActiveJob: false,
+                            selection: .recordExperience))
+        case .recording:
+            rows.append(Row(id: experienceRowId,
+                            title: String(localized: "Stop recording"),
+                            detail: String(localized: "Recording experience"),
+                            isActiveJob: false,
+                            selection: .stopExperienceRecording))
         }
         // Jobs ahead, after the open job and before the finished ones: the day's work in the order
         // it happens. Number (or site) and when — never the fault report, never the contact.

@@ -36,6 +36,7 @@ final class SubjectErasureTests: XCTestCase {
     private var exports: StagedExportCoordinator!
     private var spotlight: RecordingSpotlightIndexer!
     private var learningCandidates: LearningCandidateStore!
+    private var experienceRecordings: ExperienceRecordingStore!
     private var goals: GoalStore!
     private var activity: ActivityStore!
     private var captionSessions: CaptionSessionStore!
@@ -66,6 +67,7 @@ final class SubjectErasureTests: XCTestCase {
         queue = OfflineQueue(path: queuePath)
         spotlight = RecordingSpotlightIndexer()
         learningCandidates = LearningCandidateStore(directory: workspace)
+        experienceRecordings = ExperienceRecordingStore(directory: workspace)
         goals = GoalStore(directory: workspace, hipaaRetentionDays: { nil })
         activity = ActivityStore(directory: workspace, hipaaMode: { false }, hipaaRetentionDays: { nil })
         captionSessions = makeCaptionSessions()
@@ -117,6 +119,7 @@ final class SubjectErasureTests: XCTestCase {
         stores.conversations = conversations
         stores.offlineQueue = queue
         stores.learningCandidates = learningCandidates
+        stores.experienceRecordings = experienceRecordings
         stores.goals = goals
         stores.activity = activity
         stores.captionSessions = captionSessions
@@ -198,6 +201,12 @@ final class SubjectErasureTests: XCTestCase {
             finding: "\(canary)'s unit trips on a cold start", symptom: nil, fix: nil,
             evidence: .init(), author: "Sam Tane", createdAt: Date(), redactions: []))
 
+        // An experience recording that slipped a customer's name past the standing line (Plan IM P1).
+        experienceRecordings.add(ExperienceRecording(
+            createdAt: Date(), duration: 42,
+            transcript: "At \(canary)'s place the condenser fan seizes on a cold start",
+            redactions: [], vaultId: "refrigeration"))
+
         // A goal that names them, and a trail row whose approval line does (Plan IW P1).
         goals.add(Goal(id: UUID(), title: "Plan \(canary)'s farewell", createdAt: Date(),
                        steps: [GoalStep(id: UUID(), title: "Book the hall")], source: .wearer))
@@ -242,6 +251,7 @@ final class SubjectErasureTests: XCTestCase {
         note("captionSessions", captionSessions.sessions.flatMap(\.turns)
             .map { "\($0.speaker ?? "") \($0.said)" }.joined(separator: ","))
         note("learningCandidates", learningCandidates.candidates.map(\.finding).joined(separator: ","))
+        note("experienceRecordings", experienceRecordings.recordings.map(\.transcript).joined(separator: ","))
         note("preparedCards", preparedCards.entries.values.compactMap(\.memory.editedText).joined(separator: ","))
         note("writingStyle", "\(writingStyle.style.signOff) \(writingStyle.style.freeLine)")
         note("goals", goals.goals.map { "\($0.title) \($0.steps.map(\.title))" }.joined(separator: ","))
@@ -273,6 +283,7 @@ final class SubjectErasureTests: XCTestCase {
         recordedSessions = RecordedSessionStore(documentsDirectory: workspace)
         queue = OfflineQueue(path: queuePath)
         learningCandidates = LearningCandidateStore(directory: workspace)
+        experienceRecordings = ExperienceRecordingStore(directory: workspace)
         goals = GoalStore(directory: workspace, hipaaRetentionDays: { nil })
         activity = ActivityStore(directory: workspace, hipaaMode: { false }, hipaaRetentionDays: { nil })
         captionSessions = makeCaptionSessions()

@@ -2200,6 +2200,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 FieldSessionService.shared.eraseOfficeSuppliedContext()
                 // Team-learning candidates were filed for this organisation's supervisor (Plan FP).
                 LearningCandidateStore.shared.removeAll()
+                // …and so were the experience recordings, and their audio (Plan IM P1).
+                ExperienceRecordingStore.shared.removeAll()
                 // …and so were the approved entries and the corpus they answer from (Plan FP P2).
                 LearningEntryStore.shared.removeAll()
                 // …and so was the company's crew experience, delivered with its vaults (Plan NF).
@@ -2832,6 +2834,9 @@ class AppState: ObservableObject, AppStateProtocol {
     /// A job file handed to the app, while it is being reviewed (Plan FO P3c). Nothing reaches
     /// `upcomingJobs` without the technician's tap on its sheet.
     let jobFiles = JobFileService()
+    /// "Record experience" on the phone and in the car (Plan IM P1). Its seams are in
+    /// `AppState+ExperienceRecorder.swift`.
+    lazy var experienceRecorder: ExperienceRecorder = makeExperienceRecorder()
     /// The lens cue last raised for an outstanding job question (Plan FO P3a). Held so the same
     /// question is not flashed again every time anything else about the session moves.
     private var lastJobQuestionCue: JobQuestionHUDCue.Cue?
@@ -2939,6 +2944,7 @@ class AppState: ObservableObject, AppStateProtocol {
         erasure.capturedManuals = CapturedManualStore.shared
         erasure.capturedManualDeliveryErasure = {CapturedManualOutbox.shared.forget($0)}
         erasure.learningCandidates = LearningCandidateStore.shared
+        erasure.experienceRecordings = ExperienceRecordingStore.shared
         erasure.learningEntries = LearningEntryStore.shared
         erasure.companyExperience = CompanyExperienceStore.shared
         // Plan IW P1: goals and the activity trail can name a person; forgetting them reaches both.
@@ -3554,6 +3560,7 @@ class AppState: ObservableObject, AppStateProtocol {
             erasureStores.capturedManuals = CapturedManualStore.shared
             erasureStores.capturedManualDeliveryErasure = {CapturedManualOutbox.shared.forget($0)}
             erasureStores.learningCandidates = LearningCandidateStore.shared
+            erasureStores.experienceRecordings = ExperienceRecordingStore.shared
             erasureStores.learningEntries = LearningEntryStore.shared
             erasureStores.companyExperience = CompanyExperienceStore.shared
             erasureStores.goals = GoalStore.shared
@@ -5127,6 +5134,16 @@ class AppState: ObservableObject, AppStateProtocol {
             .removeDuplicates()
             .sink { _ in CarPlaySceneDelegate.current?.refreshJobsTab() }
         cancellables.append(upcomingJobsToken)
+
+        // The car's Jobs list carries "Record experience" (Plan IM P1), whose row reads Stop while
+        // a recording runs. The store's first touch also deletes audio past its 30 days.
+        let experienceToken = experienceRecorder.$phase
+            .map(\.isBusy)
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { _ in CarPlaySceneDelegate.current?.refreshJobsTab() }
+        cancellables.append(experienceToken)
+        ExperienceRecordingStore.shared.sweepExpiredAudio()
 
         // Auto-present the interactive HUD task card (Display Phase 3 / Plan X) when a
         // Playbook session starts; the router self-dismisses when the workflow ends.

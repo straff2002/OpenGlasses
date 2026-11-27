@@ -126,6 +126,8 @@ final class SubjectErasureCoordinator {
         var capturedManuals: CapturedManualStore?
         var capturedManualDeliveryErasure: ((String) -> Void)?
         var learningCandidates: LearningCandidateStore?
+        /// Experience recordings and their audio (Plan IM P1).
+        var experienceRecordings: ExperienceRecordingStore?
         var learningEntries: LearningEntryStore?
         /// Each company vault's crew experience set (Plan NF).
         var companyExperience: CompanyExperienceStore?
@@ -178,6 +180,7 @@ final class SubjectErasureCoordinator {
         .captionSessions,
         .owedMeetingNotes,
         .learningCandidates,
+        .experienceRecordings,
         .learningEntries,
         .companyExperience,
         .assistingHandovers,
@@ -273,6 +276,8 @@ final class SubjectErasureCoordinator {
                 receipt = eraseOwedMeetingNotes(subject)
             case .learningCandidates:
                 receipt = eraseLearningCandidates(subject)
+            case .experienceRecordings:
+                receipt = eraseExperienceRecordings(subject)
             case .learningEntries:
                 receipt = eraseLearningEntries(subject)
             case .companyExperience:
@@ -738,6 +743,16 @@ final class SubjectErasureCoordinator {
         }
         guard case .person = subject else { return .complete(.learningCandidates) }
         return .complete(.learningCandidates, removed: candidates.deleteMatching(subject.searchToken))
+    }
+
+    /// An experience recording whose transcript names the subject goes whole, its audio with it
+    /// (Plan IM P1): the audio is not searchable, so the transcript is what finds it.
+    private func eraseExperienceRecordings(_ subject: ErasureSubject) -> ErasureReceipt {
+        guard let recordings = stores.experienceRecordings else {
+            return .unsupported(.experienceRecordings, "no experience recording store was supplied")
+        }
+        guard case .person = subject else { return .complete(.experienceRecordings) }
+        return .complete(.experienceRecordings, removed: recordings.deleteMatching(subject.searchToken))
     }
 
     /// An approved team learning that names the subject goes whole, history included (Plan FP

@@ -220,7 +220,10 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                                             boundThreadId: appState.guidedJobFlow.boundThreadId,
                                             debriefAvailable: Config.fieldAssistActive,
                                             stagedSends: appState.jobSends.stagedCount,
-                                            upcoming: Config.fieldAssistActive ? appState.upcomingJobs.jobs : [])
+                                            upcoming: Config.fieldAssistActive ? appState.upcomingJobs.jobs : [],
+                                            experience: CarPlayJobsList.experienceRow(
+                                                verdict: appState.experienceRecorder.verdict,
+                                                recorderBusy: appState.experienceRecorder.phase.isBusy))
             var items: [CPListItem] = rows.map { row in
                 let item = CPListItem(
                     text: row.title,
@@ -281,6 +284,13 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                 await appState.speechService.speak(appState.jobSends.spokenQueue(), source: .job)
             case .openUpcomingJob(let id):
                 self.pushUpcomingJob(id: id, spoken: spoken)
+            case .recordExperience:
+                // Hands-free from here: the prompts are read aloud, and "that's one, next case",
+                // "that's all" or the Stop row end a recording. No voice template: nothing said
+                // while recording reaches the assistant.
+                await appState.experienceRecorder.start(from: .carPlay)
+            case .stopExperienceRecording:
+                await appState.experienceRecorder.finish()
             }
         }
     }
@@ -288,6 +298,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private static func symbol(for row: CarPlayJobsList.Row) -> String {
         if row.isActiveJob { return "wrench.and.screwdriver.fill" }
         if case .openUpcomingJob = row.selection { return "calendar" }
+        if case .recordExperience = row.selection { return "mic.fill" }
+        if case .stopExperienceRecording = row.selection { return "stop.circle.fill" }
         return "checkmark.seal"
     }
 
