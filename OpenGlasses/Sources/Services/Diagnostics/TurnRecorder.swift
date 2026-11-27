@@ -411,9 +411,12 @@ enum TurnRecorder {
         }
     }
 
-    /// Model tool dispatch, including the explicitly supported web-search evidence. Other tools
-    /// remain names/outcomes only. The caller captures `turnID` before it awaits the tool.
+    /// Model tool dispatch, including the explicitly supported web-search evidence and, for the
+    /// Field Assist tools `ToolReportPolicy` names, their arguments and returned text (Plan NI).
+    /// Other tools remain names/outcomes only. `report` is what the tool recorded for this call
+    /// with `ToolReportText`. The caller captures `turnID` before it awaits the tool.
     static func noteToolResult(name: String, outcome: String, query: String?, result: String,
+                               arguments: [String: Any] = [:], report: ToolReportText.Entry? = nil,
                                turnID: UUID?, secrets: () -> [String] = { Config.knownSecretValues }) {
         guard let turnID, turnID == toolTraceID else { return }
         update {
@@ -422,13 +425,26 @@ enum TurnRecorder {
             // A refused search went nowhere: the line says so, and there is no search to record
             // (Plan KE).
             if name == "web_search", outcome != "refused", let query {
-                let used = $0.toolCalls.reduce(0) { $0 + ($1.search?.result.count ?? 0) }
                 note.search = .init(query: query, result: result,
-                                    remainingResultCharacters: TurnTimeline.SearchEvidence.turnResultLimit - used,
+                                    remainingResultCharacters: TurnTimeline.SearchEvidence.turnResultLimit
+                                        - returnedCharacters($0.toolCalls),
+                                    secrets: secrets())
+            } else if ToolReportPolicy.keepsEvidence(name) {
+                note.detail = .init(arguments: ToolReportPolicy.arguments(of: name, in: arguments),
+                                    returned: ToolReportPolicy.returned(tool: name, outcome: outcome,
+                                                                        result: result, report: report),
+                                    remainingResultCharacters: TurnTimeline.SearchEvidence.turnResultLimit
+                                        - returnedCharacters($0.toolCalls),
                                     secrets: secrets())
             }
             $0.toolCalls.append(note)
         }
+    }
+
+    /// The returned text a turn's notes already keep — searches and Field Assist tools share one
+    /// budget (Plan NI D2).
+    private static func returnedCharacters(_ notes: [TurnTimeline.ToolNote]) -> Int {
+        notes.reduce(0) { $0 + ($1.search?.result.count ?? 0) + ($1.detail?.returned.count ?? 0) }
     }
 
     /// Plan KZ §9: a search the provider ran itself. Recorded as a `web_search` note with outcome
@@ -441,7 +457,7 @@ enum TurnRecorder {
         update {
             guard $0.toolCalls.count < maxToolCalls else { return }
             var note = TurnTimeline.ToolNote(name: "web_search", outcome: "provider")
-            let used = $0.toolCalls.reduce(0) { $0 + ($1.search?.result.count ?? 0) }
+            let used = returnedCharacters($0.toolCalls)
             note.search = .init(query: evidence.queries.joined(separator: " | "),
                                 result: "provider: \(provider)\n" + evidence.traceText,
                                 remainingResultCharacters: TurnTimeline.SearchEvidence.turnResultLimit - used,

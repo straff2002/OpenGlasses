@@ -1157,12 +1157,16 @@ class LLMService: ObservableObject {
                 let outcome: ToolExecutionOutcome
                 // Plan LA: what a native tool said about its request landing, beside its outcome.
                 var completion: ActionCompletion?
+                // Plan NI: what the tool said a support report may show of its result.
+                var report: ToolReportText.Entry?
                 if let router = self.nativeToolRouter {
                     // The provider's own call id, where it gave one: a redelivery of this exact
                     // call then resolves to the operation that already ran instead of running again.
-                    (outcome, completion) = await ActionCompletionReport.collect {
-                        await router.executeRoot(name: name, args: args, origin: .model,
-                                                 invocationID: callID ?? UUID().uuidString)
+                    ((outcome, completion), report) = await ToolReportText.collect {
+                        await ActionCompletionReport.collect {
+                            await router.executeRoot(name: name, args: args, origin: .model,
+                                                     invocationID: callID ?? UUID().uuidString)
+                        }
                     }
                 } else if let bridge = self.openClawBridge, Config.isOpenClawAgentActive,
                           !VaultOnlyPolicy.jobIsSealed {
@@ -1178,12 +1182,15 @@ class LLMService: ObservableObject {
                 if name == ProviderSearchPolicy.ourToolName, case .completed = outcome {
                     self.addReplyWebSources(ProviderSearchEvidence.ourToolSources(fromResult: outcome.text))
                 }
-                // Support trace: only web_search keeps a bounded, redacted query and result.
-                // Unknown tool names and all other arguments/outputs remain unrecorded.
+                // Support trace: web_search keeps a bounded, redacted query and result, and the
+                // Field Assist tools `ToolReportPolicy` names keep their arguments and returned text
+                // the same way, without the book's own text (Plan NI). Unknown tool names and all
+                // other arguments/outputs remain unrecorded.
                 let known = self.nativeToolRouter?.registry.tool(named: name) != nil
                 TurnRecorder.noteToolResult(name: known ? name : "unrecognised tool",
                                             outcome: LLMService.traceOutcome(outcome),
                                             query: args["query"] as? String, result: outcome.text,
+                                            arguments: args, report: report,
                                             turnID: toolTraceID)
                 // Plan IU: what a lookup returned, and any tool the model reached, stay declared for
                 // the rest of the conversation.

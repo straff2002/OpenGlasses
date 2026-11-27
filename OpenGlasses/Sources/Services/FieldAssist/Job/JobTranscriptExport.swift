@@ -512,13 +512,18 @@ enum JobTranscriptExport {
         else said on site: share it only with people who should see these jobs.
         """
 
+    /// What every troubleshooting preamble says about the Field Assist tools' records (Plan NI).
+    static let fieldToolsSentence = "Rule chains, table lookups and manual lookups include what they were asked " +
+        "and what they answered, with the code books' own text (table cells, notes and manual passages) left out."
+
     static let troubleshootingPreamble = """
         Troubleshooting details are included: for each AI turn, which model answered, what went \
         with the words (the parts of the instructions by size, manual pages, photos, tools), how \
         long it took and how it ended; each job's own log; \(GlassesSupportPolicy.reportDevices); and the \
         app's event log. The words sent to the AI are the transcript lines themselves. Keys and \
         tokens are masked. Recorded web searches include their queries and returned text, \
-        including source URLs when returned; long contents are marked as truncated.
+        including source URLs when returned. \(fieldToolsSentence) Long contents are marked as \
+        truncated.
         """
 
     /// The opening of the crash report an organisation phone sends the developer.
@@ -552,7 +557,7 @@ enum JobTranscriptExport {
         app's event log and debug log from five minutes before the conversation to five minutes \
         after it. The words sent to the AI are the transcript lines themselves. Keys and tokens \
         are masked. Recorded web searches include their queries and returned text, including \
-        source URLs when returned; long contents are marked as truncated.
+        source URLs when returned. \(fieldToolsSentence) Long contents are marked as truncated.
         """
 
     /// The top of a file that holds one reported reply (Plan MH P1). Like the conversation's, it
@@ -570,8 +575,8 @@ enum JobTranscriptExport {
         took and how it ended; \(GlassesSupportPolicy.reportDevices); and the app's event log and \
         debug log from a minute before the turn to a minute after it. The words sent to the AI are \
         the transcript lines themselves. Keys and tokens are masked. Recorded web searches include \
-        their queries and returned text, including source URLs when returned; long contents are \
-        marked as truncated.
+        their queries and returned text, including source URLs when returned. \(fieldToolsSentence) \
+        Long contents are marked as truncated.
         """
 
     static let jobConversationNote = """
@@ -968,6 +973,9 @@ enum JobTranscriptExport {
             out.append(indent + "tools: " + trace.toolCalls.map { "\($0.name) (\($0.outcome))" }
                 .joined(separator: ", "))
             for (index, call) in trace.toolCalls.enumerated() {
+                if let detail = call.detail {
+                    out += render(detail, of: call, number: index + 1, indent: indent)
+                }
                 guard let search = call.search else { continue }
                 out.append(indent + "web search (tool call \(index + 1), \(call.outcome)):")
                 out.append(indent + "  query" + (search.queryTruncated ? " [truncated]" : "") + ":")
@@ -982,6 +990,29 @@ enum JobTranscriptExport {
         if let tools = trace.toolSeconds { timing.append("tools took \(seconds(tools))") }
         if let heard = trace.perceivedLatency { timing.append("heard \(seconds(heard)) after speech ended") }
         if !timing.isEmpty { out.append(indent + "timing: " + timing.joined(separator: ", ")) }
+        return out
+    }
+
+    /// A Field Assist tool call's arguments and what it answered (Plan NI). A lookup that found
+    /// something in a book says how much of the book's text was left out, or, when the tool could
+    /// not say what it returned, gives the size alone.
+    ///
+    /// The labels are chosen with the masking pass in mind, like `failureDetail`'s: none of the
+    /// argument names is one the pass blanks after.
+    private static func render(_ detail: TurnTimeline.ToolEvidence, of call: TurnTimeline.ToolNote,
+                               number: Int, indent: String) -> [String] {
+        var out = [indent + "\(call.name) (tool call \(number), \(call.outcome)):"]
+        let arguments = detail.arguments.map { "\($0.name): \($0.value)" + ($0.truncated ? " [truncated]" : "") }
+        out.append(indent + "  arguments: " + (arguments.isEmpty ? "none" : arguments.joined(separator: " · ")))
+        if let size = detail.notShownCharacters {
+            out.append(indent + "  returned text: not shown (\(size) characters, which may hold a book's own text)")
+            return out
+        }
+        let leftOut = detail.bookTextLeftOut.map {
+            ", with the book's own text left out (\($0) characters of table cells, notes and passages)"
+        } ?? ""
+        out.append(indent + "  returned text" + leftOut + (detail.returnedTruncated ? " [truncated]" : "") + ":")
+        out += detail.returned.components(separatedBy: .newlines).map { indent + "    " + $0 }
         return out
     }
 

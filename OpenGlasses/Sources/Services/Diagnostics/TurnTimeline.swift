@@ -159,6 +159,9 @@ struct TurnTimeline: Identifiable, Equatable {
         /// Only web_search carries content, redacted and bounded before it reaches the ledger.
         /// Optional so pre-existing traces continue to decode.
         var search: SearchEvidence? = nil
+        /// A Field Assist tool's arguments and returned text (Plan NI, `ToolReportPolicy`), redacted
+        /// and bounded the same way. Optional so pre-existing traces continue to decode.
+        var detail: ToolEvidence? = nil
     }
 
     /// What a search returned to the model, not the underlying fetched web pages. Kept only in

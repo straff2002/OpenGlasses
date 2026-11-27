@@ -5,7 +5,8 @@ import Foundation
 ///
 /// Conversation words remain in the conversation thread. A trace carries what went *with* them:
 /// prompt sizes, manual citations, tool outcomes and errors. Web searches additionally carry a
-/// bounded, credential-redacted query and returned text, which may contain personal information.
+/// bounded, credential-redacted query and returned text, which may contain personal information, and
+/// three Field Assist tools carry their arguments and returned text the same way (Plan NI).
 /// Traces stay on the device for up to a fortnight and leave only in a support report the wearer
 /// previews and shares. Ordinary event-log diagnostics contain none of this search content.
 struct TurnTrace: Codable, Equatable, Identifiable {
@@ -122,7 +123,8 @@ struct TurnTrace: Codable, Equatable, Identifiable {
     }
 
     /// The trace with every field that can carry the conversation's words dropped: a search's
-    /// query and result, the manual passages it read, and the thread it was filed in. Timings,
+    /// query and result, a Field Assist tool's arguments and returned text (Plan NI), the manual
+    /// passages it read, and the thread it was filed in. Timings,
     /// counts, the backend and the tool names stay (Plan LU §3).
     func withoutText() -> TurnTrace {
         var copy = self
@@ -190,7 +192,8 @@ final class TurnTraceStore {
     }
 
     /// Keep a trace. A private conversation's turn keeps its timings and shape but none of its text
-    /// (Plan LU §3): no search query or result, no manual passage, no thread.
+    /// (Plan LU §3): no search query or result, no tool's arguments or returned text, no manual
+    /// passage, no thread.
     func append(_ trace: TurnTrace) {
         let kept = PrivateConversationGate.skips(.turnTraceText) ? trace.withoutText() : trace
         var traces = load()
