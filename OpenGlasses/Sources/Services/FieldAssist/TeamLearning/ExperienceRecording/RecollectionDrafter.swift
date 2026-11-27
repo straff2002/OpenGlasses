@@ -17,16 +17,22 @@ protocol RecollectionDraftModel: AnyObject {
 @MainActor
 final class LLMRecollectionDraftModel: RecollectionDraftModel {
     private weak var llm: LLMService?
+    private let toolName: String
+    private let maxTokens: Int
 
-    init(llm: LLMService?) {
+    /// The tool name and token budget are the recollection pass's unless another pass (the site
+    /// drafting, Plan IM P4) names its own.
+    init(llm: LLMService?, toolName: String = RecollectionDraftRules.toolName, maxTokens: Int = 2048) {
         self.llm = llm
+        self.toolName = toolName
+        self.maxTokens = maxTokens
     }
 
     func extract(system: String, transcript: String, schema: [String: Any]) async -> Data? {
         guard let llm,
               let object = await llm.completeStructured(systemPrompt: system, userText: transcript,
-                                                         jsonSchema: schema, toolName: RecollectionDraftRules.toolName,
-                                                         maxTokens: 2048) else { return nil }
+                                                         jsonSchema: schema, toolName: toolName,
+                                                         maxTokens: maxTokens) else { return nil }
         return try? JSONSerialization.data(withJSONObject: object)
     }
 }
@@ -79,6 +85,9 @@ final class RecollectionDrafter {
         case notReviewerDevice
         case medicalCompliance
         case emptyTranscript
+        /// A site recording (Plan IM P4) drafts a site document (`SiteRecordingDrafter`), never a
+        /// learning candidate.
+        case siteRecording
 
         var message: String {
             switch self {
@@ -88,6 +97,8 @@ final class RecollectionDrafter {
                 return String(localized: "Experience recordings aren't drafted while Medical Compliance is on.")
             case .emptyTranscript:
                 return String(localized: "This recording has no words to draft from.")
+            case .siteRecording:
+                return String(localized: "This is a site recording, so it drafts a site document, not team learnings.")
             }
         }
     }
@@ -106,6 +117,7 @@ final class RecollectionDrafter {
         let context = context()
         guard !context.medicalComplianceMode else { return .failure(.medicalCompliance) }
         guard context.isReviewerDevice else { return .failure(.notReviewerDevice) }
+        guard recording.kind == .experience else { return .failure(.siteRecording) }
         let segments = RecollectionSegmenter.segments(in: recording.transcript, index: vault.index)
         guard !segments.isEmpty else { return .failure(.emptyTranscript) }
 

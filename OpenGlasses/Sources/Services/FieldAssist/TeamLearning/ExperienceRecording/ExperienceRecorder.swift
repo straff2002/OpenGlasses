@@ -77,6 +77,10 @@ enum ExperienceJobFiling {
 /// (`ExperienceRecordingMarkers`), "that's all" or Stop ends the session, and ten minutes ends a
 /// recording whatever is being said. The standing line — no customer names or addresses — is said
 /// once per session; in the car the five prompts are read aloud as well.
+///
+/// **A site recording** (Plan IM P4, "Tell me about this site") is the same session of a different
+/// kind: in the car the site prompts are read instead, and it is always kept on the phone, never
+/// filed on an open job, because a site recording drafts a site document and never a learning.
 @MainActor
 final class ExperienceRecorder: ObservableObject {
 
@@ -155,6 +159,8 @@ final class ExperienceRecorder: ObservableObject {
 
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var surface: Surface = .phone
+    /// What the session records: cases, or a site.
+    @Published private(set) var kind: ExperienceRecording.Kind = .experience
     /// Seconds into the case being recorded.
     @Published private(set) var elapsed: TimeInterval = 0
     /// What has been heard of the case so far, cleaned and redacted as it will be kept.
@@ -183,7 +189,7 @@ final class ExperienceRecorder: ObservableObject {
     // MARK: - Starting and stopping
 
     /// Start a session: the standing line, the prompts in the car, then the first case.
-    func start(from surface: Surface) async {
+    func start(from surface: Surface, kind: ExperienceRecording.Kind = .experience) async {
         guard phase == .idle else { return }
         let verdict = seams.availability()
         guard verdict.isAvailable else {
@@ -195,6 +201,7 @@ final class ExperienceRecorder: ObservableObject {
             return
         }
         self.surface = surface
+        self.kind = kind
         phase = .preparing
         lastOutcome = nil
         caseCount = 0
@@ -210,7 +217,9 @@ final class ExperienceRecorder: ObservableObject {
             intro.append(ExperienceRecorderCopy.standingLine)
             standingLineSaid = true
         }
-        if surface == .carPlay { intro.append(ExperienceRecorderCopy.carPlayPrompts) }
+        if surface == .carPlay {
+            intro.append(kind == .site ? ExperienceRecorderCopy.carPlaySitePrompts : ExperienceRecorderCopy.carPlayPrompts)
+        }
         intro.append(ExperienceRecorderCopy.recordingNow)
         await seams.speak(intro.joined(separator: " "))
         // Stopped while the prompts were being read: nothing was recorded.
@@ -320,7 +329,7 @@ final class ExperienceRecorder: ObservableObject {
         if cleaned.text.isEmpty {
             outcome = .nothingHeard
             if let url { try? FileManager.default.removeItem(at: url) }
-        } else if let job = jobSessionId, seams.openJob() == job {
+        } else if kind == .experience, let job = jobSessionId, seams.openJob() == job {
             switch seams.fileOnJob(cleaned.text) {
             case .filed(let count, let reference):
                 outcome = .filedOnJob(count: count, jobReference: reference)
@@ -367,7 +376,7 @@ final class ExperienceRecorder: ObservableObject {
     }
 
     private func keep(_ cleaned: ExperienceTranscript.Cleaned, startedAt: Date, seconds: Int, audio: URL?) {
-        let recording = ExperienceRecording(id: caseId, createdAt: startedAt, duration: seconds,
+        let recording = ExperienceRecording(id: caseId, kind: kind, createdAt: startedAt, duration: seconds,
                                             transcript: cleaned.text, redactions: cleaned.redactions,
                                             vaultId: seams.vaultInForce())
         store.add(recording, audioFrom: audio)

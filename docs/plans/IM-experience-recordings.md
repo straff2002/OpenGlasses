@@ -1,6 +1,6 @@
 # Plan IM — Experience Recordings (what the crew already knows, one case per recording)
 
-**Status:** ✅ P0 merged 2026-11-27 (PR 1256, build 783) ([below](#p0--contract-amendment-and-the-model-headless)): team-learning §13, the candidate's `tried`/`outcome` and `recording` evidence, the manifest's `equipment_types`, symptom matching in retrieval, recollections ranked below job-confirmed learnings, and the recalled lead-in. Part of P0 was built by Plan NF P0 (2026-11-25): `LearningCandidate.Origin.recollection`, the entry fields `tried`/`outcome`, `LearningEntry.Subject.symptom(equipmentType:phrase:)` and §11. ✅ P1 merged 2026-11-27 (PR 1258, build 784) ([below](#p1--the-recorder-record-experience-phone-and-carplay)): the recorder on the phone and CarPlay. 🚧 P2 built 2026-11-27, PR pending ([below](#p2--the-drafting-pass-pure-segmentation-model-extraction-validation)): the drafting pass, segmenter, schema-forced extraction and validator, with the schema and ten scripted recollections shared with the office's intake (team-learning §13.1). P3–P4 not built. Drafted 2026-10-16.
+**Status:** ✅ P0 merged 2026-11-27 (PR 1256, build 783) ([below](#p0--contract-amendment-and-the-model-headless)): team-learning §13, the candidate's `tried`/`outcome` and `recording` evidence, the manifest's `equipment_types`, symptom matching in retrieval, recollections ranked below job-confirmed learnings, and the recalled lead-in. Part of P0 was built by Plan NF P0 (2026-11-25): `LearningCandidate.Origin.recollection`, the entry fields `tried`/`outcome`, `LearningEntry.Subject.symptom(equipmentType:phrase:)` and §11. ✅ P1 merged 2026-11-27 (PR 1258, build 784) ([below](#p1--the-recorder-record-experience-phone-and-carplay)): the recorder on the phone and CarPlay. ✅ P2 merged 2026-11-27 (PR 1261, build 786) ([below](#p2--the-drafting-pass-pure-segmentation-model-extraction-validation)): the drafting pass, segmenter, schema-forced extraction and validator, with the schema and ten scripted recollections shared with the office's intake (team-learning §13.1). 🚧 P4 headless core built 2026-11-27, PR pending ([below](#p4--onboarding-campaign-and-site-brain-dumps)): the coverage count and the list, and site recordings drafting an HV site document; sending the list waits on P3's channel, and the site recording's entry points, its review and the device pass are owed. P3 not built. Drafted 2026-10-16.
 **Track:** Field Assist (B2B).
 **Depends on:** Plan [FP](FP-team-learnings.md) P0–P3 (shipped: candidate, review, entry, corpus,
 bundle) and FP P4 (the review queue on a screen) before anything here is usable by a supervisor.
@@ -275,6 +275,67 @@ P1.
 - **Exit test:** the coverage count against the Lennox (or fictional) vault fixture; a site
   recording drafts a site document that validates against HV's schema.
 
+**Headless core built 2026-11-27, PR pending.** HV P0–P2 are built, so the site recording is not
+gated on them.
+
+- **What's missing.** `ExperienceCoverage.of(_:entries:)` (pure) takes the vault's
+  `LearningCorpus.VaultTarget` and the phone's approved entries (`TeamLearningSources`: phone-reviewed
+  and the company's crew experience set, every origin) and returns the index's models no entry is
+  about, in the index's order. An entry counts when it is live and `LearningCorpus.placement` would
+  publish it to the vault; it covers a model by identity, as retrieval scopes a learning
+  (`ModelScope.identity(token)` among the model's `tokens`, contract §7.2), never by its prose.
+  `ExperienceCoverageCopy` words it ("14 models in your vault have no crew experience yet", "1 model
+  …", "Every model in your vault has crew experience.", nothing for a vault with no models).
+  `ExperienceCoverageRequest` is the list a reviewer would send (vault, its name, the models' names,
+  the day asked; nobody named, nothing assigned) and the card's line is "Could you record what you
+  know about these?". On a reviewer device (`Config.teamLearningReviewerDevice`), wherever the
+  recorder is offered, the recorder page shows the count and the missing models in a section of its
+  own, read when the page opens: no notification, no badge, nothing sent.
+- **Site recordings.** `ExperienceRecording.Kind` (`experience` | `site`): absent decodes as
+  `experience`, and it is encoded only for a site, so a recording kept before P4 reads and writes the
+  bytes it did. `ExperienceRecorder.start(from:kind:)` records a site the way it records a case, reads
+  the site prompts in the car (`ExperienceRecorderCopy.sitePrompts`), and always keeps a site
+  recording on the phone: it is never filed on an open job. `RecollectionDrafter` refuses a site
+  recording (`.siteRecording`), so it never drafts a learning candidate. `SiteRecordingDrafter` (same
+  gates as P2: a reviewer device, never under Medical Compliance) cuts the transcript at P1's markers
+  with P2's segmenter, makes one schema-forced call through P2's `RecollectionDraftModel` seam
+  (`LLMRecollectionDraftModel` with its own tool name and budget), and `SiteRecordingDraftValidator`
+  holds the answer to: empty text or list means not said (the schema's own convention, as P2's); the
+  phone stamps `format`, `version` and `id` (`site-<recording id>`, so the file is
+  `sites/site-<id>.json`) and refuses an answer carrying them or another system's identifiers
+  (`external_location_ids`, a unit's `external_ids`); HV's `SiteSystemValidator.check` against the
+  recording's vault (`modelCovered(by:)`) unchanged, its issues the refusal verbatim (an unknown
+  model, a unit naming another vault, a missing name); a unit's model and serial said in the
+  transcript (letters and digits, any case); every word of every text member among the transcript's
+  words (P2's support rule). Nothing is patched; it stores nothing. Tests in
+  `ExperienceCoverageAndSiteDraftTests.swift` (`ExperienceCoverageTests`, `ExperienceRecordingKindTests`,
+  `ExperienceRecorderSiteTests`, `SiteRecordingDraftTests`), against HV's fictional fixture vault.
+
+**Decisions taken in P4** (owner to confirm):
+
+1. **A symptom entry covers no model.** Retrieval admits a symptom learning for a unit only within the
+   unit's equipment type, and the unit's type comes from its own approved model entries, which already
+   cover it; with no type resolved, a symptom learning is unscoped, answering for every unit and so
+   about none. Counting it would make "no crew experience" mean less. A practice entry covers none
+   either.
+2. **Coverage is counted on the reviewer's device**, from what that device has approved or received,
+   not from an office's corpus. An office with its own vocabulary would compute it from its own
+   corpus (open question 4 below stands).
+3. **A site recording is not contract-visible yet.** It drafts an HV site document, a vault format
+   that is already specified, on the reviewer's device only; P2's shared schema stays the
+   recollections'. If the office's intake is to draft site recordings too, the site schema joins
+   team-learning §13.1 with fixtures, as P2's did.
+4. **A site draft must keep to the technician's words**, and a word nobody said refuses the draft
+   rather than being kept: a site document has no verbatim fallback (P2's), because its members are
+   short labels that a quoted sentence would not fit. A live-provider pass may show this is too strict
+   for paraphrasing models (owed check).
+
+**Owed for P4:** sending the list to technicians and showing it on their card (P3's channel; the value
+and the line exist); the "Tell me about this site" entry on the Jobs list, in Field Assist settings and
+in the car (the recorder takes the kind; nothing offers it yet); where a site draft is reviewed and how a
+reviewed one reaches a vault (HV's documents are baseline vault content, so through the office's vault
+build or an export, not built); the live-provider pass over site recordings; the device pass.
+
 ## Acceptance
 
 - At onboarding, a technician driving between jobs records three cases on CarPlay without touching
@@ -295,3 +356,6 @@ P1.
 3. Does a recollection expire if no job ever confirms it (FP open question 6, sharper here)?
 4. Should P4's missing-models list be a CT profile item ("these are the models we want covered"),
    so the office sets it rather than the reviewer device?
+5. P4: should the office's intake draft site recordings too (the site schema then joins §13.1)?
+6. P4: is refusing a site draft for any word the technician did not say right, or should a site
+   draft's free text be kept and flagged for the reviewer instead?

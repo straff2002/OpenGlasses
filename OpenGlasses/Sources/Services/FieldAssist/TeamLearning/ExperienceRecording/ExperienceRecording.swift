@@ -40,7 +40,21 @@ struct ExperienceRecording: Codable, Equatable, Identifiable, Sendable {
         }
     }
 
+    /// What a recording is of (Plan IM P4). Each kind drafts to something different, and never to
+    /// the other's: a case drafts learning candidates (P2); a site drafts a Plan HV site document
+    /// (`SiteRecordingDrafter`) and never a learning candidate.
+    enum Kind: String, Codable, CaseIterable, Sendable {
+        /// One case of what a technician knows, the partner's five parts (P1). The kind of every
+        /// recording made before P4, which carries no kind at all.
+        case experience
+        /// "Tell me about this site": the units at one site, how they connect and what is local to it.
+        case site
+    }
+
     let id: String
+    /// What it is of. Absent in a recording kept before P4, which reads as `.experience`; encoded
+    /// only for a site, so an experience recording's bytes are what they were.
+    let kind: Kind
     /// When the recording began. Whole seconds, as every team-learning date is.
     let createdAt: Date
     /// How long it ran, in whole seconds, never more than the cap.
@@ -64,6 +78,7 @@ struct ExperienceRecording: Codable, Equatable, Identifiable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id
+        case kind
         case createdAt = "created_at"
         case duration
         case transcript
@@ -75,10 +90,11 @@ struct ExperienceRecording: Codable, Equatable, Identifiable, Sendable {
         case audioDeletedAt = "audio_deleted_at"
     }
 
-    init(id: String = ExperienceRecording.newID(), createdAt: Date, duration: Int, transcript: String,
-         redactions: [String], vaultId: String, spokenModel: String? = nil, site: String? = nil,
-         status: Status = .recorded, audioDeletedAt: Date? = nil) {
+    init(id: String = ExperienceRecording.newID(), kind: Kind = .experience, createdAt: Date, duration: Int,
+         transcript: String, redactions: [String], vaultId: String, spokenModel: String? = nil,
+         site: String? = nil, status: Status = .recorded, audioDeletedAt: Date? = nil) {
         self.id = id
+        self.kind = kind
         self.createdAt = Date(timeIntervalSince1970: createdAt.timeIntervalSince1970.rounded(.down))
         self.duration = max(0, min(duration, Int(ExperienceRecorderRules.recordingCap)))
         self.transcript = transcript
@@ -88,6 +104,36 @@ struct ExperienceRecording: Codable, Equatable, Identifiable, Sendable {
         self.site = site
         self.status = status
         self.audioDeletedAt = audioDeletedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        kind = try c.decodeIfPresent(Kind.self, forKey: .kind) ?? .experience
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        duration = try c.decode(Int.self, forKey: .duration)
+        transcript = try c.decode(String.self, forKey: .transcript)
+        redactions = try c.decode([String].self, forKey: .redactions)
+        vaultId = try c.decode(String.self, forKey: .vaultId)
+        spokenModel = try c.decodeIfPresent(String.self, forKey: .spokenModel)
+        site = try c.decodeIfPresent(String.self, forKey: .site)
+        status = try c.decode(Status.self, forKey: .status)
+        audioDeletedAt = try c.decodeIfPresent(Date.self, forKey: .audioDeletedAt)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        if kind != .experience { try c.encode(kind, forKey: .kind) }
+        try c.encode(createdAt, forKey: .createdAt)
+        try c.encode(duration, forKey: .duration)
+        try c.encode(transcript, forKey: .transcript)
+        try c.encode(redactions, forKey: .redactions)
+        try c.encode(vaultId, forKey: .vaultId)
+        try c.encodeIfPresent(spokenModel, forKey: .spokenModel)
+        try c.encodeIfPresent(site, forKey: .site)
+        try c.encode(status, forKey: .status)
+        try c.encodeIfPresent(audioDeletedAt, forKey: .audioDeletedAt)
     }
 
     /// A lowercase id with no dashes, the shape team-learning ids take, so a spoken handle works

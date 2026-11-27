@@ -20,6 +20,22 @@ enum ExperienceRecorderCopy {
         ]
     }
 
+    /// The site recording's title and prompts (Plan IM P4): what a site document holds — the units,
+    /// how they connect and what is local to the site (Plan HV) — offered, never enforced.
+    static var siteTitle: String { String(localized: "Tell me about this site") }
+    static var sitePrompts: [String] {
+        [
+            String(localized: "The units at the site: each one's brand and model, and where it is."),
+            String(localized: "How they connect, and which one controls which."),
+            String(localized: "Anything local: settings someone changed, and faults you've seen come from the link between two units."),
+        ]
+    }
+
+    /// What the car reads before a site recording: the title and the site prompts.
+    static var carPlaySitePrompts: String {
+        ([siteTitle + "."] + sitePrompts).joined(separator: " ")
+    }
+
     /// Said once per recording session, before the first case, on both surfaces.
     static var standingLine: String {
         String(localized: "Please leave out customer names and addresses.")
