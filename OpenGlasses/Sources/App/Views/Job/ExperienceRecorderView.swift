@@ -12,17 +12,45 @@ struct ExperienceRecorderView: View {
     @ObservedObject var store: ExperienceRecordingStore
     /// The open job's number, or "Open job", when one is open.
     let openJob: String?
+    /// On a reviewer's device, the vault's models with no crew experience yet (Plan IM P4). Read
+    /// when the page opens; nil everywhere else.
+    @State private var coverage: ExperienceCoverage?
 
     var body: some View {
         List {
             promptCard
             recordSection
+            if let coverage, let summary = ExperienceCoverageCopy.summary(coverage) { coverageSection(coverage, summary) }
             if !store.recordings.isEmpty { recordingsSection }
         }
         .ogFormStyle()
         .navigationTitle("Record experience")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { store.sweepExpiredAudio() }
+        .onAppear {
+            store.sweepExpiredAudio()
+            coverage = ExperienceCoverage.current()
+        }
+    }
+
+    // MARK: - What's missing (a reviewer's device)
+
+    /// A count and a list, nothing more: nothing is assigned, sent or badged from here.
+    private func coverageSection(_ coverage: ExperienceCoverage, _ summary: String) -> some View {
+        Section {
+            Text(summary)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            if !coverage.missing.isEmpty {
+                DisclosureGroup(ExperienceCoverageCopy.missingListTitle) {
+                    ForEach(Array(coverage.missingNames.enumerated()), id: \.offset) { _, name in
+                        Text(verbatim: name).font(.callout)
+                    }
+                }
+                .frame(minHeight: OGMetrics.minTouchTarget)
+            }
+        } header: {
+            Text(ExperienceCoverageCopy.sectionTitle)
+        }
     }
 
     // MARK: - The card
