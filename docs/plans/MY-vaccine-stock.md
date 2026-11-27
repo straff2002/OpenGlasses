@@ -307,6 +307,16 @@ Where that shared record lives:
 Which of the last two depends on open questions 1 and 10. Separate places within a company
 (clinics, buildings, fridges) follow MK's places once the record is chosen.
 
+*2026-11-27:* research on Canadian health-privacy law found stock with no patient linked is not
+personal health information in any province. Its caveat is that a dose's time and the staff member
+on it, a rare product or a patient-linked tariff can tip a record over. Plan
+[NJ](NJ-canada-inventory-only-clinic-stock.md) makes what leaves the phone inventory-only by
+construction (per day, line and lot; no staff, time or free text). Plan
+[NK](NK-clinic-stock-in-the-clinics-own-workbook.md) puts the shared count in the clinic's own
+Microsoft 365 workbook, which a tenant provisioned in Canada keeps in Canada. Plan
+[NL](NL-canada-patient-linked-clinical-data.md) is parked, in case patient linkage is ever wanted.
+The spreadsheet sketch above ("each dose is a row") becomes one row per day, line and lot.
+
 This check runs only while medical mode is on, because the file in the person's hand carries
 patient data even though the app keeps none of it (Decision 8).
 
