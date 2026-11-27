@@ -309,6 +309,200 @@ final class ExperienceRecordingMarkersTests: XCTestCase {
             "A Brightline that short cycles a dirty filter was all it was",
         ])
     }
+
+    // MARK: Translated markers (owner decision 2026-11-27)
+
+    /// A recogniser locale for each of the table's keys, as a phone in that language reports it.
+    private static let localeForKey: [String: String] = [
+        "ar": "ar-SA", "es": "es-MX", "fr": "fr-CA", "hu": "hu-HU", "it": "it-IT", "ja": "ja-JP", "ko": "ko-KR",
+        "nl": "nl-NL", "pt": "pt-BR", "ru": "ru-RU", "ur": "ur-PK", "zh-Hans": "zh-CN", "zh-Hant": "zh-TW",
+    ]
+
+    /// How each language's recogniser ends a sentence, and whether it spaces after one.
+    private static func sentenceEnd(_ key: String) -> String {
+        switch key {
+        case "ja", "zh-Hans", "zh-Hant": return "。"
+        case "ur": return "۔ "
+        default: return ". "
+        }
+    }
+
+    func testEveryLanguageHasItsThreePhrasesAndTheLongOneEndsWithTheBareOne() {
+        XCTAssertEqual(Set(ExperienceRecordingMarkers.translations.keys), Set(Self.localeForKey.keys))
+        for (key, translation) in ExperienceRecordingMarkers.translations {
+            let phrases = translation.phrases
+            XCTAssertTrue(phrases.nextCase.hasSuffix(phrases.bareNextCase), key)
+            XCTAssertEqual(ExperienceRecordingMarkers.key(for: Locale(identifier: Self.localeForKey[key]!)), key)
+            XCTAssertEqual(ExperienceRecordingMarkers.phrases(for: Locale(identifier: Self.localeForKey[key]!)), phrases)
+        }
+    }
+
+    func testTheLocaleChoosesItsLanguageAndAnythingElseIsEnglish() {
+        let cases: [String: String?] = [
+            "es-ES": "es", "es_US": "es", "fr-FR": "fr", "pt-PT": "pt", "zh-Hans-CN": "zh-Hans", "zh-Hant": "zh-Hant",
+            "zh-HK": "zh-Hant", "zh_CN": "zh-Hans", "en-US": nil, "en-GB": nil, "de-DE": nil, "yue-CN": nil,
+        ]
+        for (identifier, key) in cases {
+            XCTAssertEqual(ExperienceRecordingMarkers.key(for: Locale(identifier: identifier)), key, identifier)
+        }
+        XCTAssertEqual(ExperienceRecordingMarkers.phrases(for: Locale(identifier: "de-DE")), ExperienceRecordingMarkers.english)
+    }
+
+    /// Each language's three phrases split and end a case as English's do: the long marker
+    /// anywhere, the bare one and the finish as the whole stretch or its last sentence, a finish
+    /// straight after the long marker ending the session.
+    func testEachLanguagesPhrasesSplitAndEndACase() {
+        for (key, translation) in ExperienceRecordingMarkers.translations {
+            let listening = ExperienceRecordingMarkers.Listening.language(Locale(identifier: Self.localeForKey[key]!))
+            let phrases = translation.phrases
+            let end = Self.sentenceEnd(key)
+            func split(_ text: String) -> ExperienceRecordingMarkers.Split {
+                ExperienceRecordingMarkers.split(text, listening: listening)
+            }
+
+            let long = split("RX-200 E7" + end + phrases.nextCase + end + "RX-300")
+            XCTAssertEqual(long.marker, .nextCase, key)
+            XCTAssertEqual(long.before, "RX-200 E7", key)
+            XCTAssertEqual(long.after, "RX-300", key)
+            // Said with no pause and no sentence end before it, still a marker.
+            let joined = split("RX-200 E7 " + phrases.nextCase + " RX-300")
+            XCTAssertEqual(joined.marker, .nextCase, key)
+            XCTAssertEqual(joined.after, "RX-300", key)
+
+            for alone in [phrases.nextCase, phrases.nextCase + end, phrases.bareNextCase, phrases.bareNextCase + end,
+                          "Okay, " + phrases.bareNextCase] {
+                let split = split(alone)
+                XCTAssertEqual(split.marker, .nextCase, "\(key): \(alone)")
+                XCTAssertEqual(split.before, "", "\(key): \(alone)")
+                XCTAssertEqual(split.after, "", "\(key): \(alone)")
+            }
+            let bareLast = split("RX-200 E7" + end + phrases.bareNextCase + end)
+            XCTAssertEqual(bareLast.marker, .nextCase, key)
+            XCTAssertEqual(bareLast.before, "RX-200 E7", key)
+
+            XCTAssertEqual(split(phrases.finish).marker, .finish, key)
+            XCTAssertEqual(split(phrases.finish + end).marker, .finish, key)
+            let finishLast = split("RX-200 E7" + end + phrases.finish + end)
+            XCTAssertEqual(finishLast.marker, .finish, key)
+            XCTAssertEqual(finishLast.before, "RX-200 E7", key)
+            let longThenFinish = split("RX-200 E7" + end + phrases.nextCase + end + phrases.finish + end)
+            XCTAssertEqual(longThenFinish.marker, .finish, key)
+            XCTAssertEqual(longThenFinish.before, "RX-200 E7", key)
+
+            XCTAssertEqual(ExperienceRecordingMarkers.cases(in: ["RX-200 E7" + end + phrases.nextCase,
+                                                                 "RX-300 F2", phrases.finish, "RX-400"],
+                                                            listening: listening),
+                           ["RX-200 E7", "RX-300 F2"], key)
+        }
+    }
+
+    /// English is always accepted, whatever language the phone transcribes in.
+    func testEnglishStillWorksUnderEveryLocale() {
+        for identifier in Self.localeForKey.values.sorted() + ["en-US", "de-DE"] {
+            let listening = ExperienceRecordingMarkers.Listening.language(Locale(identifier: identifier))
+            let next = ExperienceRecordingMarkers.split("and a new board fixed it. That's one, next case. The other one",
+                                                        listening: listening)
+            XCTAssertEqual(next.marker, .nextCase, identifier)
+            XCTAssertEqual(next.before, "and a new board fixed it", identifier)
+            XCTAssertEqual(next.after, "The other one", identifier)
+            XCTAssertEqual(ExperienceRecordingMarkers.split("Okay, next case.", listening: listening).marker, .nextCase, identifier)
+            XCTAssertEqual(ExperienceRecordingMarkers.split("Sealed the cover. That's all.", listening: listening).marker,
+                           .finish, identifier)
+            XCTAssertEqual(ExperienceRecordingMarkers.split("Stop recording", listening: listening).marker, .finish, identifier)
+            XCTAssertNil(ExperienceRecordingMarkers.split("and that's all it needed", listening: listening).marker, identifier)
+        }
+    }
+
+    /// The recogniser writes a phrase in its own way: case, punctuation, apostrophes, spaces,
+    /// ё/е, Arabic vowel marks, "1" for one, Japanese and Chinese run together, Korean spaced oddly.
+    func testWhatTheRecogniserWritesStillMatches() {
+        func marker(_ text: String, _ identifier: String) -> ExperienceRecordingMarkers.Marker? {
+            ExperienceRecordingMarkers.split(text, listening: .language(Locale(identifier: identifier))).marker
+        }
+        XCTAssertEqual(marker("ESA ES UNA SIGUIENTE CASO", "es-MX"), .nextCase)
+        XCTAssertEqual(marker("Esa es 1, siguiente caso", "es-MX"), .nextCase)
+        XCTAssertEqual(marker("¡Eso es todo!", "es-MX"), .finish)
+        XCTAssertEqual(marker("C\u{2019}est tout.", "fr-CA"), .finish)
+        XCTAssertEqual(marker("c est tout", "fr-CA"), nil, "a split word is not the phrase")
+        XCTAssertEqual(marker("Ça   en fait un ,  cas suivant", "fr-CA"), .nextCase)
+        XCTAssertEqual(marker("Это все.", "ru-RU"), .finish, "ё written as е")
+        XCTAssertEqual(marker("Это ВСЁ", "ru-RU"), .finish)
+        XCTAssertEqual(marker("это 1, следующий случай", "ru-RU"), .nextCase)
+        XCTAssertEqual(marker("Dat is er een, volgend geval", "nl-NL"), .nextCase)
+        XCTAssertEqual(marker("هَذَا كُلُّ شَيْءٍ", "ar-SA"), .finish, "vowel marks")
+        XCTAssertEqual(marker("هذه واحدة الحالة التالية؟", "ar-SA"), .nextCase)
+        XCTAssertEqual(marker("بس اتنا ہی۔", "ur-PK"), .finish)
+        XCTAssertEqual(marker("یہ ایک ہو گیا اگلا کیس", "ur-PK"), .nextCase)
+        XCTAssertEqual(marker("これで一件次のケース", "ja-JP"), .nextCase, "no punctuation")
+        XCTAssertEqual(marker("これで１件、次のケース。", "ja-JP"), .nextCase, "a full-width digit")
+        XCTAssertEqual(marker("以上です。", "ja-JP"), .finish)
+        XCTAssertEqual(marker("这是1个，下一个案例", "zh-CN"), .nextCase)
+        XCTAssertEqual(marker("下一个 案例", "zh-CN"), .nextCase, "a stray space")
+        XCTAssertEqual(marker("就這些。", "zh-TW"), .finish)
+        XCTAssertEqual(marker("이걸로하나 다음사례", "ko-KR"), .nextCase, "Korean spaced differently")
+        XCTAssertEqual(marker("이상 입니다.", "ko-KR"), .finish)
+
+        // CJK with no spaces at all: the case's words either side come back exactly as said.
+        let japanese = ExperienceRecordingMarkers.split("ファンを交換しました。これで一件、次のケース。冷蔵庫の扉が", listening:
+            .language(Locale(identifier: "ja-JP")))
+        XCTAssertEqual(japanese.marker, .nextCase)
+        XCTAssertEqual(japanese.before, "ファンを交換しました")
+        XCTAssertEqual(japanese.after, "冷蔵庫の扉が")
+        let chinese = ExperienceRecordingMarkers.split("更换了风扇。就这些。", listening: .language(Locale(identifier: "zh-CN")))
+        XCTAssertEqual(chinese.marker, .finish)
+        XCTAssertEqual(chinese.before, "更换了风扇")
+    }
+
+    /// The finish rule holds in every language: only the whole stretch or its last sentence.
+    func testAFinishInsideASentenceStaysInTheCase() {
+        let negatives: [(String, String)] = [
+            ("Eso es todo lo que necesitaba.", "es-MX"),
+            ("Cambié la placa, eso es todo", "es-MX"),
+            ("C'est tout ce qu'il fallait.", "fr-CA"),
+            ("Это всё, что было нужно.", "ru-RU"),
+            ("就这些问题。", "zh-CN"),
+            ("以上ですか", "ja-JP"),
+            ("En el siguiente caso revisaría la placa", "es-MX"),
+            ("Im volgend geval controleer ik het bord", "nl-NL"),
+        ]
+        for (text, identifier) in negatives {
+            let split = ExperienceRecordingMarkers.split(text, listening: .language(Locale(identifier: identifier)))
+            XCTAssertNil(split.marker, "\(identifier): \(text)")
+            XCTAssertEqual(split.before, text, "\(identifier): \(text)")
+        }
+    }
+
+    /// The phone's language is the one listened for, beside English: an English phone does not
+    /// hear Spanish, and the drafting pass, which cannot know, hears every language.
+    func testOnlyTheRecordingsLanguageIsHeardBesideEnglish() {
+        XCTAssertNil(ExperienceRecordingMarkers.split("Eso es todo.").marker)
+        XCTAssertNil(ExperienceRecordingMarkers.split("Eso es todo.", listening: .language(Locale(identifier: "fr-FR"))).marker)
+        XCTAssertEqual(ExperienceRecordingMarkers.split("Eso es todo.", listening: .everyLanguage).marker, .finish)
+        XCTAssertEqual(ExperienceRecordingMarkers.split("就這些", listening: .everyLanguage).marker, .finish)
+        XCTAssertEqual(ExperienceRecordingMarkers.split("That's all.", listening: .everyLanguage).marker, .finish)
+    }
+
+    /// The copy names the phrases the recorder listens for, in the phone's speech language; the
+    /// English copy reads exactly as it did.
+    func testTheCopyNamesTheLanguagesOwnPhrasesAndEnglishIsUnchanged() {
+        let english = Locale(identifier: "en-US")
+        XCTAssertEqual(ExperienceRecorderCopy.cardHowTo(speaking: english),
+                       "Say \u{201C}that's one, next case\u{201D} to start the next, or \u{201C}that's all\u{201D} to finish. Each recording stops at ten minutes.")
+        XCTAssertEqual(ExperienceRecorderCopy.carPlayPrompts(speaking: english),
+                       "One case per recording. Say the equipment, its brand and model if you know it. The kind of site, if it matters. The problem as it showed up. What you checked and tried. And what fixed it, and how sure you are. Say \u{201C}that's one, next case\u{201D} to start the next, or \u{201C}that's all\u{201D} to finish.")
+        XCTAssertEqual(ExperienceRecorderCopy.recordHint(speaking: english),
+                       "Records one case. Say \u{201C}that's one, next case\u{201D} to start the next.")
+        for (key, identifier) in Self.localeForKey {
+            let phrases = ExperienceRecordingMarkers.translations[key]!.phrases
+            let locale = Locale(identifier: identifier)
+            for copy in [ExperienceRecorderCopy.cardHowTo(speaking: locale), ExperienceRecorderCopy.carPlayPrompts(speaking: locale)] {
+                XCTAssertTrue(copy.contains(phrases.nextCase), key)
+                XCTAssertTrue(copy.contains(phrases.finish), key)
+                XCTAssertFalse(copy.contains("that's one, next case"), key)
+            }
+            XCTAssertTrue(ExperienceRecorderCopy.recordHint(speaking: locale).contains(phrases.nextCase), key)
+        }
+    }
 }
 
 // MARK: - Who is offered it
@@ -462,6 +656,8 @@ private final class ScriptedCapture: ExperienceCapture {
     private(set) var stopped = false
     private(set) var url: URL?
     var onStretch: (@MainActor (String) -> Void)?
+    var locale = Locale(identifier: "en-US")
+    var recognitionLocale: Locale { locale }
 
     func prepare() async -> String? { refusal }
 
@@ -561,8 +757,28 @@ final class ExperienceRecorderTests: XCTestCase {
         let recorder = makeRecorder()
         await recorder.start(from: .carPlay)
         XCTAssertTrue(spoken[0].contains(ExperienceRecorderCopy.standingLine))
-        XCTAssertTrue(spoken[0].contains(ExperienceRecorderCopy.carPlayPrompts))
+        XCTAssertTrue(spoken[0].contains(ExperienceRecorderCopy.carPlayPrompts(speaking: Locale(identifier: "en-US"))))
         XCTAssertEqual(recorder.surface, .carPlay)
+    }
+
+    /// A phone that transcribes in Spanish: the car reads the Spanish phrases, and the recorder
+    /// hears them — and English's.
+    func testTheRecorderHearsTheCapturesLanguageAndEnglish() async throws {
+        let recorder = makeRecorder { $0.locale = Locale(identifier: "es-MX") }
+        await recorder.start(from: .carPlay)
+        XCTAssertTrue(spoken[0].contains("\u{201C}esa es una, siguiente caso\u{201D}"), spoken[0])
+        XCTAssertTrue(spoken[0].contains("\u{201C}eso es todo\u{201D}"), spoken[0])
+
+        await recorder.heard("La Acme RX-200 da E7. Esa es una, siguiente caso. La Brightline")
+        guard case .recording(let number, _, _) = recorder.phase else { return XCTFail("the next case is recording") }
+        XCTAssertEqual(number, 2)
+        await recorder.heard("tenía el filtro sucio. That's one, next case.")
+        guard case .recording(let third, _, _) = recorder.phase else { return XCTFail("English still starts the next") }
+        XCTAssertEqual(third, 3)
+        await recorder.heard("Eso es todo.")
+        XCTAssertEqual(recorder.phase, .idle)
+        XCTAssertEqual(store.newestFirst.map(\.transcript).sorted(),
+                       ["La Acme RX-200 da E7", "La Brightline tenía el filtro sucio"])
     }
 
     func testNextCaseEndsOneRecordingAndStartsTheNextWithoutTheStandingLineAgain() async throws {

@@ -15,6 +15,9 @@ enum RetentionTargetID: String, CaseIterable, Codable, Sendable {
     case erasureLedger
     /// Job handovers sent to this phone's owner as an expert (Plan KM P2), each on its own period.
     case assistingHandovers
+    /// The audio of experience recordings (Plan IM P1), kept 30 days on the phone that recorded
+    /// it and then deleted; the transcript stays.
+    case experienceAudio
 }
 
 /// Why a sweep could not do its work. None of these is a success, and none of them is a reason to
@@ -365,6 +368,8 @@ extension RetentionScheduler {
         /// Handovers an expert was sent (Plan KM P2). Each carries its own retention period, set by
         /// the organisation that sent it, so it is purged on that and not on a class policy.
         var assistingHandovers: AssistingHandoverStore?
+        /// Experience recordings (Plan IM P1), whose audio goes 30 days after it was recorded.
+        var experienceRecordings: ExperienceRecordingStore?
 
         init() {}
     }
@@ -428,6 +433,9 @@ extension RetentionScheduler {
                 handovers.purgeExpired()
             })
         }
+        if let recordings = sources.experienceRecordings {
+            made.append(experienceAudio(recordings))
+        }
         made.append(.rows(.conversationThreads, dataClass: .conversationContent) { cutoff in
             guard let conversations = sources.conversations else {
                 throw RetentionFault.sourceUnavailable
@@ -435,5 +443,21 @@ extension RetentionScheduler {
             return conversations.deleteThreads(olderThan: cutoff)
         })
         return made
+    }
+
+    /// The experience-recording audio sweep (Plan IM decision 2). The 30 days is fixed, not a
+    /// setting, so it answers to its own period rather than its class's: the store is registered
+    /// as `.operationalAudit`, whose class policy is a cap on write. Counted as files: what goes is
+    /// one `.m4a` per recording, and the recording itself (its transcript) stays.
+    static func experienceAudio(_ store: ExperienceRecordingStore) -> RetentionTarget {
+        RetentionTarget(
+            id: .experienceAudio, dataClass: .operationalAudit,
+            purge: { cutoff in
+                store.sweepExpiredAudio(before: cutoff,
+                                        now: cutoff.addingTimeInterval(ExperienceRecorderRules.audioRetention))
+            },
+            policyOverride: RetentionPolicy(
+                dataClass: .operationalAudit, trigger: .maxAge(ExperienceRecorderRules.audioRetention),
+                source: "fixed: a recording's audio is kept 30 days for a reviewer to listen to"))
     }
 }

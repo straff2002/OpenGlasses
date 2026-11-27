@@ -8,7 +8,9 @@ import Foundation
 ///
 /// 1. **The spoken markers**, read exactly as the recorder reads them (`ExperienceRecordingMarkers`):
 ///    "that's one, next case" (or a bare "next case") ends a case and the words after it open the
-///    next; "that's all" ends the transcript, as it ends a recording.
+///    next; "that's all" ends the transcript, as it ends a recording. In English and in every
+///    language the recorder translates them into (`Listening.everyLanguage`): a transcript carries
+///    no record of the language it was spoken in, and the reviewer's phone may be set to another.
 /// 2. **A change of model.** Within a case, a sentence that names exactly one of the vault's models
 ///    (`VaultModelIndex`, every model-like token in it agreeing), when an earlier sentence named a
 ///    different one, opens a new case. A sentence naming two models ("it's like the RX-200, but
@@ -37,7 +39,7 @@ enum RecollectionSegmenter {
         }
         reading: for sentence in sentences(in: scalars) {
             let text = string(scalars, sentence)
-            let split = ExperienceRecordingMarkers.split(text)
+            let split = ExperienceRecordingMarkers.split(text, listening: .everyLanguage)
             if let before = part(split.before, of: sentence, in: scalars, atStart: true) { current.append(before) }
             switch split.marker {
             case .none:

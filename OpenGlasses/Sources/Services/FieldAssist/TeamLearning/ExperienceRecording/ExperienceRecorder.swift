@@ -18,6 +18,15 @@ protocol ExperienceCapture: AnyObject {
     /// Stop. Returns whether the file holds audio, and the stretch still being heard when it
     /// stopped. Nothing reaches `onStretch` after this is called.
     func stop() async -> ExperienceCaptureEnding
+
+    /// The language the capture transcribes in: the recorder listens for its markers, and English's
+    /// (`ExperienceRecordingMarkers.Listening.language`), and the car reads its phrases.
+    var recognitionLocale: Locale { get }
+}
+
+extension ExperienceCapture {
+    /// A capture that does not say transcribes in English.
+    var recognitionLocale: Locale { Locale(identifier: "en-US") }
 }
 
 struct ExperienceCaptureEnding: Equatable, Sendable {
@@ -168,6 +177,8 @@ final class ExperienceRecorder: ObservableObject {
     @Published private(set) var lastOutcome: Outcome?
 
     private var capture: (any ExperienceCapture)?
+    /// The markers the capture's language says, and English's.
+    private var listening: ExperienceRecordingMarkers.Listening = .english
     private var stretches: [String] = []
     private var caseId = ""
     private var caseURL: URL?
@@ -218,7 +229,8 @@ final class ExperienceRecorder: ObservableObject {
             standingLineSaid = true
         }
         if surface == .carPlay {
-            intro.append(kind == .site ? ExperienceRecorderCopy.carPlaySitePrompts : ExperienceRecorderCopy.carPlayPrompts)
+            intro.append(kind == .site ? ExperienceRecorderCopy.carPlaySitePrompts
+                         : ExperienceRecorderCopy.carPlayPrompts(speaking: probe.recognitionLocale))
         }
         intro.append(ExperienceRecorderCopy.recordingNow)
         await seams.speak(intro.joined(separator: " "))
@@ -258,7 +270,7 @@ final class ExperienceRecorder: ObservableObject {
             stretches.append(stretch)
             return
         }
-        let split = ExperienceRecordingMarkers.split(stretch)
+        let split = ExperienceRecordingMarkers.split(stretch, listening: listening)
         if !split.before.isEmpty {
             stretches.append(split.before)
             heardSoFar = ExperienceTranscript.clean(stretches.joined(separator: " ")).text
@@ -293,6 +305,7 @@ final class ExperienceRecorder: ObservableObject {
             return
         }
         self.capture = capture
+        listening = .language(capture.recognitionLocale)
         caseURL = url
         caseCount += 1
         stretches = opening.map { $0.isEmpty ? [] : [$0] } ?? []
@@ -314,7 +327,7 @@ final class ExperienceRecorder: ObservableObject {
         self.capture = nil
         phase = .saving
         if let last = ended.lastStretch {
-            let split = ExperienceRecordingMarkers.split(last)
+            let split = ExperienceRecordingMarkers.split(last, listening: listening)
             if !split.before.isEmpty { stretches.append(split.before) }
         }
         let cleaned = ExperienceTranscript.clean(stretches.joined(separator: " "))

@@ -1,6 +1,6 @@
 # Plan IM — Experience Recordings (what the crew already knows, one case per recording)
 
-**Status:** ✅ P0 merged 2026-11-27 (PR 1256, build 783) ([below](#p0--contract-amendment-and-the-model-headless)): team-learning §13, the candidate's `tried`/`outcome` and `recording` evidence, the manifest's `equipment_types`, symptom matching in retrieval, recollections ranked below job-confirmed learnings, and the recalled lead-in. Part of P0 was built by Plan NF P0 (2026-11-25): `LearningCandidate.Origin.recollection`, the entry fields `tried`/`outcome`, `LearningEntry.Subject.symptom(equipmentType:phrase:)` and §11. ✅ P1 merged 2026-11-27 (PR 1258, build 784) ([below](#p1--the-recorder-record-experience-phone-and-carplay)): the recorder on the phone and CarPlay. ✅ P2 merged 2026-11-27 (PR 1261, build 786) ([below](#p2--the-drafting-pass-pure-segmentation-model-extraction-validation)): the drafting pass, segmenter, schema-forced extraction and validator, with the schema and ten scripted recollections shared with the office's intake (team-learning §13.1). 🚧 P4 headless core built 2026-11-27, PR pending ([below](#p4--onboarding-campaign-and-site-brain-dumps)): the coverage count and the list, and site recordings drafting an HV site document; sending the list waits on P3's channel, and the site recording's entry points, its review and the device pass are owed. P3 not built. Drafted 2026-10-16.
+**Status:** ✅ P0 merged 2026-11-27 (PR 1256, build 783) ([below](#p0--contract-amendment-and-the-model-headless)): team-learning §13, the candidate's `tried`/`outcome` and `recording` evidence, the manifest's `equipment_types`, symptom matching in retrieval, recollections ranked below job-confirmed learnings, and the recalled lead-in. Part of P0 was built by Plan NF P0 (2026-11-25): `LearningCandidate.Origin.recollection`, the entry fields `tried`/`outcome`, `LearningEntry.Subject.symptom(equipmentType:phrase:)` and §11. ✅ P1 merged 2026-11-27 (PR 1258, build 784) ([below](#p1--the-recorder-record-experience-phone-and-carplay)): the recorder on the phone and CarPlay. ✅ P2 merged 2026-11-27 (PR 1261, build 786) ([below](#p2--the-drafting-pass-pure-segmentation-model-extraction-validation)): the drafting pass, segmenter, schema-forced extraction and validator, with the schema and ten scripted recollections shared with the office's intake (team-learning §13.1). ✅ P4 headless core merged 2026-11-27 (PR 1263, build 787) ([below](#p4--onboarding-campaign-and-site-brain-dumps)): the coverage count and the list, and site recordings drafting an HV site document; sending the list waits on P3's channel, and the site recording's entry points, its review and the device pass are owed. P3 not built. **Owner decisions on the open questions taken 2026-11-27** ([below](#decided-2026-11-27)); three are built (PR pending): the audio sweep joins `RetentionScheduler`, the spoken markers are translated with English always accepted, and a symptom learning ranks below the model learnings when no equipment type resolves. Drafted 2026-10-16.
 **Track:** Field Assist (B2B).
 **Depends on:** Plan [FP](FP-team-learnings.md) P0–P3 (shipped: candidate, review, entry, corpus,
 bundle) and FP P4 (the review queue on a screen) before anything here is usable by a supervisor.
@@ -154,7 +154,7 @@ symptom subject whose type is not on every in-scope vault's list; a vault that l
 a symptom entry of another type. Retrieval (`VaultRetriever.EquipmentTypeScope`) resolves the turn's type
 from the list named in the turn, then in the job, then the unit's own types from its model entries, and
 drops a symptom learning of another type; with no type, nothing scopes it, as a model learning with no
-unit. `learningsBySeenOnAJob` puts job-confirmed learnings ahead of unconfirmed recollections. The recalled
+unit (since 2026-11-27 it ranks below the model learnings: [decided](#decided-2026-11-27)). `learningsBySeenOnAJob` puts job-confirmed learnings ahead of unconfirmed recollections. The recalled
 lead-in is NF's crew experience lead-in, not a second sentence: decision 5's wording is an owner question.
 Fixtures in `Contracts/fixtures/team-learning-v1/`; tests in `TeamLearningRecollectionTests`.
 
@@ -201,7 +201,8 @@ kept on the phone instead if the filing is refused or the job closes mid-recordi
 switch built, so the `.teamLearnings` capability is the only organisation gate
 (`ExperienceRecordingAvailability`); Medical Compliance withholds it wherever `team_learning` is
 withheld. On the phone it is a row on the Jobs list and a link in Field Assist settings; in the car a
-Jobs-list row that becomes Stop while recording. The markers are English only. Tests in
+Jobs-list row that becomes Stop while recording. The markers were English only; since 2026-11-27 they
+are also heard in the phone's speech language ([decided](#decided-2026-11-27)). Tests in
 `ExperienceRecordingTests` (store, transcript, markers, availability, the car's row, the recorder,
 the job path). Owed: a device pass (CarPlay audio route for recording, the wake word during a
 recording, recogniser stretches on hardware).
@@ -223,7 +224,7 @@ recording, recogniser stretches on hardware).
   field and nothing invented. Run against a stub model in CI and against the live provider as an
   owed check.
 
-**Built 2026-11-27, PR pending.** Decisions 1, 3, 4 and 6 as recommended; the shared rules are
+**Merged 2026-11-27 (PR 1261, build 786).** Decisions 1, 3, 4 and 6 as recommended; the shared rules are
 team-learning §13.1. `RecollectionSegmenter` (pure) splits the transcript into sentences, cuts cases at
 P1's markers (`ExperienceRecordingMarkers.split`, read the recorder's way: "that's all" ends the
 transcript), then at a sentence naming exactly one vault model after another was named
@@ -247,8 +248,8 @@ nothing: moving the recording to `drafted` and filing are P3's. The schema and t
 (`Contracts/fixtures/team-learning-v1/recollection-draft*-v1.json`) are shared with the office's intake;
 `Contracts/tests/test_recollection_drafts.py` (`python3 -I`, in the contracts workflow) is a second
 implementation held to them. Tests in `RecollectionDraftTests` (stub model). Owed: the live-provider
-pass over the ten recollections (Anthropic, OpenAI, Gemini, on-device), and English-only markers as in
-P1.
+pass over the ten recollections (Anthropic, OpenAI, Gemini, on-device). The segmenter reads the markers in
+English and every translated language since 2026-11-27 ([decided](#decided-2026-11-27)).
 
 ### P3 — Delivery and review
 
@@ -275,7 +276,7 @@ P1.
 - **Exit test:** the coverage count against the Lennox (or fictional) vault fixture; a site
   recording drafts a site document that validates against HV's schema.
 
-**Headless core built 2026-11-27, PR pending.** HV P0–P2 are built, so the site recording is not
+**Headless core merged 2026-11-27 (PR 1263, build 787).** HV P0–P2 are built, so the site recording is not
 gated on them.
 
 - **What's missing.** `ExperienceCoverage.of(_:entries:)` (pure) takes the vault's
@@ -311,7 +312,7 @@ gated on them.
   `ExperienceCoverageAndSiteDraftTests.swift` (`ExperienceCoverageTests`, `ExperienceRecordingKindTests`,
   `ExperienceRecorderSiteTests`, `SiteRecordingDraftTests`), against HV's fictional fixture vault.
 
-**Decisions taken in P4** (owner to confirm):
+**Decisions taken in P4** (confirmed by the owner 2026-11-27, [below](#decided-2026-11-27)):
 
 1. **A symptom entry covers no model.** Retrieval admits a symptom learning for a unit only within the
    unit's equipment type, and the unit's type comes from its own approved model entries, which already
@@ -359,3 +360,73 @@ build or an export, not built); the live-provider pass over site recordings; the
 5. P4: should the office's intake draft site recordings too (the site schema then joins §13.1)?
 6. P4: is refusing a site draft for any word the technician did not say right, or should a site
    draft's free text be kept and flagged for the reviewer instead?
+
+Questions 1 (drafting on the reviewer's device), 2's second half (whether audio travels by default) and
+3 (recollection expiry) stay open. Questions 2's first half and 4–6 are answered below.
+
+## Decided 2026-11-27
+
+The owner's answers to the questions above and to the decisions each phase took. Three are built here
+(PR pending); the rest confirm what is already so.
+
+**P0**
+
+- **The lead-in stays NF's crew-experience one** — "From your company's experience (not the
+  manufacturer's manual):" — not decision 5's sentence. Sheet rows and recordings are both recalled
+  crew experience, so one lead-in covers both.
+- **`outcome` stays at 120 characters.** It is how sure the technician is, in words, not a second
+  finding.
+- **No type resolved: a symptom learning ranks down. Built.** When the turn resolves no equipment
+  type, a symptom learning still answers, but below the model learnings, inside the existing order:
+  job-confirmed learnings, then job-confirmed symptom learnings, then recollections, then symptom
+  recollections (`VaultRetriever.Passage.isUnscopedSymptom`, `learningsBySeenOnAJob`). Only learnings
+  move, so it never goes above a manual passage, and the safety-note rules are unchanged. When a type
+  resolves, nothing changes: another type's symptom learning is dropped and the turn's type ranks as
+  any learning does. Tests in `TeamLearningRecollectionTests`.
+- **The experience-only vault starter writes `equipment_types` to its manifest**, and the portal's crew
+  experience sheet reads its list from there. That is a portal change in the private service
+  repository, in a separate PR.
+
+**P1**
+
+- **The audio sweep joins `RetentionScheduler`. Built.** `RetentionTargetID.experienceAudio`
+  (`RetentionScheduler.experienceAudio(_:)`) sweeps on the scheduler's own cadence, so an app left
+  running for weeks still deletes audio on time. The 30 days is fixed, not a setting: the target carries
+  its own period (`policyOverride`, as the erasure ledger's replay window does), so neither a clinical
+  period of zero nor "keep my history" holds the audio, and the store's class policy (a cap on write)
+  does not skip it. The existing sweeps (store open, app launch, recorder page) stay. A recording made
+  exactly 30 days ago keeps its audio; the store's sweep now uses `RetentionPlan`'s comparison
+  ("strictly older expires"), where before it deleted at exactly 30 days. Tests in
+  `RetentionSchedulerTests`.
+- **A recording made with a job open keeps no audio.** Already so.
+- **The markers are translated, and English is always accepted. Built.** The recorder listens for the
+  phrases of the language its recogniser transcribes in (`LiveExperienceCapture`'s locale) and for
+  English's (`ExperienceRecordingMarkers.translations`, one table in code because it is matched against
+  recogniser output). The rules are English's in every language: the long marker anywhere, the bare one
+  and the finish only as the whole stretch or its last sentence, so "eso es todo lo que necesitaba"
+  stays in the case. The recorder's copy (the card, the car's prompts, the Record button's hint) names
+  the phrases of the phone's speech language, so the English copy is unchanged. P2's segmenter reads
+  English and every translated language, because a transcript carries no record of the language it was
+  spoken in. Tests in `ExperienceRecordingMarkersTests` and `ExperienceRecorderTests`.
+- **A long recording stays "Part n of m".** Already so.
+
+**P2**
+
+- **An invented model or equipment type still refuses the whole case**, and a free-text field that says
+  more than its quotes becomes the technician's words verbatim. Already so; confirmed.
+- **The verbatim fallback's wording is accepted**, pending the live-provider pass.
+- **Estimated segment seconds are enough** until there is a play-from-here button.
+
+**P4**
+
+- **The missing-models list stays on the reviewer's device** (question 4). A company-profile override
+  may come later, and is optional.
+- **The office drafts site recordings only once the office exists, and after the live pass**
+  (question 5). Until then the site schema stays out of §13.1.
+- **Site drafts stay strict** (question 6). If the live pass refuses more than about one real recording
+  in five, switch to keeping the text and flagging it for the reviewer.
+- **A symptom-only entry does not count as coverage.** Agreed (P4 decision 1).
+
+**Still open:** decision 1 (drafting on the reviewer's device, on the organisation's credits), whether
+decision 2's audio travels with the transcript by default, and whether a recollection no job confirms
+expires.

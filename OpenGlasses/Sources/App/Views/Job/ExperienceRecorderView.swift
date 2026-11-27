@@ -112,8 +112,8 @@ struct ExperienceRecorderView: View {
             .disabled(!verdict.isAvailable && !recorder.phase.isBusy)
             .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
             .accessibilityHint(recorder.phase.isBusy
-                               ? "Ends this recording and keeps what was said."
-                               : "Records one case. Say \u{201C}that's one, next case\u{201D} to start the next.")
+                               ? Text("Ends this recording and keeps what was said.")
+                               : Text(ExperienceRecorderCopy.recordHint))
 
             statusLine
             if !recorder.heardSoFar.isEmpty {

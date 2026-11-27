@@ -45,6 +45,9 @@ final class LiveExperienceCapture: ExperienceCapture {
         self.locale = locale
     }
 
+    /// The recogniser's language: the recorder's markers are read in it, and in English.
+    var recognitionLocale: Locale { locale }
+
     // MARK: - Preparing
 
     /// Why recording cannot start, from what the phone reports. Pure, so each refusal is a test.
