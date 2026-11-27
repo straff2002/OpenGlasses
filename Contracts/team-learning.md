@@ -454,5 +454,80 @@ origin, the recollection with `tried`, `outcome` and `recording`), `candidates-p
 `manifest-equipment-types-negative-v1.json` (each list refusal in its words) and
 `equipment-type-turns-v1.json` (the turn's type, and what a symptom of each type does with it).
 
-What is built (IM P0): all of the above on the phone, and the list's rules in the shared core. Not built:
-the recorder (P1), the drafting pass (P2) and delivery to a reviewer (P3).
+What is built (IM P0): all of the above on the phone, and the list's rules in the shared core. The
+recorder (P1) and the drafting pass (P2, §13.1) are built on the phone. Not built: delivery to a
+reviewer (P3).
+
+### 13.1 The drafting pass (2026-11-27, Plan IM P2)
+
+A recording's redacted transcript becomes drafted `recollection` candidates on a reviewer's device or
+in the office's intake, on the organisation's own provider (IM decision 1). **Both run these rules from
+the same schema and fixtures**, so a recording drafts to the same candidate wherever it is processed:
+`fixtures/team-learning-v1/recollection-draft-schema-v1.json` (the schema) and
+`recollection-drafts-v1.json` (ten scripted recollections with their segments, a model's answer per
+segment and the drafts expected, then answers that must be refused). The phone's implementation is
+`RecollectionSegmenter`, `RecollectionDraftRules`/`RecollectionDraftValidator` and `RecollectionDrafter`;
+`tests/test_recollection_drafts.py` (standard library, `python3 -I`) is a second implementation held to
+the same fixtures. A draft is not a candidate until a person reviews it (§1), and nothing here is sent.
+
+**Offsets.** Every span is a half-open range of Unicode scalar offsets into the transcript
+(`{ start, end }`), which is what a Python `str` indexes.
+
+**Segments.** The transcript is split into sentences (after `.`, `!` or `?` followed by whitespace or the
+end). A sentence that is or ends with the recorder's next-case marker ("that's one, next case", a bare
+"next case") ends a case, and its words after the marker open the next; a finish marker ("that's all")
+ends the transcript (`ExperienceRecordingMarkers`, IM P1). Within a case, a sentence naming exactly one of
+the vault's models, after an earlier one named another, opens a new case. A segment runs from its first
+sentence's first character to its last's last. Segmentation is the phone's; an intake may take the
+segments from wherever it has the vault's model index, and is held to the fixture's segments.
+
+**The extraction.** One schema-forced call per segment (Plan AD's structured path): a closed object of
+eight fields, `model`, `equipmentType`, `symptom`, `findings`, `tried`, `fix`, `outcome`, `siteNote`, each
+`{ text, quotes[] }` (at most 6 quotes): the field in the transcript's words, and the exact words it rests
+on. Empty text means the transcript does not say. The limits are told to the model in each field's
+description, not enforced by the schema.
+
+**The rules, in order, per field** (fields in the order above):
+
+1. The shape: exactly the eight keys, each exactly `text` (a string) and `quotes` (strings). Otherwise
+   the answer is refused `malformed`.
+2. The text is held to §7.4 (a line feed survives in `findings` only; any other control character, or a
+   bidirectional control, refuses the answer `controlCharacter`). Empty after trimming: the field is
+   absent, whatever its quotes.
+3. Filled with no non-blank quote: refused `unsupported`. Each quote is found in the segment by
+   comparing both lowercased with every run of characters that are not letters or digits (Unicode
+   categories L and N) as one space, trimmed, on whole words; the span is from the first matched
+   character's offset to just after the last's. A quote not found refuses the answer `quoteNotFound`.
+4. **Support.** Every word of the text must be among its quotes' words, except one-character words and
+   a short list of little words (`the`, `and`, `it`, `was`…, in the test), and allowing a plural or past
+   tense (two letter-only words, the shorter at least three long, the longer the shorter plus `s`, `es`,
+   `ed`, `d` or `ing`). When it is not, a name (`model`, `equipmentType`) refuses the answer
+   `unsupported`; any other field becomes its quotes' own words, verbatim, joined by `" … "`, and is
+   marked `verbatim`.
+5. `equipmentType` must be on the vault's closed list (§13, compared by `equipmentTypeKey`) and is kept
+   in the list's spelling. Not listed: held back `notListed` with the words said; no symptom subject is
+   drafted from it.
+6. Over its limit (in scalars: `model` and `equipmentType` 80, `symptom`, `tried`, `fix` 500, `findings`
+   2,000, `outcome` 120; a site note has none): held back `overLimit` with `count` and `limit`. Never
+   cut.
+
+**The site** (IM decision 6). A learning field whose spans, filled or held back, overlap the site note's,
+or whose words contain the site note's words, refuses the answer `siteInLearning`. The site note is a
+separate draft, `{ segment, text, spans }`, for a site document (Plan HV), never part of a learning.
+
+**The draft.** An answer with `symptom`, `findings` or `fix` filled or held back drafts
+`{ segment, recording, fields, heldBack, modelToken?, spokenModel?, subject?, safetyTerms }`:
+
+- `recording` is the candidate's evidence (§13): the recording's id and the segment as whole seconds,
+  estimated because the recorder keeps no timings, `floor(start·d/n) ..< ceil(end·d/n)` capped at `d`
+  and at least one second, for a transcript of `n` scalars and a duration of `d` seconds (at least 1).
+- `modelToken` is the vault's model when the drafted model names exactly one; otherwise `spokenModel`
+  carries it as said. `subject` is `{ kind: "model", modelToken, equipmentType? }`, else, with a listed
+  type and a symptom, `{ kind: "symptom", equipmentType, phrase }` (the symptom), else absent.
+- `safetyTerms` are what the team-learning safety check finds in the findings, symptom, fix and what was
+  tried (§7.3): shown to the reviewer, never a refusal.
+- Filed (IM P3), it is a `recollection` candidate whose `finding` is the findings, or failing them the
+  fix, then the symptom.
+
+An answer refused, or missing, drafts nothing for its segment, and the other segments are drafted as
+usual. The refusal is reported by kind and field.

@@ -186,3 +186,6 @@ jobs:
 
       - name: Work record van stock block
         run: python3 -I Contracts/tests/test_van_stock_record.py
+
+      - name: Experience recording drafting pass
+        run: python3 -I Contracts/tests/test_recollection_drafts.py
