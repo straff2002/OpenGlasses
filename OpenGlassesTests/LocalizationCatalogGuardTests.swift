@@ -31,6 +31,7 @@ final class LocalizationCatalogGuardTests: XCTestCase {
         "nl": ["one", "other"],
         "pt-BR": ["one", "many", "other"],
         "ru": ["one", "few", "many", "other"],
+        "uk": ["one", "few", "many", "other"],
         "ur": ["one", "other"],
         "zh-Hans": ["other"],
         "zh-Hant": ["other"],

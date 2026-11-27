@@ -87,6 +87,12 @@
             "value" : "Avenkin"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -167,6 +173,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Настройте усложнение «Слушать»."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Налаштуйте ускладнення «Слухати»."
           }
         },
         "ur" : {
@@ -251,6 +263,12 @@
             "value" : "Настройте усложнение «Заметка с фото»."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Налаштуйте ускладнення «Нотатка з фото»."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -331,6 +349,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Настройте усложнение «Расшифровка»."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Налаштуйте ускладнення «Транскрипція»."
           }
         },
         "ur" : {
@@ -415,6 +439,12 @@
             "value" : "Слушать"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Слухати"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -497,6 +527,12 @@
             "value" : "Настройка «Слушать»"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Налаштування «Слухати»"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -577,6 +613,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Нет ответа ИИ"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Немає відповіді ШІ"
           }
         },
         "ur" : {
@@ -773,6 +815,12 @@
             "value" : "Заметка с фото"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нотатка з фото"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -853,6 +901,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Настройка «Заметка с фото»"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Налаштування «Нотатки з фото»"
           }
         },
         "ur" : {
@@ -937,6 +991,12 @@
             "value" : "Без звука · добавлено в расшифровку"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Беззвучно · додано до транскрипту"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1019,6 +1079,12 @@
             "value" : "Бесшумно сделать фото и добавить его в расшифровку встречи."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Беззвучно зробити фото й додати його до транскрипту зустрічі."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1099,6 +1165,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Начать/остановить расшифровку без ответа ИИ."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Почати/зупинити транскрипцію без відповіді ШІ."
           }
         },
         "ur" : {
@@ -1210,7 +1282,7 @@
         "uk" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Натисніть щоб зупинити"
+            "value" : "Торкніться, щоб зупинити"
           }
         },
         "ur" : {
@@ -1295,6 +1367,12 @@
             "value" : "Переключить «Слушать»"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перемкнути «Слухати»"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1375,6 +1453,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Включить или выключить прослушивание на очках."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Увімкнути або вимкнути прослуховування на окулярах."
           }
         },
         "ur" : {
@@ -1459,6 +1543,12 @@
             "value" : "Переключить расшифровку"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перемкнути транскрипцію"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1541,6 +1631,12 @@
             "value" : "Расшифровка"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Транскрипція"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1621,6 +1717,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Настройка «Расшифровка»"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Налаштування транскрипції"
           }
         },
         "ur" : {

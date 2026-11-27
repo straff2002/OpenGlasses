@@ -78,6 +78,12 @@
             "value" : "%@ на iPhone"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ на iPhone"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -158,6 +164,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld мин назад"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld хв тому"
           }
         },
         "ur" : {
@@ -242,6 +254,12 @@
             "value" : "%lld мин на велосипеде"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld хв на велосипеді"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -322,6 +340,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld мин на машине"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld хв автомобілем"
           }
         },
         "ur" : {
@@ -406,6 +430,12 @@
             "value" : "%lld мин пешком"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld хв пішки"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -488,6 +518,12 @@
             "value" : "Ещё %lld на iPhone"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ще %lld на iPhone"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -568,6 +604,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Сегодня ещё %lld на iPhone."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сьогодні ще %lld на iPhone."
           }
         },
         "ur" : {
@@ -656,6 +698,12 @@
             "value" : "Весь день"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Увесь день"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -736,6 +784,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "на %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "станом на %@"
           }
         },
         "ur" : {
@@ -820,6 +874,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Спросить Avenkin"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запитати Avenkin"
           }
         },
         "ur" : {
@@ -928,6 +988,12 @@
             "value" : "Avenkin"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1010,6 +1076,12 @@
             "value" : "Avenkin не может прочитать ваш календарь. Разрешите доступ на iPhone."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin не може прочитати ваш календар. Дозвольте доступ на iPhone."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1087,6 +1159,12 @@
           }
         },
         "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin: %@"
+          }
+        },
+        "uk" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Avenkin: %@"
@@ -1174,6 +1252,12 @@
             "value" : "Заряд батареи: %lld процентов"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Заряд акумулятора: %lld%%"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1254,6 +1338,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Календарь"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Календар"
           }
         },
         "ur" : {
@@ -1338,6 +1428,12 @@
             "value" : "Календарь выключен в разделе «Мой день» на iPhone."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Календар вимкнено в розділі «Мій день» на вашому iPhone."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1418,6 +1514,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Подключить"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Підключити"
           }
         },
         "ur" : {
@@ -1502,6 +1604,12 @@
             "value" : "Диктовать"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Диктувати"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1582,6 +1690,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Маршрут запущен на iPhone."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Маршрут запущено на вашому iPhone."
           }
         },
         "ur" : {
@@ -1668,6 +1782,12 @@
             "value" : "Закрыть"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Закрити"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1748,6 +1868,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Завершить"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершити"
           }
         },
         "ur" : {
@@ -1832,6 +1958,12 @@
             "value" : "Завершить приватный"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершити приватну"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1913,6 +2045,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Завершить приватный разговор"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершити приватну розмову"
           }
         },
         "ur" : {
@@ -2021,6 +2159,12 @@
             "value" : "Событие"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подія"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2101,6 +2245,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Названия и места событий скрыты, пока включено «Медицинское соответствие»."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Назви й місця подій приховано, поки ввімкнено «Медичну відповідність»."
           }
         },
         "ur" : {
@@ -2209,6 +2359,12 @@
             "value" : "Очки подключены"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Окуляри підключено"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2289,6 +2445,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Идти"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перейти"
           }
         },
         "ur" : {
@@ -2379,6 +2541,12 @@
             "value" : "Макс. %1$@  Мин. %2$@"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Макс. %1$@  Мін. %2$@"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2459,6 +2627,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "по прямой"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "по прямій"
           }
         },
         "ur" : {
@@ -2567,6 +2741,12 @@
             "value" : "iPhone подключён"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone підключено"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2647,6 +2827,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "iPhone недоступен"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone недоступний"
           }
         },
         "ur" : {
@@ -2731,6 +2917,12 @@
             "value" : "Оставить на главном экране"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Залишити на головному екрані"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2811,6 +3003,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Позже"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пізніше"
           }
         },
         "ur" : {
@@ -2895,6 +3093,12 @@
             "value" : "Правовая информация"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Правова інформація"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2972,6 +3176,12 @@
           }
         },
         "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Список"
+          }
+        },
+        "uk" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Список"
@@ -3059,6 +3269,12 @@
             "value" : "Слушать"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Слухати"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3139,6 +3355,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Слушаю"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Слухаю"
           }
         },
         "ur" : {
@@ -3223,6 +3445,12 @@
             "value" : "Карты выключены, пока в «Медицинском соответствии» включён режим «Только локально»."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Карти вимкнено, поки ввімкнено медичний режим «Лише локально»."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3303,6 +3531,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ещё"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ще"
           }
         },
         "ur" : {
@@ -3389,6 +3623,12 @@
             "value" : "Далее"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Далі"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3466,6 +3706,12 @@
           }
         },
         "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Недоступно"
+          }
+        },
+        "uk" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Недоступно"
@@ -3553,6 +3799,12 @@
             "value" : "Больше на сегодня в календаре ничего нет."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Більше на сьогодні в календарі нічого немає."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3633,6 +3885,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Сейчас"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зараз"
           }
         },
         "ur" : {
@@ -3717,6 +3975,12 @@
             "value" : "Исполняется"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зараз грає"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3797,6 +4061,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "«Исполняется», календарь, погода"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«Зараз грає», календар, погода"
           }
         },
         "ur" : {
@@ -3881,6 +4151,12 @@
             "value" : "Сейчас показано"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зараз показано"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3961,6 +4237,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Сейчас: %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зараз: %@"
           }
         },
         "ur" : {
@@ -4045,6 +4327,12 @@
             "value" : "Откройте Avenkin на iPhone, чтобы увидеть это."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Відкрийте Avenkin на iPhone, щоб побачити це."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4127,6 +4415,12 @@
             "value" : "Откройте Avenkin на iPhone, чтобы обновить сведения на сегодня."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Відкрийте Avenkin на iPhone, щоб оновити дані на сьогодні."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4207,6 +4501,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Откройте Avenkin на iPhone и повторите попытку."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Відкрийте Avenkin на iPhone і спробуйте ще раз."
           }
         },
         "ur" : {
@@ -4313,6 +4613,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Персоны"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Персони"
           }
         },
         "ur" : {
@@ -4510,6 +4816,12 @@
             "value" : "Приватно"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приватно"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4591,6 +4903,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Приватный разговор. Ничего из него не сохраняется."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приватна розмова. Нічого з неї не зберігається."
           }
         },
         "ur" : {
@@ -4675,6 +4993,12 @@
             "value" : "Быстрые действия"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Швидкі дії"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4757,6 +5081,12 @@
             "value" : "Прочитайте сообщение на iPhone."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прочитайте повідомлення на iPhone."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4834,6 +5164,12 @@
           }
         },
         "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Готово"
+          }
+        },
+        "uk" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Готово"
@@ -4923,6 +5259,12 @@
             "value" : "Недавние"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нещодавні"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5003,6 +5345,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Записать видео"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Записати відео"
           }
         },
         "ur" : {
@@ -5087,6 +5435,12 @@
             "value" : "Запись"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запис"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5169,6 +5523,12 @@
             "value" : "Запись видео"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запис відео"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5249,6 +5609,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Убрать с главного экрана"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прибрати з головного екрана"
           }
         },
         "ur" : {
@@ -5445,6 +5811,12 @@
             "value" : "Выполняется на iPhone."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Працює на вашому iPhone."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5527,6 +5899,12 @@
             "value" : "Сохраняет фото с очков."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зберігає фото з окулярів."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5604,6 +5982,12 @@
           }
         },
         "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сон"
+          }
+        },
+        "uk" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Сон"
@@ -5692,6 +6076,12 @@
             "value" : "Начать приватный разговор"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Почати приватну розмову"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5772,6 +6162,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Запускает пеший маршрут на iPhone."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запускає пішохідний маршрут на iPhone."
           }
         },
         "ur" : {
@@ -5856,6 +6252,12 @@
             "value" : "Перестать слушать"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перестати слухати"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5936,6 +6338,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Остановить расшифровку"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зупинити транскрипцію"
           }
         },
         "ur" : {
@@ -6020,6 +6428,12 @@
             "value" : "Остановить видео"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зупинити відео"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6100,6 +6514,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Сделать фото"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Зробити фото"
           }
         },
         "ur" : {
@@ -6184,6 +6604,12 @@
             "value" : "Делает фото очками, затем задаёт вопрос о нём."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Робить фото окулярами, а потім ставить запитання про нього."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6264,6 +6690,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Коснитесь булавки, чтобы элемент оставался и на главном экране."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Торкніться шпильки, щоб елемент залишався й на головному екрані."
           }
         },
         "ur" : {
@@ -6348,6 +6780,12 @@
             "value" : "Не получилось."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вийшло."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6428,6 +6866,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Сегодня"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сьогодні"
           }
         },
         "ur" : {
@@ -6512,6 +6956,12 @@
             "value" : "«Сегодня на часах» выключено. Включите эту функцию в Avenkin на iPhone, в разделе Apple Watch."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«Сьогодні на годиннику» вимкнено. Увімкніть цю функцію в Avenkin на iPhone, у розділі Apple Watch."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6592,6 +7042,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Расшифровка"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Транскрипція"
           }
         },
         "ur" : {
@@ -6676,6 +7132,12 @@
             "value" : "Разблокируйте iPhone, чтобы обновить сведения на сегодня."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Розблокуйте iPhone, щоб оновити дані на сьогодні."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6756,6 +7218,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Обновлено: %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оновлено: %@"
           }
         },
         "ur" : {
@@ -6840,6 +7308,12 @@
             "value" : "Видео"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Відео"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6917,6 +7391,12 @@
           }
         },
         "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Погода"
+          }
+        },
+        "uk" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Погода"
@@ -7004,6 +7484,12 @@
             "value" : "Источники данных о погоде указаны там и в разделе «Мой день» в Avenkin на iPhone."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Джерела даних про погоду вказано там і в розділі «Мій день» в Avenkin на вашому iPhone."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7084,6 +7570,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Погода выключена в разделе «Мой день» на iPhone."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Погоду вимкнено в розділі «Мій день» на вашому iPhone."
           }
         },
         "ur" : {
@@ -7168,6 +7660,12 @@
             "value" : "Погода выключена, пока в «Медицинском соответствии» включён режим «Только локально»."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Погоду вимкнено, поки в «Медичній відповідності» увімкнено «Лише локально»."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7248,6 +7746,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Погода сейчас недоступна."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Погода зараз недоступна."
           }
         },
         "ur" : {
@@ -7332,6 +7836,12 @@
             "value" : "Для погоды нужна ваша геопозиция на iPhone."
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для погоди потрібна ваша геопозиція на iPhone."
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7414,6 +7924,12 @@
             "value" : "Где вы"
           }
         },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Де ви"
+          }
+        },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7494,6 +8010,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Не удалось прочитать календарь."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося прочитати календар."
           }
         },
         "ur" : {

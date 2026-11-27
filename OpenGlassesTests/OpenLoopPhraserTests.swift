@@ -164,7 +164,7 @@ final class OpenLoopPhraserTests: XCTestCase {
         XCTAssertEqual(OpenLoopPhraser.spokenCount(3, language: "es-MX"), "3")
         XCTAssertEqual(OpenLoopPhraser.spokenCount(1, language: "it"), "1")
         // Never an English word inside another language's sentence.
-        for language in ["ar", "fr-CA", "hu", "ja", "ko", "nl", "pt-BR", "ru", "ur", "zh-Hans", "zh-Hant"] {
+        for language in ["ar", "fr-CA", "hu", "ja", "ko", "nl", "pt-BR", "ru", "uk", "ur", "zh-Hans", "zh-Hant"] {
             let count = OpenLoopPhraser.spokenCount(2, language: language)
             XCTAssertNotEqual(count, "Two", language)
             XCTAssertFalse(count.isEmpty, language)
