@@ -211,6 +211,9 @@ extension HUDCanvas {
         switch choice {
         case .metaRayBan: return .metaDisplay
         case .evenG2: return .evenG2
+        // Rokid draws a text overlay and its lens size is not known yet, so the preview uses the
+        // text-cell canvas, the nearest one we have.
+        case .rokidRV101: return .evenG2
         }
     }
 }

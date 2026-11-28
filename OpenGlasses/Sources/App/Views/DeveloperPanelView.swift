@@ -37,6 +37,15 @@ struct DeveloperPanelView: View {
     @AppStorage("ggufModelsEnabled") private var ggufModelsEnabled = false
     /// Plan NH: count this test build's assistant time as an App Store install would.
     @AppStorage(Config.meterAsStoreBuildKey) private var meterAsStoreBuild = false
+    /// `Config.cameraBackend`, the same key and default (Ray-Ban Meta).
+    @AppStorage("cameraBackend") private var cameraBackend: CameraBackendChoice = .metaRayBan
+
+    private var rokidCameraBinding: Binding<Bool> {
+        Binding(
+            get: { cameraBackend == .rokidRV101 },
+            set: { cameraBackend = $0 ? .rokidRV101 : .metaRayBan }
+        )
+    }
 
     init(appState: AppState) {
         self.appState = appState
@@ -247,6 +256,28 @@ struct DeveloperPanelView: View {
             // Plan LM P1: what the shared background wake actually did — the device pass's evidence.
             BackgroundRefreshSection(ledger: BackgroundRefreshCoordinator.shared.ledger)
             NotificationButtonTestSection(log: NotificationButtonTestLog.shared)
+
+            #if !AVENKIN_PHONE_ONLY
+            // Rokid RV101 support is early and unproven on hardware, so its camera switch and the
+            // link probe live here rather than in the glasses settings everyone sees. Not in the
+            // phone-only build, which has no glasses and no MFi transport.
+            OGSection(
+                header: "Rokid Glasses",
+                footer: "Early support that has not been tested on the glasses yet. The camera choice applies from the next launch, and until the glasses can send photos, captures use the iPhone camera."
+            ) {
+                OGRow("Use the Rokid camera", isOn: rokidCameraBinding, icon: "camera")
+                OGDivider()
+                NavigationLink {
+                    RokidDiagnosticsView()
+                } label: {
+                    OGRow(
+                        "Rokid glasses probe", icon: "antenna.radiowaves.left.and.right",
+                        subtitle: "Accessory list, link probes and the raw frame log"
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            #endif
 
             OGSection(
                 header: "Debug Events",
