@@ -221,48 +221,112 @@ struct ImmunisationReconciliation: Equatable, Sendable {
 
 /// The findings in words (Plan MY §8): which counts differ, on which day, of which vaccine and lot,
 /// and never which patient. "Not in the EMR on that day" keeps a late entry a prompt to check, not
-/// a verdict.
+/// a verdict. Screen text, localised: the model never reads a check.
+///
+/// Each sentence is one whole string, so a translation can order its words, and opens with the
+/// count: a catalog plural is chosen by the first argument.
 struct ImmunisationFindingWording {
     let items: [VanStockItem]
-
-    private func name(_ itemID: String) -> String {
-        items.first { $0.id == itemID }?.name ?? "A line no longer on the list"
-    }
-
-    private func doses(_ count: Int) -> String { count == 1 ? "1 dose" : "\(count) doses" }
-
-    private func lotText(_ lot: String) -> String { lot.isEmpty ? "with no lot" : "lot \(lot)" }
 
     func sentence(_ finding: ImmunisationReconciliation.Finding) -> String {
         switch finding {
         case .givenNotInEMR(let itemID, let day, let lot, let count):
-            return "\(doses(count)) of \(name(itemID)) on \(day.spoken), \(lotText(lot)), "
-                + "\(count == 1 ? "is" : "are") not in the EMR on that day."
+            let (line, on) = (line(itemID, lot: lot), StockScanText.day(day))
+            return count == 1
+                ? String(localized: "1 dose of \(line) given here on \(on) is not in the EMR on that day.")
+                : String(localized: "\(count) doses of \(line) given here on \(on) are not in the EMR on that day.")
         case .inEMRNotGiven(let itemID, let day, let lot, let count):
-            return "\(doses(count)) of \(name(itemID)) on \(day.spoken), \(lotText(lot)), "
-                + "\(count == 1 ? "is" : "are") in the EMR but not recorded as given here, so the stock figure may be high."
+            let (line, on) = (line(itemID, lot: lot), StockScanText.day(day))
+            return count == 1
+                ? String(localized: "1 dose of \(line) in the EMR on \(on) was not recorded as given here, so the stock figure may be high.")
+                : String(localized: "\(count) doses of \(line) in the EMR on \(on) were not recorded as given here, so the stock figure may be high.")
         case .differentLot(let itemID, let day, let here, let emr, let count):
-            return "On \(day.spoken), \(doses(count)) of \(name(itemID)) "
-                + "\(count == 1 ? "was" : "were") recorded here from \(lotText(here)) and in the EMR from \(lotText(emr)). "
-                + "One of the two records likely has a typo."
+            let (line, on) = (StockCheckText.line(itemID, in: items), StockScanText.day(day))
+            let (hereLot, emrLot) = (StockCheckText.lot(here), StockCheckText.lot(emr))
+            return count == 1
+                ? String(localized: "1 dose of \(line) on \(on) was recorded here from lot \(hereLot) and in the EMR from lot \(emrLot). One of the two records likely has a typo.")
+                : String(localized: "\(count) doses of \(line) on \(on) were recorded here from lot \(hereLot) and in the EMR from lot \(emrLot). One of the two records likely has a typo.")
         case .nearby(let itemID, let here, let emr, let lot, let count):
-            return "\(doses(count)) of \(name(itemID)), \(lotText(lot)), recorded here on \(here.spoken) "
-                + "\(count == 1 ? "is" : "are") in the EMR on \(emr.spoken): nearby, not missing."
+            let line = line(itemID, lot: lot)
+            let (given, entered) = (StockScanText.day(here), StockScanText.day(emr))
+            return count == 1
+                ? String(localized: "1 dose of \(line) given here on \(given) is in the EMR on \(entered): nearby, not missing.")
+                : String(localized: "\(count) doses of \(line) given here on \(given) are in the EMR on \(entered): nearby, not missing.")
         }
+    }
+
+    /// "the flu vaccine from lot ZZ1001", or "the flu vaccine with no lot": the EMR's list always has lots.
+    private func line(_ itemID: String, lot: String) -> String {
+        let name = StockCheckText.line(itemID, in: items)
+        return lot.isEmpty ? String(localized: "\(name) with no lot", comment: "A stock line's name, put into a sentence.") : StockCheckText.withLot(name, lot)
     }
 
     /// One sentence for the whole check.
     func summary(_ result: ImmunisationReconciliation) -> String {
         let s = result.summary(ranAt: Date(timeIntervalSince1970: 0))
-        let span = result.first == result.last ? "On \(result.first.spoken)" : "From \(result.first.spoken) to \(result.last.spoken)"
         if s.differences == 0, s.nearby == 0 {
-            return "\(span), every dose given here matches the EMR (\(doses(result.matched)))."
+            let matched = StockCheckText.doses(result.matched)
+            let first = StockScanText.day(result.first)
+            guard result.first != result.last else {
+                return String(localized: "On \(first), every dose given here matches the EMR (\(matched)).")
+            }
+            let last = StockScanText.day(result.last)
+            return String(localized: "From \(first) to \(last), every dose given here matches the EMR (\(matched)).")
         }
         var parts: [String] = []
-        if s.givenNotInEMR > 0 { parts.append("\(doses(s.givenNotInEMR)) given here not in the EMR on that day") }
-        if s.inEMRNotGiven > 0 { parts.append("\(doses(s.inEMRNotGiven)) in the EMR not recorded as given here") }
-        if s.differentLot > 0 { parts.append("\(doses(s.differentLot)) with a different lot") }
-        if s.nearby > 0 { parts.append("\(doses(s.nearby)) on a nearby day") }
-        return "\(span): " + parts.joined(separator: ", ") + "."
+        if s.givenNotInEMR > 0 {
+            let count = s.givenNotInEMR
+            parts.append(count == 1 ? String(localized: "1 dose given here but not in the EMR that day")
+                                    : String(localized: "\(count) doses given here but not in the EMR that day"))
+        }
+        if s.inEMRNotGiven > 0 {
+            let count = s.inEMRNotGiven
+            parts.append(count == 1 ? String(localized: "1 dose in the EMR but not recorded as given here")
+                                    : String(localized: "\(count) doses in the EMR but not recorded as given here"))
+        }
+        if s.differentLot > 0 {
+            let count = s.differentLot
+            parts.append(count == 1 ? String(localized: "1 dose with a different lot")
+                                    : String(localized: "\(count) doses with a different lot"))
+        }
+        if s.nearby > 0 {
+            let count = s.nearby
+            parts.append(count == 1 ? String(localized: "1 dose in the EMR on a nearby day")
+                                    : String(localized: "\(count) doses in the EMR on a nearby day"))
+        }
+        return StockCheckText.differences(parts, from: result.first, to: result.last)
+    }
+}
+
+/// What the two checks' sentences share (`ImmunisationFindingWording`, `BillingFindingWording`).
+/// Screen text, localised.
+enum StockCheckText {
+
+    /// A line's name, put into a sentence.
+    static func line(_ itemID: String, in items: [VanStockItem]) -> String {
+        items.first { $0.id == itemID }?.name ?? String(localized: "a line no longer on the list")
+    }
+
+    /// "the flu vaccine from lot ZZ1001", put into a sentence, so it carries no comma to close.
+    static func withLot(_ name: String, _ lot: String) -> String {
+        String(localized: "\(name) from lot \(lot)", comment: "A stock line's name and lot, put into a sentence.")
+    }
+
+    /// A lot's code after the word "lot", for a record that may name none.
+    static func lot(_ code: String) -> String {
+        code.isEmpty ? String(localized: "(none)", comment: "In place of a lot number, after the word lot.") : code
+    }
+
+    static func doses(_ count: Int) -> String {
+        count == 1 ? String(localized: "1 dose") : String(localized: "\(count) doses")
+    }
+
+    /// "From 22 Nov 2026 to 23 Nov 2026: 1 dose …, and 2 doses …." The list is joined as the
+    /// phone's language joins one.
+    static func differences(_ parts: [String], from first: StockDay, to last: StockDay) -> String {
+        let list = parts.formatted(.list(type: .and))
+        let start = StockScanText.day(first)
+        guard first != last else { return String(localized: "On \(start): \(list).") }
+        return String(localized: "From \(start) to \(StockScanText.day(last)): \(list).")
     }
 }

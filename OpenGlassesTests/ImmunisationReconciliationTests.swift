@@ -47,14 +47,14 @@ final class ImmunisationReconciliationTests: XCTestCase {
         let result = compare([dose("flu", 24, "ZZ1001", 3)], [record("FLU-EMR", 24, "ZZ1001")])
         XCTAssertEqual(result.findings, [.givenNotInEMR(itemID: "flu", day: day(24), lot: "ZZ1001", count: 2)])
         XCTAssertEqual(ImmunisationFindingWording(items: items).sentence(result.findings[0]),
-                       "2 doses of the flu vaccine on 24 November 2026, lot ZZ1001, are not in the EMR on that day.")
+                       "2 doses of the flu vaccine from lot ZZ1001 given here on \(StockScanText.day(day(24))) are not in the EMR on that day.")
     }
 
     func testInTheEMRNotGivenHere() {
         let result = compare([], [record("TET", 25, "ZZ2001")])
         XCTAssertEqual(result.findings, [.inEMRNotGiven(itemID: "tet", day: day(25), lot: "ZZ2001", count: 1)])
         XCTAssertTrue(ImmunisationFindingWording(items: items).sentence(result.findings[0])
-            .contains("in the EMR but not recorded as given here"))
+            .hasSuffix("was not recorded as given here, so the stock figure may be high."))
     }
 
     func testTheSameDayWithADifferentLotIsListedOnItsOwn() {
@@ -71,6 +71,37 @@ final class ImmunisationReconciliationTests: XCTestCase {
         ])
         XCTAssertFalse(result.findings.contains { if case .givenNotInEMR = $0 { return true } else { return false } })
         XCTAssertTrue(ImmunisationFindingWording(items: items).sentence(result.findings[0]).hasSuffix("nearby, not missing."))
+    }
+
+    // MARK: - The words on the screen
+
+    func testOneDoseAndSeveralEachReadRight() {
+        let wording = ImmunisationFindingWording(items: items)
+        let on = StockScanText.day(day(24)), next = StockScanText.day(day(25))
+        XCTAssertEqual(wording.sentence(.givenNotInEMR(itemID: "flu", day: day(24), lot: "", count: 1)),
+                       "1 dose of the flu vaccine with no lot given here on \(on) is not in the EMR on that day.")
+        XCTAssertEqual(wording.sentence(.inEMRNotGiven(itemID: "tet", day: day(24), lot: "ZZ2001", count: 3)),
+                       "3 doses of the tetanus vaccine from lot ZZ2001 in the EMR on \(on) were not recorded as given here, "
+                       + "so the stock figure may be high.")
+        XCTAssertEqual(wording.sentence(.differentLot(itemID: "tet", day: day(24), here: "ZZ2001", emr: "", count: 2)),
+                       "2 doses of the tetanus vaccine on \(on) were recorded here from lot ZZ2001 and in the EMR from "
+                       + "lot (none). One of the two records likely has a typo.")
+        XCTAssertEqual(wording.sentence(.nearby(itemID: "gone", here: day(24), emr: day(25), lot: "ZZ9", count: 1)),
+                       "1 dose of a line no longer on the list from lot ZZ9 given here on \(on) is in the EMR on \(next): "
+                       + "nearby, not missing.")
+    }
+
+    func testTheSummaryCountsEachKindOfDifference() {
+        let wording = ImmunisationFindingWording(items: items)
+        let first = StockScanText.day(day(20)), last = StockScanText.day(day(30)), on = StockScanText.day(day(24))
+        let same = compare([dose("flu", 24, "ZZ1001")], [record("FLU-EMR", 24, "ZZ1001")])
+        XCTAssertEqual(wording.summary(same), "From \(first) to \(last), every dose given here matches the EMR (1 dose).")
+        let oneDay = compare([dose("flu", 24, "ZZ1001", 2)], [], first: 24, last: 24)
+        XCTAssertEqual(wording.summary(oneDay), "On \(on): 2 doses given here but not in the EMR that day.")
+        let parts = ["2 doses given here but not in the EMR that day", "1 dose in the EMR but not recorded as given here"]
+            .formatted(.list(type: .and))
+        XCTAssertEqual(wording.summary(compare([dose("flu", 22, "ZZ1001", 2)], [record("TET", 27, "ZZ2001")])),
+                       "From \(first) to \(last): \(parts).")
     }
 
     func testTwoDaysApartIsMissingOnBothSides() {

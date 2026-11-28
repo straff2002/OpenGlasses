@@ -95,7 +95,8 @@ struct VaultLinkSheet: View {
     @ViewBuilder
     private func offerSection(_ offer: VaultLinkService.FetchOffer) -> some View {
         Section {
-            LabeledContent("Site", value: offer.host)
+            // Not "Site", which is a work site everywhere else.
+            LabeledContent("Website", value: offer.host)
             Text(offer.message).font(.callout)
             if offer.isOnCellular {
                 OGStatusLabel("You are on cellular data.", kind: .warn)

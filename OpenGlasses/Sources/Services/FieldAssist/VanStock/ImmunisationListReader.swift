@@ -79,13 +79,13 @@ enum ImmunisationListReader {
         /// A mapped column the list's header does not have: the name the person chose.
         case missingColumn(String)
 
-        /// A sentence that repeats nothing from the file.
+        /// A sentence for the screen, localised, that repeats nothing from the file.
         var sentence: String {
             switch self {
-            case .unreadable: return "The list couldn't be read. Export it from the EMR again as a spreadsheet (.xlsx) or a CSV file."
-            case .tooLarge: return "The list is too large to read on the phone. Export a shorter date range from the EMR."
-            case .noRows: return "The list has no rows to check."
-            case .missingColumn(let name): return "The list has no column called \"\(name)\". Choose its columns again."
+            case .unreadable: return String(localized: "The list couldn't be read. Export it from the EMR again as a spreadsheet (.xlsx) or a CSV file.")
+            case .tooLarge: return String(localized: "The list is too large to read on the phone. Export a shorter date range from the EMR.")
+            case .noRows: return String(localized: "The list has no rows to check.")
+            case .missingColumn(let name): return String(localized: "The list has no column called \"\(name)\". Choose its columns again.")
             }
         }
     }

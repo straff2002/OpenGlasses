@@ -21,8 +21,9 @@ final class ImmunisationCheckService {
     }
 
     /// Why the check is refused outside medical mode.
-    static let medicalModeRefusal = "The check against the EMR runs only while medical mode is on, because the EMR's "
-        + "list holds patient details. Turn on medical mode in Settings, then try again. Nothing was read."
+    static var medicalModeRefusal: String {
+        String(localized: "The check against the EMR runs only while medical mode is on, because the EMR's list holds patient details. Turn on medical mode in Settings, then try again. Nothing was read.")
+    }
 
     private let store: VanStockStore
     private let medicalMode: () -> Bool
@@ -66,7 +67,9 @@ final class ImmunisationCheckService {
     func check(_ data: Data, format: ImmunisationListReader.Format, mapping: ImmunisationColumnMapping,
                range: StockReportRange? = nil) -> Outcome {
         guard medicalMode() else { return .refused(Self.medicalModeRefusal) }
-        guard !store.isUnreadable else { return .refused("The stock list on this phone can't be read. Nothing was checked.") }
+        guard !store.isUnreadable else {
+            return .refused(String(localized: "The stock list on this phone can't be read. Nothing was checked."))
+        }
         let list: ImmunisationListReader.List
         switch ImmunisationListReader.read(data, format: format, mapping: mapping) {
         case .failure(let failure): return .failed(failure.sentence)

@@ -371,7 +371,8 @@ struct SiteDraftSection: View {
                 .accessibilityElement(children: .combine)
             }
         } header: {
-            Text("Units")
+            // Not "Units", which is the units of measurement in Navigation's settings.
+            Text("Units on site")
         }
         if !summary.details.isEmpty {
             Section {

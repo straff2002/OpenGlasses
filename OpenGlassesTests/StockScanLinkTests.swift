@@ -143,6 +143,7 @@ final class StockScanLinkTests: XCTestCase {
         XCTAssertFalse(refused.recorded)
         XCTAssertTrue(refused.answer.contains("already on Examplevax quadrivalent"), refused.answer)
         XCTAssertEqual(store.log, before, "nothing recorded, no code moved")
+        XCTAssertEqual(refused.problem, .codeOnAnotherLine(try XCTUnwrap(store.log.item(id: "flu")).name))
     }
 
     func testLinesSharingAProductNumberAreNotAConflict() throws {
@@ -162,5 +163,50 @@ final class StockScanLinkTests: XCTestCase {
         let refused = service.recordScan(.given, scan: scan, itemID: "flu", quantity: StockQuantity(whole: 1))
         XCTAssertFalse(refused.recorded, refused.answer)
         XCTAssertEqual(store.log.item(id: "flu")?.codes, ["EXQ", "Examplevax"])
+    }
+
+    // MARK: - Why nothing was recorded
+
+    /// The sheet says why in its own words: the service's answer is worded for a model ("call
+    /// again with 'lot'") and stays so.
+    func testARefusalHasAReasonTheSheetCanSay() throws {
+        let name = try XCTUnwrap(store.log.item(id: "flu")).name
+        let scan = try carton(gtin)
+        let newLot = service.recordScan(.given, scan: scan, itemID: "flu", quantity: StockQuantity(whole: 1))
+        XCTAssertEqual(newLot.problem, .lotNotOnLine(lot: "ZZ2001", line: name))
+
+        let received = service.recordScan(.received, scan: scan, itemID: "flu", quantity: StockQuantity(whole: 10))
+        XCTAssertTrue(received.recorded)
+        XCTAssertNil(received.problem, "a recorded scan has nothing to explain, whatever came before it")
+        let second = try carton(gtin, lot: "ZZ2002", expiry: "280131")
+        XCTAssertTrue(service.recordScan(.received, scan: second, itemID: "flu", quantity: StockQuantity(whole: 10)).recorded)
+
+        // The box's plain barcode names no lot, and the line holds two.
+        let plain = try StockScan.read("2000000000022", referenceYear: 2026).get()
+        let unclear = service.recordScan(.given, scan: plain, itemID: "flu", quantity: StockQuantity(whole: 1))
+        XCTAssertEqual(unclear.problem, .whichLot(line: name, lots: ["ZZ2002", "ZZ2001"]), "oldest expiry first")
+        XCTAssertTrue(unclear.answer.contains("call again with 'lot'"), "the assistant's words are unchanged: \(unclear.answer)")
+        let shown = StockScanText.problem(try XCTUnwrap(unclear.problem))
+        XCTAssertTrue(shown.contains(name) && shown.contains("ZZ2001") && shown.contains("ZZ2002"), shown)
+        XCTAssertFalse(shown.contains("call again"), shown)
+
+        XCTAssertEqual(service.recordScan(.given, scan: scan, itemID: "flu", quantity: .zero).problem, .amountOutOfRange)
+        XCTAssertEqual(service.recordScan(.given, scan: scan, itemID: "gone", quantity: StockQuantity(whole: 1)).problem,
+                       .codeOnAnotherLine(name), "the code is the flu line's")
+        let unknown = try carton(otherGTIN)
+        XCTAssertEqual(service.recordScan(.received, scan: unknown, itemID: "gone", quantity: StockQuantity(whole: 1)).problem,
+                       .lineGone)
+    }
+
+    func testAnExpiredLotOnGivenSaysSo() throws {
+        let name = try XCTUnwrap(store.log.item(id: "flu")).name
+        let old = try carton(gtin, lot: "ZZ0900", expiry: "261103")
+        XCTAssertTrue(service.recordScan(.received, scan: old, itemID: "flu", quantity: StockQuantity(whole: 5)).recorded)
+        let refused = service.recordScan(.given, scan: old, itemID: "flu", quantity: StockQuantity(whole: 1))
+        XCTAssertFalse(refused.recorded)
+        XCTAssertEqual(refused.problem, .lotExpired(lot: "ZZ0900", line: name))
+        XCTAssertTrue(refused.answer.contains("action 'waste'"), refused.answer)
+        XCTAssertFalse(StockScanText.problem(.lotExpired(lot: "ZZ0900", line: name)).contains("'waste'"),
+                       "no tool words on the screen")
     }
 }

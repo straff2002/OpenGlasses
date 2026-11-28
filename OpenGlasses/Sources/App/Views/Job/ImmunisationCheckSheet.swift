@@ -190,7 +190,8 @@ struct ImmunisationCheckSheet: View {
             Section {
                 Text(verbatim: wording.summary(result))
                 if skipped > 0 {
-                    Text("\(skipped) rows had no readable date or vaccine and were left out.")
+                    (skipped == 1 ? Text("1 row had no readable date or vaccine and was left out.")
+                                  : Text("\(skipped) rows had no readable date or vaccine and were left out."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -206,7 +207,7 @@ struct ImmunisationCheckSheet: View {
                             }
                         } label: {
                             LabeledContent {
-                                Text("\(entry.rows) rows")
+                                entry.rows == 1 ? Text("1 row") : Text("\(entry.rows) rows")
                             } label: {
                                 Text(verbatim: entry.vaccine)
                             }
