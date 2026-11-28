@@ -58,6 +58,12 @@ enum RowIdentityRoster {
             .init(.distinct, #"each Badge case appended at most once and every case has its own fixed text (AddOnSheetModel.swift:100)"#),
         #"AssistingHandoverView.swift|held.changes.lines|\.self"#:
             .init(.distinct, #"HandoverChanges.between notes each Section once with its own sentence (HeldHandover.swift:106)"#),
+        #"BillingCheckSheet.swift|header|\.self"#:
+            .init(.menuOptionsMayRepeat, #"Picker options from a billing export's header row; only blanks dropped (BillingCheckSheet.swift:105), names can repeat"#),
+        #"BillingCheckSheet.swift|result.sharedCodes|\.tariff"#:
+            .init(.distinct, #"built from the keys of the shared-tariff dictionary (BillingExportReader.swift:152)"#),
+        #"BillingCheckSheet.swift|result.reconciliation.unmatchedVaccines|\.vaccine"#:
+            .init(.distinct, #"built from the keys of the unmatched-vaccine dictionary (ImmunisationReconciliation.swift:197)"#),
         #"DiarizationSettingsView.swift|models|\.self"#:
             .init(.picker, #"Model Picker options; literal [nova-3, nova-2, nova-2-meeting] (DiarizationSettingsView.swift:14)"#),
         #"DocumentsView.swift|groups|\.namespace"#:
