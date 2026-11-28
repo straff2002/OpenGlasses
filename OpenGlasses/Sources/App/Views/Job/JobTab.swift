@@ -311,13 +311,15 @@ private struct JobTabContent: View {
                             onStarted: { _ in path = [.currentJob] })
         case .vanStock:
             VanStockView(store: .shared, stockSystem: appState.stockSystem, clinicWorkbook: appState.clinicWorkbook,
+                         countRequested: $appState.stockCountRequested,
                          onOpen: { path.append(.vanStockItem(id: $0)) })
         case .vanStockItem(let id):
             VanStockItemView(store: .shared, itemID: id)
-        case .recordExperience:
+        case .recordExperience, .recordSite:
             ExperienceRecorderView(recorder: appState.experienceRecorder, store: .shared,
                                    openJob: model.state.active.map { $0.jobNumber.map { String(localized: "Job \($0)") }
-                                       ?? String(localized: "Open job") })
+                                       ?? String(localized: "Open job") },
+                                   initialKind: ExperienceRecordingEntry.kind(for: route) ?? .experience)
         }
     }
 
@@ -373,10 +375,14 @@ private struct JobTabContent: View {
     private func takeRequest() {
         guard let request = appState.jobListRequest else { return }
         appState.jobListRequest = nil
-        let outcome = JobListRouting.resolve(request, feed.routingFacts)
+        var facts = feed.routingFacts
+        facts.showsStock = !Config.organizationForbidsVanStock
+        let outcome = JobListRouting.resolve(request, facts)
         path = outcome.path
         notice = outcome.notice
         openJobPrompt = outcome.prompt
+        // The stock screen takes this when it appears and decides against its list.
+        if outcome.opensStockCount { appState.stockCountRequested = true }
     }
 
     /// Add new job: the start page, or — with a job open — the question (`JobListAdd`).

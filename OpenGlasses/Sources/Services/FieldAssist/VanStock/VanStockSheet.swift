@@ -59,6 +59,18 @@ enum VanStockSheet {
         }
     }
 
+    /// The column a line's category is written under, after the others so every older workbook's
+    /// columns keep their places. Written only when some line has a category: a list nobody
+    /// grouped writes the workbook it always has. The reader takes it as one of `categoryHeaders`,
+    /// so an export imported back keeps each line's group.
+    static let categoryColumnTitle = "Category"
+    static let categoryColumnLayout = XLSX.Column(width: 20, isText: true)
+
+    /// Whether the stock sheet for this log has a Category column.
+    static func writesCategory(_ log: VanStockLog) -> Bool {
+        log.items.contains { $0.category != nil }
+    }
+
     // MARK: - The place
 
     /// The stock sheet's name for a place: "Van stock", "Store stock", "Stock" (Plan MK §3).
@@ -125,7 +137,9 @@ enum VanStockSheet {
                          clinical: Bool = false) -> XLSX.Workbook {
         let kind = kind ?? Self.kind(for: van)
         let rows = VanStockRows.rows(log)
-        var stock: [[XLSX.Cell]] = [Column.allCases.map { .text($0.rawValue) }]
+        let withCategory = writesCategory(log)
+        var stock: [[XLSX.Cell]] = [Column.allCases.map { .text($0.rawValue) }
+                                    + (withCategory ? [.text(categoryColumnTitle)] : [])]
         for row in rows {
             let item = row.item
             let level = row.level
@@ -149,8 +163,9 @@ enum VanStockSheet {
                     return level.asOf.map { .text(clinical ? StockDay($0, calendar: calendar).description : stamp($0, calendar)) } ?? .empty
                 case .itemID: return .text(item.id)
                 }
-            })
+            } + (withCategory ? [item.category.map(XLSX.Cell.text) ?? .empty] : []))
         }
+        let stockColumns = Column.allCases.map(\.layout) + (withCategory ? [categoryColumnLayout] : [])
 
         var names = Dictionary(log.items.map { ($0.id, $0.name) }) { first, _ in first }
         // A line no longer on the list, deleted or taken back, is named by the last description
@@ -189,7 +204,7 @@ enum VanStockSheet {
 
         if clinical {
             return XLSX.Workbook(sheets: [
-                XLSX.Sheet(name: stockSheetName(kind), columns: Column.allCases.map(\.layout), rows: stock),
+                XLSX.Sheet(name: stockSheetName(kind), columns: stockColumns, rows: stock),
                 ClinicalStockShare.sheet(ClinicalStockShare.rows(log, calendar: calendar), name: clinicalHistorySheetName),
                 XLSX.Sheet(name: metaSheetName,
                            columns: [XLSX.Column(width: 16, isText: true), XLSX.Column(width: 28, isText: true)],
@@ -197,7 +212,7 @@ enum VanStockSheet {
             ])
         }
         return XLSX.Workbook(sheets: [
-            XLSX.Sheet(name: stockSheetName(kind), columns: Column.allCases.map(\.layout), rows: stock),
+            XLSX.Sheet(name: stockSheetName(kind), columns: stockColumns, rows: stock),
             XLSX.Sheet(name: historySheetName,
                        columns: [XLSX.Column(width: 18, isText: true), XLSX.Column(width: 38), XLSX.Column(width: 22),
                                  XLSX.Column(width: 10), XLSX.Column(width: 16, isText: true), XLSX.Column(width: 10)],

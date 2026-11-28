@@ -12,19 +12,36 @@ struct ExperienceRecorderView: View {
     @ObservedObject var store: ExperienceRecordingStore
     /// The open job's number, or "Open job", when one is open.
     let openJob: String?
+    /// What the page opens on: a case, or "Tell me about this site" (Plan IM P4).
+    @State private var selectedKind: ExperienceRecording.Kind
     /// On a reviewer's device, the vault's models with no crew experience yet (Plan IM P4). Read
     /// when the page opens; nil everywhere else.
     @State private var coverage: ExperienceCoverage?
 
+    init(recorder: ExperienceRecorder, store: ExperienceRecordingStore, openJob: String?,
+         initialKind: ExperienceRecording.Kind = .experience) {
+        self.recorder = recorder
+        self.store = store
+        self.openJob = openJob
+        _selectedKind = State(initialValue: initialKind)
+    }
+
+    /// The kind shown and started: the one recording now, else the one picked.
+    private var kind: ExperienceRecording.Kind {
+        ExperienceRecordingEntry.kind(selected: selectedKind, recorderBusy: recorder.phase.isBusy,
+                                      recording: recorder.kind)
+    }
+
     var body: some View {
         List {
+            kindPicker
             promptCard
             recordSection
             if let coverage, let summary = ExperienceCoverageCopy.summary(coverage) { coverageSection(coverage, summary) }
             if !store.recordings.isEmpty { recordingsSection }
         }
         .ogFormStyle()
-        .navigationTitle("Record experience")
+        .navigationTitle(Text(ExperienceRecordingEntry.startTitle(kind)))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             store.sweepExpiredAudio()
@@ -53,13 +70,29 @@ struct ExperienceRecorderView: View {
         }
     }
 
+    // MARK: - The kind
+
+    /// A case or a site. Fixed while a recording runs.
+    private var kindPicker: some View {
+        Section {
+            Picker("What you're recording", selection: Binding(get: { kind }, set: { selectedKind = $0 })) {
+                Text("A case").tag(ExperienceRecording.Kind.experience)
+                Text("A site").tag(ExperienceRecording.Kind.site)
+            }
+            .pickerStyle(.segmented)
+            .disabled(recorder.phase.isBusy)
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        }
+    }
+
     // MARK: - The card
 
     private var promptCard: some View {
         Section {
             VStack(alignment: .leading, spacing: 10) {
-                Text(ExperienceRecorderCopy.cardTitle).font(.headline)
-                ForEach(Array(ExperienceRecorderCopy.prompts.enumerated()), id: \.offset) { index, prompt in
+                Text(kind == .site ? ExperienceRecorderCopy.siteTitle : ExperienceRecorderCopy.cardTitle).font(.headline)
+                ForEach(Array((kind == .site ? ExperienceRecorderCopy.sitePrompts : ExperienceRecorderCopy.prompts).enumerated()),
+                        id: \.offset) { index, prompt in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(verbatim: "\(index + 1).")
                             .font(.callout.monospacedDigit())
@@ -98,13 +131,13 @@ struct ExperienceRecorderView: View {
             Button {
                 Task {
                     if recorder.phase.isBusy { await recorder.finish() }
-                    else { await recorder.start(from: .phone) }
+                    else { await recorder.start(from: .phone, kind: kind) }
                 }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: recorder.phase.isBusy ? "stop.circle.fill" : "mic.fill")
                         .accessibilityHidden(true)
-                    Text(recorder.phase.isBusy ? "Stop recording" : "Record experience")
+                    Text(recorder.phase.isBusy ? String(localized: "Stop recording") : ExperienceRecordingEntry.startTitle(kind))
                 }
                 .frame(maxWidth: .infinity, minHeight: 32)
             }
@@ -131,8 +164,10 @@ struct ExperienceRecorderView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         } footer: {
-            if let openJob {
+            if let openJob, ExperienceRecordingEntry.filesOnOpenJob(kind: kind, jobOpen: true) {
                 Text("\(openJob) is open, so a recording is filed on that job for your team, the way \u{201C}note this for the team\u{201D} is. Transcribed on this phone; its audio isn't kept.")
+            } else if kind == .site {
+                Text("Transcribed on this phone and kept here, never filed on a job: a site recording drafts a site document, not a team learning. The audio stays on this phone and is deleted after 30 days. Nothing is sent from this screen.")
             } else {
                 Text("Transcribed on this phone and kept here for your team to review. The audio stays on this phone and is deleted after 30 days. Nothing is sent from this screen.")
             }
@@ -149,9 +184,12 @@ struct ExperienceRecorderView: View {
         case .recording(let number, _, _):
             let clock = ExperienceRecorderRules.clock(recorder.elapsed)
             let cap = ExperienceRecorderRules.clock(ExperienceRecorderRules.recordingCap)
-            Text("Recording case \(number) · \(clock) of \(cap)")
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(.tint)
+            Group {
+                if kind == .site { Text("Recording the site · \(clock) of \(cap)") }
+                else { Text("Recording case \(number) · \(clock) of \(cap)") }
+            }
+            .font(.callout.monospacedDigit())
+            .foregroundStyle(.tint)
         case .saving:
             Text("Saving…").font(.callout).foregroundStyle(.secondary)
         }
@@ -168,7 +206,7 @@ struct ExperienceRecorderView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(recording.createdAt.formatted(date: .abbreviated, time: .shortened))
                             .font(.body)
-                        Text(verbatim: recording.formattedDuration + " · " + recording.status.label)
+                        Text(verbatim: ExperienceRecordingEntry.rowCaption(recording))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -185,12 +223,21 @@ struct ExperienceRecorderView: View {
     }
 }
 
-/// One kept recording: its transcript, where its audio is, and Delete.
+/// One kept recording: its transcript, where its audio is, and Delete. A site recording is
+/// labelled as one and, on a reviewer's phone, offers "Draft site document" (Plan IM P4).
 struct ExperienceRecordingDetailView: View {
     @ObservedObject var store: ExperienceRecordingStore
     let recordingId: String
     @Environment(\.dismiss) private var dismiss
     @State private var confirmingDelete = false
+    @StateObject private var siteDraft: SiteDraftReviewModel
+
+    @MainActor
+    init(store: ExperienceRecordingStore, recordingId: String) {
+        self.store = store
+        self.recordingId = recordingId
+        _siteDraft = StateObject(wrappedValue: SiteDraftReviewModel.live())
+    }
 
     var body: some View {
         List {
@@ -207,8 +254,13 @@ struct ExperienceRecordingDetailView: View {
                     Text(ExperienceRecorderCopy.audioLine(recording, hasAudio: store.hasAudio(recording.id)))
                 }
                 Section {
+                    if recording.kind == .site {
+                        LabeledContent("Kind", value: ExperienceRecorderCopy.siteTitle)
+                    }
                     LabeledContent("Status", value: recording.status.label)
                 }
+                SiteDraftSection(recording: recording, model: siteDraft,
+                                 offer: SiteDraftOffer.current(for: recording.kind))
                 Section {
                     Button("Delete recording", role: .destructive) { confirmingDelete = true }
                         .frame(minHeight: OGMetrics.minTouchTarget)
@@ -219,7 +271,7 @@ struct ExperienceRecordingDetailView: View {
             }
         }
         .ogFormStyle()
-        .navigationTitle("Recording")
+        .navigationTitle(Text(ExperienceRecordingEntry.detailTitle(store.recording(id: recordingId)?.kind ?? .experience)))
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Delete this recording?", isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
@@ -229,6 +281,123 @@ struct ExperienceRecordingDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Its transcript and audio are removed from this phone. This can't be undone.")
+        }
+    }
+}
+
+
+/// "Draft site document" and its result (Plan IM P4). Read-only: the document as validated, its
+/// file to share, or the drafter's reasons for drafting nothing. Nothing is saved into a vault.
+struct SiteDraftSection: View {
+    let recording: ExperienceRecording
+    @ObservedObject var model: SiteDraftReviewModel
+    let offer: SiteDraftOffer
+
+    var body: some View {
+        switch offer {
+        case .none:
+            EmptyView()
+        case .reviewerOnly:
+            Section {
+                Text(SiteDraftOffer.reviewerOnlyLine)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("Site document")
+            }
+        case .available:
+            draftSection
+            if case .drafted(let draft) = model.state { summary(SiteDraftSummary(draft.document), draft: draft) }
+        }
+    }
+
+    @ViewBuilder
+    private var draftSection: some View {
+        Section {
+            Button {
+                Task { await model.draft(recording) }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(model.state == .idle ? "Draft site document" : "Draft again")
+                    if model.state == .drafting {
+                        Spacer()
+                        ProgressView()
+                    }
+                }
+                .frame(minHeight: OGMetrics.minTouchTarget)
+            }
+            .disabled(model.state == .drafting)
+            if case .refused(let message, let reasons) = model.state {
+                Text(message)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(Array(reasons.enumerated()), id: \.offset) { _, reason in
+                    Text(verbatim: reason)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        } header: {
+            Text("Site document")
+        } footer: {
+            Text("Drafted from this recording's transcript by your assistant's provider, and checked against the vault it was recorded in. Nothing is saved.")
+        }
+    }
+
+    @ViewBuilder
+    private func summary(_ summary: SiteDraftSummary, draft: SiteRecordingDraft) -> some View {
+        Section {
+            LabeledContent("Site", value: summary.name)
+            if let location = summary.location { LabeledContent("Where", value: location) }
+            if let notes = summary.notes {
+                Text(verbatim: notes).font(.callout).fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            Text("Drafted site document")
+        }
+        Section {
+            ForEach(Array(summary.units.enumerated()), id: \.offset) { _, unit in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: unit.label ?? unit.model).font(.body)
+                    Text(verbatim: [unit.model, unit.serial].compactMap { $0 }.joined(separator: " · "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if !unit.isCovered {
+                        Text("Not in the vault").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+        } header: {
+            Text("Units")
+        }
+        if !summary.details.isEmpty {
+            Section {
+                ForEach(Array(summary.details.enumerated()), id: \.offset) { _, detail in
+                    Text(verbatim: detail).font(.callout).fixedSize(horizontal: false, vertical: true)
+                }
+            } header: {
+                Text("How it fits together")
+            }
+        }
+        Section {
+            if let shareURL = model.shareURL {
+                ShareLink(item: shareURL) {
+                    Label("Share site document", systemImage: "square.and.arrow.up")
+                }
+                .frame(minHeight: OGMetrics.minTouchTarget)
+                Text(verbatim: SiteDraftReviewModel.shareFileName(draft))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(SiteDraftReviewModel.shareUnavailable)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        } footer: {
+            Text(SiteDraftReviewModel.shareFooter)
         }
     }
 }

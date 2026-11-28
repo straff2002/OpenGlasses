@@ -232,7 +232,9 @@ struct MainView: View {
         }
         // Another surface asked for a tab — the Job tab's "Open conversation", so far. Cleared
         // here, so nothing is left holding a request that has already been honoured.
-        .onChange(of: appState.requestedTab) { _, requested in
+        // `initial`: a notification tapped while the app was not running asks before this view
+        // first appears, and must still land.
+        .onChange(of: appState.requestedTab, initial: true) { _, requested in
             guard let requested else { return }
             selectedTab = ModesTabPresentation.selection(
                 EditionPresentation.tab(requested, restricted: restricted), after: modesPresentation)

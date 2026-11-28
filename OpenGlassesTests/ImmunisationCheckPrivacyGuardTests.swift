@@ -166,6 +166,10 @@ final class ImmunisationCheckPrivacyGuardTests: XCTestCase {
             "Services/FieldAssist/VanStock/ImmunisationCheckService.swift",
             "Services/FieldAssist/VanStock/CSVReader.swift",
             "App/Views/Job/ImmunisationCheckSheet.swift",
+            // The billing export is read the same way (Plan NJ §4).
+            "Services/FieldAssist/VanStock/BillingExportReader.swift",
+            "Services/FieldAssist/VanStock/BillingFindingWording.swift",
+            "App/Views/Job/BillingCheckSheet.swift",
         ]
         let forbidden = ["print(", "NSLog(", "os_log", "Logger(", ".write(to", "FileManager.default.copyItem",
                          "SupportReport", "DiagnosticLog", "LLMService", "createFile("]

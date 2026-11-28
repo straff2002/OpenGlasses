@@ -29,6 +29,8 @@ enum JobRoute: Hashable {
     /// "Record experience" (Plan IM P1): the five-prompt card and the recorder, with or without a
     /// job open.
     case recordExperience
+    /// "Tell me about this site" (Plan IM P4): the same page on the site recording's prompts.
+    case recordSite
 }
 
 /// One field session, as the list needs it: the day card's to-do facts plus what a row prints and
@@ -548,6 +550,9 @@ enum JobListRequest: Equatable {
     case session(id: String)
     /// A job ahead by its id.
     case upcoming(id: String)
+    /// The weekly count reminder's tap (Plan MY §6): the stock screen, with its count sheet open
+    /// when the list has one to offer.
+    case stockCount
 
     /// The job-day card's routes (Plan HB). A report in the send queue is not a place in the tab —
     /// it opens its composer where the wearer is — so it has no request.
@@ -576,6 +581,8 @@ enum JobListRouting {
         var openJobPaused: Bool = false
         var finishedSessionIds: Set<String> = []
         var upcomingIds: Set<String> = []
+        /// Whether the organisation lets this phone keep a stock list at all.
+        var showsStock: Bool = true
     }
 
     struct Outcome: Equatable {
@@ -586,11 +593,14 @@ enum JobListRouting {
         var notice: String?
         /// A new job asked for while one is open: the question, on the list.
         var prompt: OpenJobPrompt?
+        /// The stock screen should open its count sheet once it is shown (`StockCountOpening`).
+        var opensStockCount = false
     }
 
     static let noOpenJob = String(localized: "No job is open right now.")
     static let jobGone = String(localized: "That job is no longer on this phone.")
     static let upcomingGone = String(localized: "That job is no longer scheduled. It may have been started or removed.")
+    static let stockUnavailable = String(localized: "The stock list isn't kept on this phone.")
 
     static func resolve(_ request: JobListRequest, _ facts: Facts) -> Outcome {
         switch request {
@@ -611,6 +621,9 @@ enum JobListRouting {
         case .upcoming(let id):
             return facts.upcomingIds.contains(id)
                 ? Outcome(path: [.upcomingJob(id: id)]) : Outcome(notice: upcomingGone)
+        case .stockCount:
+            // A reminder scheduled before the organisation took the list away still fires once.
+            return facts.showsStock ? Outcome(path: [.vanStock], opensStockCount: true) : Outcome(notice: stockUnavailable)
         }
     }
 }

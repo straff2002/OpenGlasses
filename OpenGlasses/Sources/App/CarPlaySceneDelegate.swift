@@ -223,7 +223,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                                             upcoming: Config.fieldAssistActive ? appState.upcomingJobs.jobs : [],
                                             experience: CarPlayJobsList.experienceRow(
                                                 verdict: appState.experienceRecorder.verdict,
-                                                recorderBusy: appState.experienceRecorder.phase.isBusy))
+                                                recorderBusy: appState.experienceRecorder.phase.isBusy,
+                                                recordingKind: appState.experienceRecorder.kind))
             var items: [CPListItem] = rows.map { row in
                 let item = CPListItem(
                     text: row.title,
@@ -290,6 +291,11 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                 // recording. No voice template: nothing said
                 // while recording reaches the assistant.
                 await appState.experienceRecorder.start(from: .carPlay)
+            case .recordSite:
+                // The site prompts are read aloud; the recording is kept on the phone, never
+                // filed on an open job.
+                await appState.experienceRecorder.start(from: .carPlay,
+                                                        kind: ExperienceRecordingEntry.kind(for: selection) ?? .site)
             case .stopExperienceRecording:
                 await appState.experienceRecorder.finish()
             }
@@ -300,6 +306,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         if row.isActiveJob { return "wrench.and.screwdriver.fill" }
         if case .openUpcomingJob = row.selection { return "calendar" }
         if case .recordExperience = row.selection { return "mic.fill" }
+        if case .recordSite = row.selection { return "house.fill" }
         if case .stopExperienceRecording = row.selection { return "stop.circle.fill" }
         return "checkmark.seal"
     }

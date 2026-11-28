@@ -211,7 +211,9 @@ enum VanStockHandover {
                 let item = log.addItem(id: id, number: row.partNumber, description: row.description ?? "",
                                        unit: row.unit ?? .each, minimum: row.minimum, standard: row.standard,
                                        standardSetBy: row.standard == nil ? nil : (row.standardSetByBase ? .base : .van),
-                                       bin: row.bin, batch: batch)
+                                       bin: row.bin,
+                                       // An export writes a line's category (Plan MY §8), so it comes across.
+                                       category: row.category, batch: batch)
                 if row.needsCount {
                     log.appendOpening(itemID: item.id, quantity: row.onHand ?? .zero, at: at, source: .handover,
                                       counted: false, unreliable: true)

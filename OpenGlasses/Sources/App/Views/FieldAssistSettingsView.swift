@@ -525,10 +525,21 @@ struct FieldAssistSettingsView: View {
                         } label: {
                             Label("Record experience", systemImage: "mic")
                         }
+                        NavigationLink {
+                            ExperienceRecorderView(
+                                recorder: appState.experienceRecorder, store: .shared,
+                                openJob: sessionService.activeSession.map { session in
+                                    session.jobReference.flatMap { $0.isEmpty ? nil : String(localized: "Job \($0)") }
+                                        ?? String(localized: "Open job")
+                                },
+                                initialKind: .site)
+                        } label: {
+                            Label(ExperienceRecorderCopy.siteTitle, systemImage: "house")
+                        }
                     } header: {
                         Text("Your Experience")
                     } footer: {
-                        Text("Record what you already know about a machine, one case per recording, for your team to review. Also in the Jobs list, and on CarPlay.")
+                        Text("Record what you already know about a machine, one case per recording, or about a site's units and how they connect, for your team to review. Also in the Jobs list, and on CarPlay.")
                     }
                 }
 

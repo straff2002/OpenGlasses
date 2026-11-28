@@ -9,8 +9,12 @@ the shared-code case, the 1,461-day clinical history window, the sensitive flag 
 (5), `CanadianHealthAct` with the Canada entry and province picker, the ceiling keys `hipaaMode`,
 `hipaaLocalOnly` and `hipaaRetentionDays` (a new `daysCeiling` kind), the claims rewritten, the lock
 screen's "Medical mode", and the support report's clinical lines. 82 new tests in 9 classes.
-Owed: P2 catalog sync; P3 (deferred); P4 counsel; P5 device pass and pilot; a Stock screen entry
-for the billing check (the core is headless only). Retention is read as the longest a phone keeps
+Owed: P2 catalog sync; P3 (deferred); P4 counsel; P5 device pass and pilot. **2026-11-28:** the
+billing check has its Stock screen entry, "Check against billing…" beside the EMR check (clinical
+lists, medical mode): pick the export, choose the date, tariff and optional lot columns (each time,
+nothing remembered), and see doses given and not billed, claims with no dose here, and claims
+"billed under a shared code", left for staff (`BillingCheckSheet`, `BillingFindingWording`). Its
+new strings join the P2 catalog sync; a simulator look is owed. Retention is read as the longest a phone keeps
 clinical files, never longer (CT is silent; the stricter reading). It still waits on the clinic's
 province and on whether it needs patient linkage (open questions 1 and 3).
 **Track:** Field Assist stock, for a medical clinic, and the Medical Compliance mode.
