@@ -38,17 +38,25 @@ final class LensBandNavServiceTests: XCTestCase {
         var last: FakeChannel? { opened.last?.channel }
     }
 
+    private struct ThrowingSource: InputsSource {
+        let error: Error
+        func open(deviceId: String, handlers: InputsChannelHandlers) async throws -> InputsChannel { throw error }
+    }
+
     private lazy var source = FakeSource()
     private var enabled = true
     private var inputs: [GlassesInputKind] = []
     private var listened = 0
     private var failures = 0
+    private var failureCases: [InputsProbeFailure] = []
+    private var ends: [String] = []
 
     private func service() -> LensBandNavService {
         LensBandNavService(source: source, isEnabled: { [unowned self] in self.enabled },
                            onInput: { [unowned self] in self.inputs.append($0.kind) },
                            onListening: { [unowned self] in self.listened += 1 },
-                           onFailed: { [unowned self] in self.failures += 1 })
+                           onFailed: { [unowned self] in self.failures += 1; self.failureCases.append($0) },
+                           onEnded: { [unowned self] in self.ends.append($0) })
     }
 
     private func settle() async {
@@ -125,6 +133,7 @@ final class LensBandNavServiceTests: XCTestCase {
         band.update(viewOnLens: true)
         await settle()
         XCTAssertEqual(failures, 1)
+        XCTAssertEqual(failureCases, [.capabilityUnavailable], "the case goes to the report (build 799)")
         source.failure = nil
         band.refresh()
         await settle()
@@ -135,9 +144,39 @@ final class LensBandNavServiceTests: XCTestCase {
         XCTAssertEqual(source.opened.count, 1, "the next view asks again")
         source.last?.handlers.onInputsEnded()
         XCTAssertFalse(band.isListening)
+        XCTAssertEqual(ends, ["inputsEnded"])
         band.refresh()
         await settle()
         XCTAssertEqual(source.opened.count, 1, "an ended channel is not reopened for the same view")
+    }
+
+    func testAnErrorThatIsNotTheChannelsOwnIsReportedAsUnknown() async {
+        struct Other: Error {}
+        let band = LensBandNavService(source: ThrowingSource(error: Other()), isEnabled: { true }, onInput: { _ in },
+                                      onFailed: { [unowned self] in self.failureCases.append($0) })
+        band.update(connectedDeviceIds: ["pair-1"])
+        band.update(viewOnLens: true)
+        await settle()
+        XCTAssertEqual(failureCases, [.unknown])
+    }
+
+    func testAFailureOnAnOpenChannelCarriesItsCase() async {
+        let band = service()
+        band.update(connectedDeviceIds: ["pair-1"])
+        band.update(viewOnLens: true)
+        await settle()
+        source.last?.handlers.onFailure(.activationTimeout)
+        XCTAssertEqual(failureCases, [.activationTimeout])
+        XCTAssertFalse(band.isListening)
+    }
+
+    func testTheSessionEndingIsReportedAsSuch() async {
+        let band = service()
+        band.update(connectedDeviceIds: ["pair-1"])
+        band.update(viewOnLens: true)
+        await settle()
+        source.last?.handlers.onEnded()
+        XCTAssertEqual(ends, ["sessionEnded"])
     }
 
     func testTheProbeComesFirst() async {

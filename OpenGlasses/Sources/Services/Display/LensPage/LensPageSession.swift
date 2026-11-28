@@ -752,7 +752,11 @@ final class LensPageSession: ObservableObject {
 
     /// Plan NB §6: the band's motion became active for the open view, or failed (for the report).
     func noteWristListening() { stats.update(backend()) { $0.wristListening += 1 } }
-    func noteWristFailed() { stats.update(backend()) { $0.wristFailures += 1 } }
+    /// Build 799: with the case it failed with, and the ends, so the report can say why.
+    func noteWristFailed(_ reason: String) {
+        stats.update(backend()) { $0.wristFailures += 1; $0.wristFailureReasons[reason, default: 0] += 1 }
+    }
+    func noteWristEnded() { stats.update(backend()) { $0.wristEnds += 1 } }
 
     /// The view a twist rung goes to from `shown`, framed; nil when it does nothing there.
     static func twisted(_ shown: HUDPageViewState, _ rung: TwistRung) -> HUDPageViewState? {
@@ -805,7 +809,13 @@ final class LensPageSession: ObservableObject {
 
     /// Plan MU §7: the band's channel became active for the open view, or failed (for the report).
     func noteBandListening() { stats.update(backend()) { $0.bandListening += 1 } }
-    func noteBandFailed() { stats.update(backend()) { $0.bandFailures += 1 } }
+    /// Build 799: with the case it failed with, and why it ended, so the report can say why.
+    func noteBandFailed(_ reason: String) {
+        stats.update(backend()) { $0.bandFailures += 1; $0.bandFailureReasons[reason, default: 0] += 1 }
+    }
+    func noteBandEnded(_ reason: String) {
+        stats.update(backend()) { $0.bandEnds[reason, default: 0] += 1 }
+    }
 
     /// A band send was drawn and handed over, or will never be: the next swipe may go.
     private func bandSendEnded() {

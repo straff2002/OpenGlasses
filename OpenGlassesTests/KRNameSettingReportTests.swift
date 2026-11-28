@@ -311,4 +311,27 @@ final class KRJobReportTests: XCTestCase {
         XCTAssertTrue(body.contains("[job] figure presented — Fixture manual, page 4 · to the model only"), body)
         XCTAssertTrue(body.contains("[job] figure presented — Fixture manual, page 9 · on the phone"), body)
     }
+
+    /// Build 799: the line now says why the policy chose the place, and what it took the turn for.
+    func testAFigurePresentedLineCarriesThePolicysReason() {
+        XCTAssertEqual(JobTranscriptExport.presentedWhy(reason: "asked_for_page", turnKind: "showMe"),
+                       " (why: asked_for_page; turn: showMe)")
+        XCTAssertEqual(JobTranscriptExport.presentedWhy(reason: "reading", turnKind: nil), " (why: reading)")
+        XCTAssertEqual(JobTranscriptExport.presentedWhy(reason: nil, turnKind: nil), "")
+        XCTAssertEqual(JobTranscriptExport.presentedWhy(reason: "a sentence, not a case", turnKind: nil), "",
+                       "only a case name is kept")
+
+        let session = Self.session("s1", reference: "4410", thread: nil, from: Self.date(9, 0), to: nil)
+        let job = JobTranscriptExport.job(session: session, vaultName: "Acme", thread: nil, events: [])
+        let events: [SessionLogger.Event] = [
+            .init(timestamp: Self.date(9, 5), kind: .figurePresented, text: "Fixture manual, page 17, Table 8",
+                  payload: ["presented": AnyCodable("phone"), "reason": AnyCodable("diagram_for_question"),
+                            "turn_kind": AnyCodable("question")]),
+        ]
+        let body = JobTranscriptExport.document(
+            scope: .job(sessionId: "s1"), jobs: [job], exportedAt: Self.date(12, 0), timeZone: Self.utc,
+            details: .init(jobEvents: ["s1": events])).body
+        XCTAssertTrue(body.contains("[job] figure presented — Fixture manual, page 17, Table 8 · on the phone"
+                                    + " (why: diagram_for_question; turn: question)"), body)
+    }
 }

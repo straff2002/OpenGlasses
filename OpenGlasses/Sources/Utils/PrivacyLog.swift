@@ -2431,9 +2431,11 @@ enum PrivacyLog {
         /// case); `motionProbeStopped` the end (`reason`: why, `count`: seconds). `lensWristChannel`
         /// the page view's Motion opening or closing (`state`: `active`, `failed`, `stopped`;
         /// `reason`: the failure's case; `count`: samples heard). Case names and counts only; never
-        /// a sample, an angle stream or a device's name.
+        /// a sample, an angle stream or a device's name. `lensBandChannel` the page view's Inputs
+        /// the same way (`state`: `active`, `failed`, `ended`; `reason`: the failure's case, or
+        /// `sessionEnded` / `inputsEnded`); build 799 counted four failures and kept no reason.
         case motionProbeStarted, motionProbeRefused, motionProbePrompt, motionProbeError, motionProbeStopped
-        case lensWristChannel
+        case lensWristChannel, lensBandChannel
         /// Plan MZ, the smart ring. `ringPaired` (`success` false when the ring was found through
         /// another app's connection), `ringForgotten`, `ringSynced`, `ringStepSkipped` (`state`: the
         /// sync step's name), `ringStoredHistory` (`count`: chunks, `success`: the end marker came),
