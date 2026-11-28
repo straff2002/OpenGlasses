@@ -24,7 +24,10 @@ final class LensBandNavService {
     private let isEnabled: () -> Bool
     private let onInput: (GlassesInput) -> Void
     private let onListening: () -> Void
-    private let onFailed: () -> Void
+    /// The channel failed, with the case (kept in the support report).
+    private let onFailed: (InputsProbeFailure) -> Void
+    /// The channel ended under the view: `sessionEnded` or `inputsEnded` (kept in the report).
+    private let onEnded: (String) -> Void
 
     private var connected: [String] = []
     private var viewOnLens = false
@@ -45,12 +48,14 @@ final class LensBandNavService {
          isEnabled: @escaping () -> Bool,
          onInput: @escaping (GlassesInput) -> Void,
          onListening: @escaping () -> Void = {},
-         onFailed: @escaping () -> Void = {}) {
+         onFailed: @escaping (InputsProbeFailure) -> Void = { _ in },
+         onEnded: @escaping (String) -> Void = { _ in }) {
         self.source = source
         self.isEnabled = isEnabled
         self.onInput = onInput
         self.onListening = onListening
         self.onFailed = onFailed
+        self.onEnded = onEnded
     }
 
     /// A channel is open or being opened.
@@ -127,7 +132,7 @@ final class LensBandNavService {
                 guard let self, self.run == thisRun else { return }
                 self.openTask = nil
                 self.deviceId = nil
-                self.failed()
+                self.failed((error as? InputsProbeFailure) ?? .unknown)
             }
         }
     }
@@ -144,13 +149,23 @@ final class LensBandNavService {
     private func becameActive() {
         guard !listening else { return }
         listening = true
+        PrivacyLog.device(.hud, .lensBandChannel, state: PrivacyToken("active"))
         onListening()
     }
 
-    private func failed() {
+    /// Build 799: the report said "failed 4" and nothing else; the case now goes with it.
+    private func failed(_ failure: InputsProbeFailure) {
         heldOffForThisView = true
         stop()
-        onFailed()
+        PrivacyLog.device(.hud, .lensBandChannel, state: PrivacyToken("failed"), reason: PrivacyToken(failure.rawValue))
+        onFailed(failure)
+    }
+
+    private func ended(_ reason: String) {
+        heldOffForThisView = true
+        stop()
+        PrivacyLog.device(.hud, .lensBandChannel, state: PrivacyToken("ended"), reason: PrivacyToken(reason))
+        onEnded(reason)
     }
 
     private func handlers(for thisRun: Int) -> InputsChannelHandlers {
@@ -163,19 +178,17 @@ final class LensBandNavService {
                 guard let self, self.run == thisRun, state == .active else { return }
                 self.becameActive()
             },
-            onFailure: { [weak self] _ in
+            onFailure: { [weak self] failure in
                 guard let self, self.run == thisRun else { return }
-                self.failed()
+                self.failed(failure)
             },
             onEnded: { [weak self] in
                 guard let self, self.run == thisRun else { return }
-                self.heldOffForThisView = true
-                self.stop()
+                self.ended("sessionEnded")
             },
             onInputsEnded: { [weak self] in
                 guard let self, self.run == thisRun else { return }
-                self.heldOffForThisView = true
-                self.stop()
+                self.ended("inputsEnded")
             })
     }
 }

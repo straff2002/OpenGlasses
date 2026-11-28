@@ -687,7 +687,7 @@ final class GlassesDisplayService: ObservableObject {
         var lines = ["Display reading now: \(displayAvailability.reportName) (\(sessionReading.reportName))"]
         if lensDismissed { lines.append("Display dismissed by the wearer (not reopened for ambient frames)") }
         if let lastSend { lines.append(lastSend.reportLine) }
-        return lines + availabilityLog.reportLines()
+        return lines + sendFailures.reportLines() + availabilityLog.reportLines()
     }
 
     // MARK: - Pacing and send records (Plan LC §2.4)
@@ -696,6 +696,10 @@ final class GlassesDisplayService: ObservableObject {
     private var sendPacer = HUDSendPacer()
     /// The last send to the backend, for the support report and the Developer panel.
     @Published private(set) var lastSend: HUDSendRecord?
+    /// The sends that did not reach the lens, with why (for the support report).
+    private(set) var sendFailures = HUDSendFailureLog()
+    /// Why the last failed send failed, read once in `handleRenderError` and kept for `recordSend`.
+    private var lastFailureReason: String?
     /// Whether a screen frame reached the glasses (`true`) or did not (`false`), by the render key
     /// it was enqueued with. A frame replaced before its turn reports nothing: it was never sent.
     /// The page view writes its audit line from this, not from the hand-off (`LensPageSession`).
@@ -718,6 +722,16 @@ final class GlassesDisplayService: ObservableObject {
         if outcome == .sent { consecutiveSendTimeouts = 0 }
         sendPacer.sent(endingAt: Date(), hadPicture: kind == .picture || kind == .video)
         lastSend = HUDSendRecord(kind: kind, milliseconds: Self.milliseconds(since: started), outcome: outcome)
+        if outcome != .sent {
+            sendFailures.record(kind, outcome: outcome, reason: lastFailureReason ?? "unknown", at: now())
+        }
+    }
+
+    /// Why a send failed, in the report's words: the backend's reading of its own refusal (Meta's
+    /// `DisplayError` message, as a closed vocabulary), else the app's own error's summary.
+    func failureReason(for error: Error) -> String {
+        if let refusal = activeBackend.refusalReason(for: error) { return "refused " + refusal.token }
+        return SafeErrorSummary(error).description
     }
 
     /// Plan LC §2.4: whether a failed picture frame is worth sending again as text. Not when there is
@@ -1329,6 +1343,8 @@ final class GlassesDisplayService: ObservableObject {
 
     private func handleRenderError(_ error: Error) {
         // Don't spam logs for the expected "no display" no-op path.
+        // Read before anything returns early, so the send's record carries this failure's reason.
+        lastFailureReason = failureReason(for: error)
         if case GlassesDisplayError.noDisplay = error { return }
         // Plan KP §8: another app has the Display. A reading, not a failure: the backend keeps
         // (and follows) its session, nothing is torn down, and the lens is redrawn once it is ours.
@@ -1339,7 +1355,9 @@ final class GlassesDisplayService: ObservableObject {
             lensMissedFrames = true
             return
         }
-        PrivacyLog.device(.hud, .renderFailed, error: SafeErrorSummary(error))
+        PrivacyLog.device(.hud, .renderFailed,
+                          reason: activeBackend.refusalReason(for: error).map { PrivacyToken($0.token) },
+                          error: SafeErrorSummary(error))
         sendPacer.reset()
         // The on-screen diagnostics panel is a different sink with a different audience — the
         // wearer chose to open it — so it keeps the readable text the device log does not.

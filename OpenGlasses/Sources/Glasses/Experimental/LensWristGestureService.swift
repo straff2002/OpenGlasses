@@ -27,7 +27,10 @@ final class LensWristGestureService {
         var clutchOpened: () -> Void
         var clutchClosed: () -> Void
         var listening: () -> Void = {}
-        var failed: () -> Void = {}
+        /// The channel failed, with the case (kept in the support report).
+        var failed: (MotionChannelFailure) -> Void = { _ in }
+        /// The channel ended under the view (kept in the support report).
+        var ended: () -> Void = {}
     }
 
     private let source: WristMotionSource
@@ -187,7 +190,7 @@ final class LensWristGestureService {
         heldOffForThisView = true
         stop()
         PrivacyLog.device(.hud, .lensWristChannel, state: PrivacyToken("failed"), reason: PrivacyToken(failure.rawValue))
-        sink.failed()
+        sink.failed(failure)
     }
 
     private func handlers(for thisRun: Int) -> MotionChannelHandlers {
@@ -211,6 +214,8 @@ final class LensWristGestureService {
                 guard let self, self.run == thisRun else { return }
                 self.heldOffForThisView = true
                 self.stop()
+                PrivacyLog.device(.hud, .lensWristChannel, state: PrivacyToken("ended"))
+                self.sink.ended()
             })
     }
 }

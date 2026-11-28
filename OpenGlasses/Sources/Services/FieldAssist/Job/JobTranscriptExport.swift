@@ -1048,8 +1048,21 @@ enum JobTranscriptExport {
         }
         if event.kind == .figurePresented, let place = presentedPlace(event.payload?["presented"]?.value as? String) {
             line += " · " + place
+            line += presentedWhy(reason: event.payload?["reason"]?.value as? String,
+                                 turnKind: event.payload?["turn_kind"]?.value as? String)
         }
         return [line]
+    }
+
+    /// Why the figure policy put that page where it did, and what it took the turn for (build 799:
+    /// a reading in volts opened a vent-length table, and the line could not say why). Both are the
+    /// app's own case names, already in the event; anything not shaped like one is left out.
+    static func presentedWhy(reason: String?, turnKind: String?) -> String {
+        let kept = [("why", reason), ("turn", turnKind)].compactMap { label, value -> String? in
+            guard let value, PrivacyToken(value).description == value else { return nil }
+            return "\(label): \(value)"
+        }
+        return kept.isEmpty ? "" : " (" + kept.joined(separator: "; ") + ")"
     }
 
     /// Where a "figure presented" page went (Plan KR P6), from the event's `presented`: the line

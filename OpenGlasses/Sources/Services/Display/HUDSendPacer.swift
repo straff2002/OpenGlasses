@@ -53,6 +53,50 @@ struct HUDSendRecord: Equatable {
     }
 }
 
+/// The sends that did not reach the lens, each with why, for the support report. "Last display
+/// send" alone was overwritten by the next frame (build 799: every whole-page picture was refused
+/// and resent as text, and the report said `sent`). Bounded: the newest `capacity`. The reason is a
+/// closed vocabulary (`DisplayRefusalReason.token`, or the app's own error's summary); nothing about
+/// what the frame showed.
+struct HUDSendFailureLog: Equatable {
+    struct Entry: Equatable {
+        let at: Date
+        let kind: HUDSendRecord.Kind
+        let outcome: HUDSendRecord.Outcome
+        let reason: String
+    }
+
+    static let defaultCapacity = 8
+
+    let capacity: Int
+    private(set) var entries: [Entry] = []
+    /// Every failure since launch, by reason, beyond the ones still held.
+    private(set) var countsByReason: [String: Int] = [:]
+
+    init(capacity: Int = HUDSendFailureLog.defaultCapacity) {
+        self.capacity = max(1, capacity)
+    }
+
+    mutating func record(_ kind: HUDSendRecord.Kind, outcome: HUDSendRecord.Outcome, reason: String, at: Date) {
+        entries.append(Entry(at: at, kind: kind, outcome: outcome, reason: reason))
+        if entries.count > capacity { entries.removeFirst(entries.count - capacity) }
+        countsByReason[reason, default: 0] += 1
+    }
+
+    /// The support report's lines, oldest first, in local wall-clock time.
+    func reportLines(timeZone: TimeZone = .current) -> [String] {
+        guard !entries.isEmpty else { return ["Display send failures: none since launch"] }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let totals = countsByReason.keys.sorted().map { "\($0) \(countsByReason[$0] ?? 0)" }
+        return ["Display send failures since launch: " + totals.joined(separator: ", "),
+                "Display send failures (last \(entries.count), oldest first):"]
+            + entries.map { "  \(formatter.string(from: $0.at)): \($0.kind.rawValue), \($0.reason), \($0.outcome.rawValue)" }
+    }
+}
+
 /// Plan LC §2.4: a send that has not come back within its deadline is a failed send. `send()`
 /// returning is no proof the frame rendered (Display Recording blanks third-party content while
 /// `send()` still succeeds), but a send that never returns is certainly not one; without a deadline

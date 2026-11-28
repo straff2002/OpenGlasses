@@ -49,6 +49,7 @@ final class LensWristGestureServiceTests: XCTestCase {
     private var clutch: [String] = []
     private var listened = 0
     private var failures = 0
+    private var failureCases: [MotionChannelFailure] = []
     private let clock = Clock()
 
     private func service() -> LensWristGestureService {
@@ -60,7 +61,7 @@ final class LensWristGestureServiceTests: XCTestCase {
                         clutchOpened: { [unowned self] in self.clutch.append("open") },
                         clutchClosed: { [unowned self] in self.clutch.append("closed") },
                         listening: { [unowned self] in self.listened += 1 },
-                        failed: { [unowned self] in self.failures += 1 }),
+                        failed: { [unowned self] in self.failures += 1; self.failureCases.append($0) }),
             clock: { [unowned self] in self.clock.now })
     }
 
@@ -179,6 +180,7 @@ final class LensWristGestureServiceTests: XCTestCase {
         source.last?.handlers.onFailure(.deviceDisconnected)
         XCTAssertFalse(wrist.isListening)
         XCTAssertEqual(failures, 2)
+        XCTAssertEqual(failureCases, [.sensorUnavailable, .deviceDisconnected], "each case goes to the report (build 799)")
     }
 
     func testStoppingMidClutchClosesItForThePressGuard() async {

@@ -56,6 +56,10 @@ protocol GlassesDisplayBackend: AnyObject {
     func playVideo(_ video: HUDVideo, onEnded: @escaping @MainActor (HUDVideoEnding) -> Void) async throws
     /// Stop a clip that is playing. Nothing when none is.
     func stopVideo() async
+
+    /// Why the glasses refused a send, read from the backend's own error, for the support report.
+    /// Nil when `error` is not the backend's refusal (or the backend cannot say).
+    func refusalReason(for error: Error) -> DisplayRefusalReason?
 }
 
 extension GlassesDisplayBackend {
@@ -73,6 +77,7 @@ extension GlassesDisplayBackend {
         throw GlassesDisplayError.noDisplay
     }
     func stopVideo() async {}
+    func refusalReason(for error: Error) -> DisplayRefusalReason? { nil }
 }
 
 #if !AVENKIN_PHONE_ONLY
@@ -404,6 +409,17 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         // The wearer turned the HUD off (or the app is going): a full teardown, paused or not.
         dropSession()
         clearStartRefusal()
+    }
+
+    /// The SDK's `DisplayError`, read into a closed vocabulary: its message is never kept as written.
+    func refusalReason(for error: Error) -> DisplayRefusalReason? {
+        guard let displayError = error as? DisplayError else { return nil }
+        switch displayError {
+        case .displayError(let message): return DisplayRefusalReason(sdkMessage: message)
+        case .deviceDisconnected: return DisplayRefusalReason(kind: .deviceDisconnected)
+        case .invalidVideoURL: return DisplayRefusalReason(kind: .invalidVideoURL)
+        @unknown default: return DisplayRefusalReason(kind: .unrecognised)
+        }
     }
 
     func resetAfterError() {

@@ -132,9 +132,13 @@ struct LensPageStats: Equatable {
         /// The band's channel became active for a view, or failed.
         var bandListening = 0
         var bandFailures = 0
+        /// Build 799: the failures by the case they failed with, and the channel's ends by why.
+        var bandFailureReasons: [String: Int] = [:]
+        var bandEnds: [String: Int] = [:]
 
         var bandUsed: Bool {
-            bandSwipes + bandNothingToDo + bandDropped + bandOther + bandListening + bandFailures > 0
+            bandSwipes + bandNothingToDo + bandDropped + bandOther + bandListening + bandFailures
+                + bandEnds.values.reduce(0, +) > 0
         }
 
         /// Plan NB (flagged builds only): twist rungs acted on (also zooms), with nothing to do in
@@ -149,10 +153,13 @@ struct LensPageStats: Equatable {
         var twistPressesSwallowed = 0
         var wristListening = 0
         var wristFailures = 0
+        /// Build 799: the failures by the case they failed with, and how often the channel ended.
+        var wristFailureReasons: [String: Int] = [:]
+        var wristEnds = 0
 
         var wristUsed: Bool {
             twistRungs + twistNothingToDo + twistDropped + armPanSteps + armPanNothingToDo + armPanDropped
-                + twistPressesSwallowed + wristListening + wristFailures > 0
+                + twistPressesSwallowed + wristListening + wristFailures + wristEnds > 0
         }
     }
 
@@ -209,7 +216,10 @@ enum LensPageReport {
                 lines.append("    Band: swipes acted on \(entry.bandSwipes) (halves \(entry.bandHalves),"
                              + " pages \(entry.bandPages), text pages \(entry.bandTexts), pans \(entry.bandPans)), nothing to do \(entry.bandNothingToDo),"
                              + " dropped in a burst \(entry.bandDropped), other inputs \(entry.bandOther);"
-                             + " listening \(entry.bandListening), failed \(entry.bandFailures)")
+                             + " listening \(entry.bandListening), failed \(entry.bandFailures)"
+                             + reasons(entry.bandFailureReasons)
+                             + (entry.bandEnds.isEmpty ? "" : ", ended \(entry.bandEnds.values.reduce(0, +))"
+                                + reasons(entry.bandEnds)))
             }
             if entry.wristUsed {
                 // Plan NB: only a flagged (TestFlight-only) build hears the band's motion.
@@ -217,10 +227,19 @@ enum LensPageReport {
                              + " dropped \(entry.twistDropped)), arm pans \(entry.armPanSteps)"
                              + " (nothing to do \(entry.armPanNothingToDo), dropped \(entry.armPanDropped)),"
                              + " presses swallowed \(entry.twistPressesSwallowed);"
-                             + " listening \(entry.wristListening), failed \(entry.wristFailures)")
+                             + " listening \(entry.wristListening), failed \(entry.wristFailures)"
+                             + reasons(entry.wristFailureReasons)
+                             + (entry.wristEnds > 0 ? ", ended \(entry.wristEnds)" : ""))
             }
         }
         return lines
+    }
+
+    /// ` (sessionNotStarted 3, addFailed 1)`: each reason with its count, most first; empty when none.
+    static func reasons(_ counts: [String: Int]) -> String {
+        guard !counts.isEmpty else { return "" }
+        let ordered = counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+        return " (" + ordered.map { "\($0.key) \($0.value)" }.joined(separator: ", ") + ")"
     }
 
     static func summary(_ values: [Int], unit: String) -> String {

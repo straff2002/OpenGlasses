@@ -61,7 +61,8 @@ enum DATExperimentalFeatures {
                 clutchOpened: { [weak lensPage] in lensPage?.wristClutchOpened() },
                 clutchClosed: { [weak lensPage] in lensPage?.wristClutchClosed() },
                 listening: { [weak lensPage] in lensPage?.noteWristListening() },
-                failed: { [weak lensPage] in lensPage?.noteWristFailed() }))
+                failed: { [weak lensPage] failure in lensPage?.noteWristFailed(failure.rawValue) },
+                ended: { [weak lensPage] in lensPage?.noteWristEnded() }))
         lensWrist = wrist
         let bandNav = LensBandNavService(
             source: LensBandInputsSource(withDrag: { wrist.wantsDrag }),
@@ -76,7 +77,8 @@ enum DATExperimentalFeatures {
                 lensPage?.handleBand(input.kind)
             },
             onListening: { [weak lensPage] in lensPage?.noteBandListening() },
-            onFailed: { [weak lensPage] in lensPage?.noteBandFailed() })
+            onFailed: { [weak lensPage] failure in lensPage?.noteBandFailed(failure.rawValue) },
+            onEnded: { [weak lensPage] reason in lensPage?.noteBandEnded(reason) })
         lensBandNav = bandNav
         let motion = MotionProbe(
             motionSource: MetaMotionSource(),
