@@ -39013,6 +39013,94 @@
         }
       }
     },
+    "%lld rows had no readable date or tariff and were left out." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "صفوف استُبعدت لعدم وجود تاريخ أو رمز فوترة مقروء فيها: %lld."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld filas no tenían una fecha o un código de facturación legible y se omitieron."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld lignes n’avaient pas de date ou de code de facturation lisible et ont été exclues."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld sorban nem volt olvasható dátum vagy díjkód, ezért ezek kimaradtak."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld righe non avevano una data o un codice di fatturazione leggibili e sono state escluse."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld行は日付または請求コードを読み取れなかったため、除外されました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "읽을 수 있는 날짜나 수가 코드가 없는 행 %lld개는 제외되었습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weggelaten rijen zonder leesbare datum of tariefcode: %lld."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld linhas não tinham data ou código de faturamento legível e foram deixadas de fora."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пропущено строк без читаемой даты или кода услуги: %lld."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пропущено рядків без читабельної дати чи коду послуги: %lld."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "پڑھنے کے قابل تاریخ یا بلنگ کوڈ کے بغیر چھوڑی گئی قطاریں: %lld۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 行没有可读取的日期或收费代码，已被略过。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 列沒有可讀取的日期或收費代碼，已被略過。"
+          }
+        }
+      }
+    },
     "%lld rows had no readable date or vaccine and were left out." : {
       "localizations" : {
         "ar" : {
@@ -57024,6 +57112,94 @@
         }
       }
     },
+    "A case" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حالة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un caso"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un cas"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eset"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un caso"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "事例"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사례"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geval"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um caso"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Случай"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Випадок"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ایک کیس"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "案例"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "案例"
+          }
+        }
+      }
+    },
     "A check before you start" : {
       "localizations" : {
         "ar" : {
@@ -59665,6 +59841,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "要記住的標籤"
+          }
+        }
+      }
+    },
+    "A line imported from a list may not have this carton's code yet. Choose it, and the code is kept on it." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "قد لا يحمل السطر المستورد من قائمة رمزَ هذه الكرتونة بعد. اختره، وسيُحفظ الرمز عليه."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una línea importada de una lista puede no tener aún el código de esta caja. Elígela y el código se guardará en ella."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une ligne importée d’une liste n’a peut-être pas encore le code de cette boîte. Choisissez-la, et le code y sera conservé."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Egy listából importált soron még nem biztos, hogy szerepel ennek a doboznak a kódja. Válassza ki, és a kód rajta marad."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una riga importata da un elenco potrebbe non avere ancora il codice di questa scatola. Sceglila e il codice verrà conservato su di essa."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リストから取り込んだ項目には、この箱のコードがまだない場合があります。項目を選ぶと、コードがその項目に保存されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "목록에서 가져온 항목에는 아직 이 상자의 코드가 없을 수 있습니다. 항목을 선택하면 코드가 그 항목에 보관됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Een regel die uit een lijst is geïmporteerd, heeft de code van deze doos misschien nog niet. Kies hem, en de code wordt erop bewaard."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma linha importada de uma lista pode ainda não ter o código desta caixa. Escolha-a, e o código fica guardado nela."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У строки, импортированной из списка, может ещё не быть кода этой коробки. Выберите её, и код сохранится в ней."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Рядок, імпортований зі списку, може ще не мати коду цієї коробки. Виберіть його, і код збережеться в ньому."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "فہرست سے امپورٹ کی گئی لائن پر شاید ابھی اس کارٹن کا کوڈ نہ ہو۔ اسے منتخب کریں، اور کوڈ اس پر محفوظ ہو جائے گا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从清单导入的行可能还没有这个包装盒的条码。选择它，条码就会保存在该行上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "從清單匯入的項目可能還沒有這個包裝盒的條碼。選擇它，條碼就會保存在該項目上。"
           }
         }
       }
@@ -63313,6 +63577,94 @@
         }
       }
     },
+    "A reviewer's phone drafts the site document from this recording." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يصوغ هاتف المراجِع مستند الموقع من هذا التسجيل."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El celular de un revisor redacta el documento de sitio a partir de esta grabación."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le téléphone d’un réviseur rédige le document de site à partir de cet enregistrement."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebből a felvételből egy átnéző telefonja fogalmazza meg a helyszíndokumentumot."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il telefono di un revisore redige il documento di sito da questa registrazione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この録音の現場ドキュメントは、確認担当者のiPhoneで下書きされます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 녹음의 현장 문서 초안은 검토자의 휴대폰에서 작성됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Het locatiedocument wordt uit deze opname uitgewerkt op de telefoon van een beoordelaar."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O telefone de um revisor redige o documento de local a partir desta gravação."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Черновик документа объекта по этой записи составляется на телефоне проверяющего."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чернетку документа об’єкта за цим записом складає телефон рецензента."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جائزہ لینے والے کا فون اس ریکارڈنگ سے سائٹ دستاویز کا مسودہ بناتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "审核人的手机会根据这段录音起草现场文档。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "審核人的手機會根據這段錄音起草現場文件。"
+          }
+        }
+      }
+    },
     "A rule needs at least one test." : {
       "localizations" : {
         "ar" : {
@@ -64372,6 +64724,94 @@
         }
       }
     },
+    "A site" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "موقع"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un sitio"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un site"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Helyszín"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un sito"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현장"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Locatie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um local"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Объект"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Об’єкт"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ایک سائٹ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "现场"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場"
+          }
+        }
+      }
+    },
     "A spoken direction says which side. A sound is quieter once you've learned what it means — it plays on whatever you're already listening through, and it doesn't come only from the chosen side." : {
       "localizations" : {
         "ar" : {
@@ -64984,6 +65424,182 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "從圖片讀取的表格在核對之前不會提供數值"
+          }
+        }
+      }
+    },
+    "A tariff finds its line by the line's number. Give the line that number on its page, then check again." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يجد رمز الفوترة سطره من خلال رقم السطر. أعطِ السطر ذلك الرقم في صفحته، ثم أعد المطابقة."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un código de facturación encuentra su línea por el número que tiene la línea. Ponle ese número a la línea en su página y vuelve a comparar."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un code de facturation trouve sa ligne grâce au numéro de la ligne. Donnez ce numéro à la ligne sur sa page, puis comparez de nouveau."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A díjkód a sor száma alapján találja meg a sorát. Adja meg ezt a számot a sor oldalán, majd egyeztessen újra."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un codice di fatturazione trova la sua riga tramite il numero della riga. Assegna quel numero alla riga nella sua pagina, poi confronta di nuovo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請求コードは、項目に登録された番号でその項目を見つけます。項目のページでその番号を設定してから、もう一度照合してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "수가 코드는 항목의 번호로 해당 항목을 찾습니다. 항목 페이지에서 그 번호를 지정한 다음 다시 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Een tariefcode vindt zijn regel via het nummer van de regel. Geef de regel dat nummer op zijn pagina en controleer daarna opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um código de faturamento encontra sua linha pelo número da linha. Dê esse número à linha na página dela e confira novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Код услуги находит свою строку по её номеру. Укажите этот номер на странице строки, затем выполните сверку снова."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Код послуги знаходить свій рядок за номером рядка. Укажіть цей номер на сторінці рядка, а потім виконайте звірку ще раз."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بلنگ کوڈ اپنی لائن، لائن کے نمبر سے ڈھونڈتا ہے۔ لائن کے صفحے پر اسے وہ نمبر دیں، پھر دوبارہ موازنہ کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收费代码通过行上的编号找到对应的行。请在该行的页面上为其填写这个编号，然后再次核对。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收費代碼透過項目上的編號找到對應的項目。請在該項目的頁面上為其填寫這個編號，然後再次核對。"
+          }
+        }
+      }
+    },
+    "A tariff that more than one line carries is never counted against one of them. Staff decide which line each claim was." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "رمز الفوترة الذي يحمله أكثر من سطر لا يُحتسب أبدًا على أيٍّ منها. يقرر الموظفون إلى أي سطر تعود كل مطالبة."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un código de facturación que lleva más de una línea nunca se cuenta en ninguna de ellas. El personal decide a qué línea corresponde cada cobro."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un code de facturation porté par plus d’une ligne n’est jamais compté dans l’une d’elles. Le personnel décide à quelle ligne correspond chaque demande de paiement."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ha egy díjkód több sorhoz is tartozik, egyikükhöz sem számolódik. A munkatársak döntik el, hogy az egyes számlázott tételek melyik sorhoz tartoznak."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un codice di fatturazione presente su più righe non viene mai conteggiato su una di esse. È il personale a decidere a quale riga corrisponde ogni addebito."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複数の項目が持つ請求コードは、どの項目にも計上されません。各請求がどの項目のものかはスタッフが判断します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여러 항목이 가진 수가 코드는 그중 어느 항목에도 계산되지 않습니다. 각 청구 건이 어느 항목인지는 직원이 판단합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Een tariefcode die bij meer dan één regel hoort, wordt nooit bij een van die regels geteld. Medewerkers bepalen bij welke regel elke declaratie hoort."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um código de faturamento que está em mais de uma linha nunca é contado em nenhuma delas. A equipe decide a qual linha cada cobrança pertence."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Код услуги, который есть у нескольких строк, никогда не засчитывается ни одной из них. Сотрудники сами решают, к какой строке относится каждый счёт."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Код послуги, який мають кілька рядків, ніколи не зараховується жодному з них. Працівники самі вирішують, до якого рядка належить кожен рахунок."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جو بلنگ کوڈ ایک سے زیادہ لائنوں پر ہو، وہ کبھی ان میں سے کسی ایک کے کھاتے میں نہیں گنا جاتا۔ عملہ طے کرتا ہے کہ ہر کلیم کس لائن کا تھا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由多行共用的收费代码，不会计入其中任何一行。每条申报属于哪一行，由工作人员决定。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由多個項目共用的收費代碼，不會計入其中任何一個項目。每筆申報屬於哪個項目，由工作人員決定。"
           }
         }
       }
@@ -76244,6 +76860,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新增不同 AI 提供者的 API 金鑰。隨時從主畫面切換模型。"
+          }
+        }
+      }
+    },
+    "Add as a new line instead" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أضفه كسطر جديد بدلًا من ذلك"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agregar como línea nueva en su lugar"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajouter plutôt comme nouvelle ligne"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inkább hozzáadás új sorként"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi invece come nuova riga"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代わりに新しい項目として追加"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대신 새 항목으로 추가"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In plaats daarvan toevoegen als nieuwe regel"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar como linha nova em vez disso"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вместо этого добавить новой строкой"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Натомість додати як новий рядок"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس کے بجائے نئی لائن کے طور پر شامل کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "改为新增行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "改為新增項目"
           }
         }
       }
@@ -124572,6 +125276,94 @@
         }
       }
     },
+    "Billed under a shared code" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مفوترة تحت رمز مشترك"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Facturado con un código compartido"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Facturé sous un code partagé"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Közös díjkóddal számlázva"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fatturato con un codice condiviso"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有の請求コードで請求"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공유 수가 코드로 청구됨"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gedeclareerd onder een gedeelde code"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faturado com um código compartilhado"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выставлено по общему коду"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Виставлено за спільним кодом"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مشترکہ کوڈ کے تحت بل کیا گیا"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以共用代码收费"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以共用代碼收費"
+          }
+        }
+      }
+    },
     "Billing basis" : {
       "localizations" : {
         "ar" : {
@@ -151588,6 +152380,182 @@
         }
       }
     },
+    "Check against billing" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "المطابقة مع الفوترة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comparar con la facturación"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comparer avec la facturation"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Egyeztetés a számlázással"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confronta con la fatturazione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請求と照合"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "청구 내역과 대조 확인"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Controleren met de declaraties"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conferir com o faturamento"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сверка со счетами"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звірка з рахунками"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بلنگ سے موازنہ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与收费记录核对"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與收費記錄核對"
+          }
+        }
+      }
+    },
+    "Check against billing…" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "المطابقة مع الفوترة…"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comparar con la facturación…"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comparer avec la facturation…"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Egyeztetés a számlázással…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confronta con la fatturazione…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請求と照合…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "청구 내역과 대조 확인…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Controleren met de declaraties…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conferir com o faturamento…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сверить со счетами…"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звірити з рахунками…"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بلنگ سے موازنہ کریں…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与收费记录核对…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與收費記錄核對…"
+          }
+        }
+      }
+    },
     "Check against the EMR" : {
       "localizations" : {
         "ar" : {
@@ -157263,6 +158231,94 @@
         }
       }
     },
+    "Choose a line" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اختر سطرًا"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elegir una línea"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisir une ligne"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sor kiválasztása"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scegli una riga"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "項目を選択"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "항목 선택"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kies een regel"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolher uma linha"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выбрать строку"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вибрати рядок"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لائن منتخب کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择一行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇項目"
+          }
+        }
+      }
+    },
     "Choose a manual" : {
       "localizations" : {
         "ar" : {
@@ -158319,6 +159375,94 @@
         }
       }
     },
+    "Choose another export…" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اختر ملف تصدير آخر…"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elegir otra exportación…"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisir une autre exportation…"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Másik export választása…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scegli un’altra esportazione…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別の書き出しファイルを選択…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 내보내기 파일 선택…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Een andere export kiezen…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolher outra exportação…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выбрать другой файл экспорта…"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вибрати інший файл експорту…"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کوئی اور ایکسپورٹ فائل منتخب کریں…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择其他导出文件…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇其他匯出檔案…"
+          }
+        }
+      }
+    },
     "Choose another list…" : {
       "localizations" : {
         "ar" : {
@@ -159109,6 +160253,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "選擇屬於這個地點庫存的 %@ 位置。所選內容會隨此連線一起保存，僅保存在這支手機上。"
+          }
+        }
+      }
+    },
+    "Choose the billing export…" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اختر ملف تصدير الفوترة…"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elegir la exportación de facturación…"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisir l’exportation de facturation…"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A számlázási export kiválasztása…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scegli l’esportazione della fatturazione…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請求の書き出しファイルを選択…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "청구 내보내기 파일 선택…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De declaratie-export kiezen…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolher a exportação de faturamento…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выбрать файл экспорта счетов…"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вибрати файл експорту рахунків…"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بلنگ کی ایکسپورٹ فائل منتخب کریں…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择收费导出文件…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇收費匯出檔案…"
           }
         }
       }
@@ -198017,6 +199249,94 @@
         }
       }
     },
+    "Date billed" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تاريخ الفوترة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fecha de facturación"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Date de facturation"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Számlázás dátuma"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data di fatturazione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請求日"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "청구 날짜"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Declaratiedatum"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data de faturamento"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Дата выставления счёта"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Дата виставлення рахунку"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بل کرنے کی تاریخ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收费日期"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收費日期"
+          }
+        }
+      }
+    },
     "Date given" : {
       "localizations" : {
         "ar" : {
@@ -223102,6 +224422,94 @@
         }
       }
     },
+    "Draft again" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الصياغة مرة أخرى"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redactar de nuevo"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rédiger de nouveau"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Újrafogalmazás"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redigi di nuovo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "もう一度下書き"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 초안 작성"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opnieuw uitwerken"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redigir novamente"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Составить заново"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скласти ще раз"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "دوبارہ مسودہ بنائیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新起草"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新起草"
+          }
+        }
+      }
+    },
     "Draft it" : {
       "comment" : "Goals screen: run a step's suggested draft.",
       "localizations" : {
@@ -223187,6 +224595,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "起草"
+          }
+        }
+      }
+    },
+    "Draft site document" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "صياغة مستند الموقع"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redactar documento de sitio"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rédiger le document de site"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Helyszíndokumentum megfogalmazása"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redigi il documento di sito"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場ドキュメントを下書き"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현장 문서 초안 작성"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Locatiedocument uitwerken"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redigir documento de local"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Составить черновик документа объекта"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скласти чернетку документа об’єкта"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سائٹ دستاویز کا مسودہ بنائیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "起草现场文档"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "起草現場文件"
           }
         }
       }
@@ -223368,6 +224864,94 @@
         }
       }
     },
+    "Drafted from this recording's transcript by your assistant's provider, and checked against the vault it was recorded in. Nothing is saved." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "صاغه مزوّد مساعدك من نص هذا التسجيل، وطابقه مع الخزنة التي سُجّل فيها. لا يُحفظ أي شيء."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo redacta el proveedor de tu asistente a partir de la transcripción de esta grabación, y se verifica con la bóveda en la que se grabó. No se guarda nada."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rédigé par le fournisseur de votre assistant à partir de la transcription de cet enregistrement, et vérifié par rapport au coffre dans lequel il a été fait. Rien n’est sauvegardé."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ennek a felvételnek az átiratából az asszisztense szolgáltatója fogalmazta meg, és összevetette azzal a tárolóval, amelyben rögzítették. Semmi sem kerül mentésre."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redatto dal provider del tuo assistente a partire dalla trascrizione di questa registrazione e verificato rispetto al deposito in cui è stata registrata. Non viene salvato nulla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この録音の文字起こしからアシスタントのプロバイダーが下書きし、録音したボールトと照合しています。何も保存されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "어시스턴트의 제공업체가 이 녹음의 녹취록으로 초안을 작성하고, 녹음한 볼트와 대조해 확인했습니다. 아무것도 저장되지 않습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uitgewerkt uit het transcript van deze opname door de provider van uw assistent, en gecontroleerd aan de hand van de kluis waarin het is opgenomen. Er wordt niets bewaard."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redigido pelo provedor do seu assistente a partir da transcrição desta gravação e conferido com o cofre em que ela foi gravada. Nada é salvo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Черновик составлен провайдером вашего ассистента по расшифровке этой записи и сверен с хранилищем, в котором она сделана. Ничего не сохраняется."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чернетку складено провайдером вашого асистента за транскриптом цього запису й звірено зі сховищем, у якому його зроблено. Нічого не зберігається."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس ریکارڈنگ کے ٹرانسکرپٹ سے آپ کے اسسٹنٹ کے فراہم کنندہ نے مسودہ بنایا، اور اسے اس والٹ سے جانچا گیا جس میں یہ ریکارڈ ہوئی تھی۔ کچھ محفوظ نہیں کیا جاتا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由你的助手所用的提供商根据这段录音的转写文字起草，并与录制时所在的保险库核对。不会保存任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由你的助理所用的供應商根據這段錄音的轉寫文字起草，並與錄製時所在的保險庫核對。不會儲存任何內容。"
+          }
+        }
+      }
+    },
     "Drafted on this iPhone" : {
       "comment" : "My Day card: the draft was written on the phone.",
       "localizations" : {
@@ -223453,6 +225037,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在此 iPhone 上起草"
+          }
+        }
+      }
+    },
+    "Drafted site document" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مستند الموقع المُصاغ"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Documento de sitio redactado"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Document de site rédigé"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Megfogalmazott helyszíndokumentum"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Documento di sito redatto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下書きした現場ドキュメント"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "초안으로 작성된 현장 문서"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uitgewerkt locatiedocument"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Documento de local redigido"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Черновик документа объекта"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чернетка документа об’єкта"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سائٹ دستاویز کا مسودہ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已起草的现场文档"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已起草的現場文件"
           }
         }
       }
@@ -244912,6 +246584,94 @@
         }
       }
     },
+    "Every other column is left unread. Without a lot column, doses are compared by day and line." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا يُقرأ أي عمود آخر. بدون عمود التشغيلة، تُقارَن الجرعات حسب اليوم والسطر."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las demás columnas no se leen. Sin columna de lote, las dosis se comparan por día y línea."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les autres colonnes ne sont pas lues. Sans colonne de lot, les doses sont comparées par jour et par ligne."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A többi oszlop beolvasatlan marad. Gyártásitétel-oszlop nélkül az adagok összevetése nap és sor szerint történik."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tutte le altre colonne non vengono lette. Senza una colonna del lotto, le dosi vengono confrontate per giorno e riga."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "それ以外の列は読み取りません。ロットの列がない場合、回分数は日付と項目ごとに比較されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 열은 읽지 않습니다. 로트 열이 없으면 분량을 날짜와 항목별로 비교합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle andere kolommen blijven ongelezen. Zonder partijkolom worden doses per dag en regel vergeleken."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As demais colunas não são lidas. Sem coluna de lote, as doses são conferidas por dia e linha."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Остальные столбцы не читаются. Без столбца партии дозы сравниваются по дню и строке."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Решта стовпців не читається. Без стовпця партії дози порівнюються за днем і рядком."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "باقی کوئی کالم نہیں پڑھا جاتا۔ لاٹ کے کالم کے بغیر خوراکوں کا موازنہ دن اور لائن کے حساب سے ہوتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他所有列都不会被读取。没有批次列时，按日期和行比较剂量。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他所有欄位都不會被讀取。沒有批次欄位時，按日期和項目比較劑量。"
+          }
+        }
+      }
+    },
     "Every picture sent to the display is made smaller by this much so it fits. The reading goes into your support report." : {
       "localizations" : {
         "ar" : {
@@ -251718,6 +253478,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "將靈魂、技能、記憶、對話和快速操作匯出為可攜式 zip 包。與 OpenClaw/nanoclaw 代理格式兼容。"
+          }
+        }
+      }
+    },
+    "Export the claims billed for a range of days from the EMR, as a spreadsheet (.xlsx) or a CSV file. Only the date, tariff and lot columns are read." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "صدّر من السجل الطبي الإلكتروني المطالبات المفوترة خلال نطاق من الأيام، كجدول بيانات (.xlsx) أو ملف CSV. لا تُقرأ إلا أعمدة التاريخ ورمز الفوترة والتشغيلة."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exporta del ECE los cobros facturados en un rango de días, como hoja de cálculo (.xlsx) o archivo CSV. Solo se leen las columnas de fecha, código de facturación y lote."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exportez du DME les demandes de paiement facturées sur une plage de jours, sous forme de tableur (.xlsx) ou de fichier CSV. Seules les colonnes de date, de code de facturation et de lot sont lues."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exportálja az EMR-ből egy időszak számlázott tételeit táblázatként (.xlsx) vagy CSV-fájlként. Csak a dátum, a díjkód és a gyártási tétel oszlopa kerül beolvasásra."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esporta dalla CCE gli addebiti fatturati in un intervallo di giorni, come foglio di calcolo (.xlsx) o file CSV. Vengono lette solo le colonne di data, codice di fatturazione e lotto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電子カルテから、一定期間に請求した請求データをスプレッドシート（.xlsx）またはCSVファイルとして書き出してください。読み取るのは日付、請求コード、ロットの列だけです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EMR에서 기간을 정해 청구한 청구 건을 스프레드시트(.xlsx)나 CSV 파일로 내보내세요. 날짜, 수가 코드, 로트 열만 읽습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exporteer de declaraties over een reeks dagen uit het EPD, als spreadsheet (.xlsx) of als CSV-bestand. Alleen de kolommen datum, tariefcode en partij worden gelezen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exporte do PEP as cobranças faturadas em um intervalo de dias, como planilha (.xlsx) ou arquivo CSV. Apenas as colunas de data, código de faturamento e lote são lidas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Экспортируйте из МИС счета, выставленные за диапазон дней, в виде таблицы (.xlsx) или файла CSV. Читаются только столбцы даты, кода услуги и партии."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Експортуйте з МІС рахунки, виставлені за діапазон днів, як таблицю (.xlsx) або файл CSV. Зчитуються лише стовпці дати, коду послуги й партії."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EMR سے چند دنوں کی مدت میں بل کیے گئے کلیم اسپریڈشیٹ (.xlsx) یا CSV فائل کے طور پر ایکسپورٹ کریں۔ صرف تاریخ، بلنگ کوڈ اور لاٹ کے کالم پڑھے جاتے ہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从电子病历中导出某段日期内的收费申报，格式为电子表格（.xlsx）或 CSV 文件。只读取日期、收费代码和批次列。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "從電子病歷中匯出某段日期內的收費申報，格式為試算表（.xlsx）或 CSV 檔案。只讀取日期、收費代碼和批次欄位。"
           }
         }
       }
@@ -268793,6 +270641,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "修復"
+          }
+        }
+      }
+    },
+    "Fix a missed or wrong claim in the EMR itself. Nothing here is written to the EMR." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أصلح المطالبة الفائتة أو الخاطئة في السجل الطبي الإلكتروني نفسه. لا يُكتب شيء من هنا في السجل الطبي الإلكتروني."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Corrige un cobro faltante o incorrecto directamente en el ECE. Nada de aquí se escribe en el ECE."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Corrigez une demande de paiement manquante ou erronée directement dans le DME. Rien d’ici n’est écrit dans le DME."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A kimaradt vagy hibás számlázott tételt magában az EMR-ben javítsa. Innen semmi nem kerül be az EMR-be."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Correggi un addebito mancante o errato direttamente nella CCE. Nulla di quanto c’è qui viene scritto nella CCE."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請求漏れや誤った請求は、電子カルテ側で直接修正してください。ここから電子カルテには何も書き込まれません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "누락되었거나 잘못된 청구 건은 EMR에서 직접 수정하세요. 여기의 내용은 EMR에 기록되지 않습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herstel een gemiste of foute declaratie in het EPD zelf. Niets hiervan wordt naar het EPD geschreven."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Corrija uma cobrança ausente ou errada no próprio PEP. Nada daqui é gravado no PEP."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Исправьте пропущенный или неверный счёт в самой МИС. Отсюда в МИС ничего не записывается."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Виправте пропущений або неправильний рахунок у самій МІС. Звідси нічого не записується в МІС."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کوئی چھوٹا ہوا یا غلط کلیم خود EMR میں درست کریں۔ یہاں سے EMR میں کچھ نہیں لکھا جاتا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "漏报或错误的申报请直接在电子病历中修正。这里不会向电子病历写入任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "漏報或錯誤的申報請直接在電子病歷中修正。這裡不會向電子病歷寫入任何內容。"
           }
         }
       }
@@ -307241,6 +309177,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "行為方式"
+          }
+        }
+      }
+    },
+    "How it fits together" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "كيف يترابط كل شيء"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cómo se conecta todo"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comment tout est relié"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hogyan kapcsolódik össze"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Come si collega il tutto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全体のつながり"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전체 연결 구성"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hoe het samenhangt"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Como tudo se conecta"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Как всё связано"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Як усе пов’язано"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سب کچھ کیسے جڑا ہے"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整体如何连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整體如何連接"
           }
         }
       }
@@ -415425,6 +417449,94 @@
         }
       }
     },
+    "No lot column" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بلا عمود للتشغيلة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin columna de lote"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune colonne de lot"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nincs gyártásitétel-oszlop"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessuna colonna del lotto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ロットの列なし"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "로트 열 없음"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geen partijkolom"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sem coluna de lote"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Без столбца партии"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Без стовпця партії"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لاٹ کا کوئی کالم نہیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无批次列"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無批次欄位"
+          }
+        }
+      }
+    },
     "No lot in stock expires within %lld days." : {
       "localizations" : {
         "ar" : {
@@ -430078,6 +432190,94 @@
         }
       }
     },
+    "Not in the vault" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "غير موجود في الخزنة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No está en la bóveda"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Absent du coffre"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nincs a tárolóban"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non presente nel deposito"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボールトにありません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "볼트에 없음"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niet in de kluis"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não está no cofre"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет в хранилище"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Немає в сховищі"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "والٹ میں نہیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不在保险库中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不在保險庫中"
+          }
+        }
+      }
+    },
     "Not in this manual: %@" : {
       "localizations" : {
         "ar" : {
@@ -432812,6 +435012,94 @@
         }
       }
     },
+    "Not said in the recording: %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يُذكر في التسجيل: %@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se dijo en la grabación: %@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non dit dans l’enregistrement : %@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nem hangzott el a felvételen: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non detto nella registrazione: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録音で話されていません：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "녹음에서 말하지 않음: %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niet gezegd in de opname: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não dito na gravação: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не сказано в записи: %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не сказано в записі: %@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ریکارڈنگ میں نہیں کہا گیا: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "录音中没有说到：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "錄音中沒有說到：%@"
+          }
+        }
+      }
+    },
     "Not scheduled" : {
       "localizations" : {
         "ar" : {
@@ -434130,6 +436418,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未接手"
+          }
+        }
+      }
+    },
+    "Not taken from speech: %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يُؤخذ من الكلام: %@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se tomó de lo dicho: %@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non tiré de la parole : %@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nem a beszédből származik: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non ricavato dal parlato: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声から取得したものではありません：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성에서 가져오지 않음: %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niet uit de spraak overgenomen: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não tirado da fala: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Взято не из речи: %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Взято не з мовлення: %@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بولی گئی بات سے نہیں لیا گیا: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "并非来自语音：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "並非來自語音：%@"
           }
         }
       }
@@ -470911,6 +473287,94 @@
         }
       }
     },
+    "Opens the site prompts and the recorder." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يفتح إرشادات الموقع والمسجّل."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre las indicaciones del sitio y la grabadora."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvre les consignes du site et l’enregistreur."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Megnyitja a helyszín szempontjait és a felvevőt."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apre le indicazioni del sito e il registratore."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場のガイドとレコーダーを開きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현장 안내와 녹음기를 엽니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opent de locatie-aanwijzingen en de recorder."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre as orientações do local e o gravador."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открывает подсказки для объекта и диктофон."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Відкриває підказки для об’єкта й диктофон."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سائٹ کے رہنما نکات اور ریکارڈر کھولتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开现场提示和录音器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟現場提示和錄音器。"
+          }
+        }
+      }
+    },
     "Opens the sources that need attention." : {
       "localizations" : {
         "ar" : {
@@ -473997,6 +476461,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "選項（逗號分隔）"
+          }
+        }
+      }
+    },
+    "Or add as a new line" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أو أضفه كسطر جديد"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O agregar como línea nueva"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ou l’ajouter comme nouvelle ligne"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vagy hozzáadás új sorként"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oppure aggiungi come nuova riga"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "または新しい項目として追加"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "또는 새 항목으로 추가"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Of toevoegen als nieuwe regel"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ou adicionar como linha nova"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Или добавьте новой строкой"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Або додайте як новий рядок"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یا نئی لائن کے طور پر شامل کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "或新增行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "或新增項目"
           }
         }
       }
@@ -534259,6 +536811,94 @@
         }
       }
     },
+    "Record what you already know about a machine, one case per recording, or about a site's units and how they connect, for your team to review. Also in the Jobs list, and on CarPlay." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سجّل ما تعرفه بالفعل عن جهاز، حالة واحدة في كل تسجيل، أو عن وحدات موقع وكيفية اتصالها، ليراجعه فريقك. متاح أيضًا في قائمة المهام وعلى CarPlay."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Graba lo que ya sabes sobre una máquina, un caso por grabación, o sobre los equipos de un sitio y cómo se conectan, para que tu equipo lo revise. También en la lista de Trabajos y en CarPlay."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrez ce que vous savez déjà d’une machine, un cas par enregistrement, ou des appareils d’un site et de la façon dont ils sont reliés, pour que votre équipe le révise. Aussi dans la liste des travaux et sur CarPlay."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rögzítse, amit egy gépről már tud, felvételenként egy esetet, vagy egy helyszín egységeiről és azok kapcsolódásáról, hogy a csapata átnézze. A munkák listájában és a CarPlayen is elérhető."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registra ciò che sai già su una macchina, un caso per registrazione, o sulle unità di un sito e su come sono collegate, perché il tuo team lo riveda. Anche nell’elenco Lavori e su CarPlay."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "機器について既に知っていること（1回の録音につき1件）、または現場の機器とそのつながりを、チームの確認用に記録します。ジョブ一覧やCarPlayからも利用できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "장비에 대해 이미 알고 있는 것(녹음 한 번에 한 사례)이나 현장의 장비와 그 연결 방식을 팀이 검토하도록 기록하세요. 작업 목록과 CarPlay에서도 할 수 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neem op wat u al over een machine weet, één geval per opname, of over de units van een locatie en hoe ze verbonden zijn, zodat uw team het kan beoordelen. Ook in de takenlijst en in CarPlay."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grave o que você já sabe sobre uma máquina, um caso por gravação, ou sobre as unidades de um local e como elas se conectam, para sua equipe revisar. Também na lista de Trabalhos e no CarPlay."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запишите то, что вы уже знаете об оборудовании, — один случай на запись — или об агрегатах объекта и о том, как они соединены, чтобы ваша команда это проверила. Также в списке заданий и в CarPlay."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запишіть те, що ви вже знаєте про обладнання, — один випадок на запис — або про агрегати об’єкта і як вони з’єднані, щоб ваша команда це переглянула. Також у списку завдань і в CarPlay."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کسی مشین کے بارے میں جو آپ پہلے سے جانتے ہیں وہ ریکارڈ کریں، ہر ریکارڈنگ میں ایک کیس، یا کسی سائٹ کے یونٹس اور وہ کیسے جڑے ہیں، آپ کی ٹیم کے جائزے کے لیے۔ جابز کی فہرست میں اور CarPlay پر بھی۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记录你已经了解的情况：关于某台设备（每段录音一个案例），或关于某个现场的机组及其连接方式，供你的团队审核。也可在作业列表和 CarPlay 中使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記錄你已經了解的情況：關於某台設備（每段錄音一個案例），或關於某個現場的機組及其連接方式，供你的團隊審核。也可在工作列表和 CarPlay 中使用。"
+          }
+        }
+      }
+    },
     "record, recording, meetings, stream, live" : {
       "comment" : "Settings search keywords, comma-separated",
       "localizations" : {
@@ -535488,6 +538128,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在錄製 %1$@"
+          }
+        }
+      }
+    },
+    "Recording a site" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جارٍ تسجيل موقع"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabando un sitio"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrement d’un site"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Helyszín rögzítése folyamatban"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrazione di un sito"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場を録音中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현장 녹음 중"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Locatie wordt opgenomen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gravando um local"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запись объекта"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запис об’єкта"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سائٹ ریکارڈ ہو رہی ہے"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在录制现场"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在錄製現場"
           }
         }
       }
@@ -536986,6 +539714,100 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "錄製已停止。"
+          }
+        }
+      }
+    },
+    "Recording the site · %@ of %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تسجيل الموقع · %1$@ من %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Recording the site · %1$@ of %2$@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabando el sitio · %1$@ de %2$@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrement du site · %1$@ sur %2$@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Helyszín rögzítése · %1$@ / %2$@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrazione del sito · %1$@ di %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場を録音中 · %1$@ / %2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현장 녹음 중 · %1$@ / %2$@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Locatie wordt opgenomen · %1$@ van %2$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gravando o local · %1$@ de %2$@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запись объекта · %1$@ из %2$@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запис об’єкта · %1$@ з %2$@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سائٹ ریکارڈ ہو رہی ہے · %1$@ از %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在录制现场 · %1$@ / %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在錄製現場 · %1$@ / %2$@"
           }
         }
       }
@@ -603947,6 +606769,94 @@
         }
       }
     },
+    "Share site document" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مشاركة مستند الموقع"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartir documento de sitio"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Partager le document de site"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Helyszíndokumentum megosztása"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Condividi il documento di sito"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場ドキュメントを共有"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현장 문서 공유"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Locatiedocument delen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartilhar documento de local"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поделиться документом объекта"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поділитися документом об’єкта"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سائٹ دستاویز کا اشتراک کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享现场文档"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享現場文件"
+          }
+        }
+      }
+    },
     "Share the File…" : {
       "comment" : "Button title that opens the share sheet.",
       "isCommentAutoGenerated" : true,
@@ -617878,6 +620788,182 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "地點"
+          }
+        }
+      }
+    },
+    "Site document" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مستند الموقع"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Documento de sitio"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Document de site"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Helyszíndokumentum"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Documento di sito"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場ドキュメント"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현장 문서"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Locatiedocument"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Documento de local"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Документ объекта"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Документ об’єкта"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سائٹ دستاویز"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "现场文档"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場文件"
+          }
+        }
+      }
+    },
+    "Site recording" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تسجيل الموقع"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabación de sitio"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrement de site"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Helyszínfelvétel"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrazione del sito"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場の録音"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현장 녹음"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Locatieopname"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gravação de local"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запись объекта"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запис об’єкта"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سائٹ کی ریکارڈنگ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "现场录音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現場錄音"
           }
         }
       }
@@ -664982,6 +668068,182 @@
         }
       }
     },
+    "Tariff" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "رمز الفوترة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Código de facturación"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code de facturation"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Díjkód"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codice di fatturazione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請求コード"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "수가 코드"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tariefcode"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Código de faturamento"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Код услуги"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Код послуги"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بلنگ کوڈ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收费代码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收費代碼"
+          }
+        }
+      }
+    },
+    "Tariffs on no line" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "رموز فوترة بلا سطر"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Códigos de facturación sin línea"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codes de facturation sans ligne"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sorhoz nem tartozó díjkódok"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codici di fatturazione senza riga"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "どの項目にもない請求コード"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "어느 항목에도 없는 수가 코드"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tariefcodes zonder regel"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Códigos de faturamento sem linha"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Коды услуг без строки"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Коди послуг без рядка"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کسی لائن پر نہ ہونے والے بلنگ کوڈ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不属于任何行的收费代码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不屬於任何項目的收費代碼"
+          }
+        }
+      }
+    },
     "Task" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -690671,6 +693933,94 @@
         }
       }
     },
+    "The carton's code is kept on this line when you record it, so the next scan finds it." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يُحفظ رمز الكرتونة على هذا السطر عند تسجيلها، حتى يعثر عليه المسح التالي."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El código de la caja se guarda en esta línea cuando la registras, para que el próximo escaneo la encuentre."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le code de la boîte est conservé sur cette ligne quand vous la consignez, pour que la prochaine numérisation la trouve."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A doboz kódja ezen a soron marad, amikor rögzíti, így a következő beolvasás megtalálja."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il codice della scatola viene conservato su questa riga quando la registri, così la prossima scansione la trova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記録すると箱のコードがこの項目に保存されるため、次回のスキャンで見つかります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기록하면 상자의 코드가 이 항목에 보관되므로 다음 스캔에서 찾을 수 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De code van de doos wordt op deze regel bewaard wanneer u hem vastlegt, zodat de volgende scan hem vindt."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O código da caixa fica guardado nesta linha quando você a registra, para que a próxima leitura a encontre."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Код коробки сохраняется в этой строке, когда вы её записываете, поэтому при следующем сканировании строка найдётся."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Код коробки зберігається в цьому рядку, коли ви її записуєте, тож наступне сканування знайде рядок."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جب آپ کارٹن ریکارڈ کرتے ہیں تو اس کا کوڈ اس لائن پر محفوظ ہو جاتا ہے، تاکہ اگلا اسکین اسے ڈھونڈ لے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记录时，包装盒的条码会保存在这一行上，下次扫描就能找到它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記錄時，包裝盒的條碼會保存在這個項目上，下次掃描就能找到它。"
+          }
+        }
+      }
+    },
     "The catalog is empty right now." : {
       "localizations" : {
         "ar" : {
@@ -697382,6 +700732,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法在這支手機上寫入檔案。請再試一次。"
+          }
+        }
+      }
+    },
+    "The file couldn't be prepared to share. Draft it again." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تعذّر تجهيز الملف للمشاركة. صُغه مرة أخرى."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo preparar el archivo para compartir. Redáctalo de nuevo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le fichier n’a pas pu être préparé pour le partage. Rédigez-le de nouveau."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A fájlt nem sikerült megosztásra előkészíteni. Fogalmazza meg újra."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non è stato possibile preparare il file da condividere. Redigilo di nuovo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有用のファイルを準備できませんでした。もう一度下書きしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공유할 파일을 준비하지 못했습니다. 다시 초안을 작성하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Het bestand kon niet worden voorbereid om te delen. Werk het opnieuw uit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível preparar o arquivo para compartilhar. Redija-o novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось подготовить файл, чтобы поделиться им. Составьте черновик снова."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося підготувати файл для надсилання. Складіть чернетку ще раз."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "فائل اشتراک کے لیے تیار نہیں ہو سکی۔ دوبارہ مسودہ بنائیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法准备要共享的文件。请重新起草。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法準備要分享的檔案。請重新起草。"
           }
         }
       }
@@ -722112,6 +725550,94 @@
         }
       }
     },
+    "The stock list isn't kept on this phone." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا تُحفظ قائمة المخزون على هذا الهاتف."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La lista de inventario no se guarda en este celular."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La liste d’inventaire n’est pas conservée sur ce téléphone."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A készletlistát nem ez a telefon tárolja."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’elenco delle scorte non è conservato su questo telefono."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在庫リストはこのiPhoneに保存されていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "재고 목록이 이 휴대폰에 보관되어 있지 않습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De voorraadlijst wordt niet op deze telefoon bewaard."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A lista de estoque não é guardada neste telefone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Список запасов не хранится на этом телефоне."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Список запасів не зберігається на цьому телефоні."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اسٹاک کی فہرست اس فون پر نہیں رکھی جاتی۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这部手机上没有保存库存清单。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這支手機上沒有保存庫存清單。"
+          }
+        }
+      }
+    },
     "The stock list on this phone can't be read. Nothing was checked." : {
       "localizations" : {
         "ar" : {
@@ -725819,6 +729345,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此清單指定的保險庫已不在這支手機上，因此不會核對編號。請選擇其他保險庫，或選擇「無」。"
+          }
+        }
+      }
+    },
+    "The vault this site was recorded in isn't on this phone, so a site document can't be checked against it." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الخزنة التي سُجّل فيها هذا الموقع ليست على هذا الهاتف، لذا لا يمكن مطابقة مستند الموقع معها."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La bóveda en la que se grabó este sitio no está en este celular, así que no se puede verificar un documento de sitio con ella."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le coffre dans lequel ce site a été enregistré n’est pas sur ce téléphone, donc un document de site ne peut pas être vérifié par rapport à celui-ci."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A tároló, amelyben ezt a helyszínt rögzítették, nincs ezen a telefonon, ezért a helyszíndokumentum nem vethető össze vele."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il deposito in cui è stato registrato questo sito non è su questo telefono, quindi un documento di sito non può essere verificato rispetto a esso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この現場を録音したボールトがこのiPhoneにないため、現場ドキュメントをそのボールトと照合できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 현장을 녹음한 볼트가 이 휴대폰에 없어 현장 문서를 그 볼트와 대조해 확인할 수 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De kluis waarin deze locatie is opgenomen, staat niet op deze telefoon, dus een locatiedocument kan er niet mee worden gecontroleerd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O cofre em que este local foi gravado não está neste telefone, então um documento de local não pode ser conferido com ele."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Хранилища, в котором записан этот объект, нет на этом телефоне, поэтому документ объекта нельзя с ним сверить."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сховища, у якому записано цей об’єкт, немає на цьому телефоні, тому документ об’єкта не можна з ним звірити."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جس والٹ میں یہ سائٹ ریکارڈ کی گئی تھی وہ اس فون پر نہیں ہے، اس لیے سائٹ دستاویز کو اس سے جانچا نہیں جا سکتا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "录制这个现场时所用的保险库不在这部手机上，因此无法将现场文档与它核对。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "錄製這個現場時所用的保險庫不在這支手機上，因此無法將現場文件與它核對。"
           }
         }
       }
@@ -738582,6 +742196,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這是語音模型：它朗讀文字，無法回答問題。請為助理選擇聊天模型。"
+          }
+        }
+      }
+    },
+    "This is a stock record, not the billing record. The export is read on this phone and not kept." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هذا سجل للمخزون، وليس سجل الفوترة. يُقرأ ملف التصدير على هذا الهاتف ولا يُحفظ."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este es un registro de inventario, no el registro de facturación. La exportación se lee en este celular y no se guarda."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ceci est un registre d’inventaire, pas le registre de facturation. L’exportation est lue sur ce téléphone et n’est pas conservée."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ez készletnyilvántartás, nem a számlázási nyilvántartás. Az exportot ez a telefon olvassa be, és nem őrzi meg."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo è un registro delle scorte, non il registro di fatturazione. L’esportazione viene letta su questo telefono e non viene conservata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これは在庫の記録であり、請求の記録ではありません。書き出しファイルはこのiPhoneで読み取られ、保存されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이것은 재고 기록이며 청구 기록이 아닙니다. 내보내기 파일은 이 휴대폰에서 읽기만 하고 보관하지 않습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dit is een voorraadregistratie, niet de declaratieregistratie. De export wordt op deze telefoon gelezen en niet bewaard."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este é um registro de estoque, não o registro de faturamento. A exportação é lida neste telefone e não é guardada."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это учёт запасов, а не учёт счетов. Файл экспорта читается на этом телефоне и не сохраняется."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Це облік запасів, а не облік рахунків. Файл експорту читається на цьому телефоні й не зберігається."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ اسٹاک کا ریکارڈ ہے، بلنگ کا ریکارڈ نہیں۔ ایکسپورٹ فائل اس فون پر پڑھی جاتی ہے اور محفوظ نہیں کی جاتی۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这是库存记录，而非收费记录。导出文件在这部手机上读取，不会保存。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這是庫存記錄，而非收費記錄。匯出檔案在這支手機上讀取，不會保存。"
           }
         }
       }
@@ -767600,6 +771302,94 @@
         }
       }
     },
+    "Transcribed on this phone and kept here, never filed on a job: a site recording drafts a site document, not a team learning. The audio stays on this phone and is deleted after 30 days. Nothing is sent from this screen." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يُفرَّغ نصيًا على هذا الهاتف ويُحفظ هنا، ولا يُسجَّل أبدًا على مهمة: تسجيل الموقع يُنتج مسودة مستند موقع، لا ما تعلّمه الفريق. يبقى الصوت على هذا الهاتف ويُحذف بعد 30 يومًا. لا يُرسل أي شيء من هذه الشاشة."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se transcribe en este celular y se guarda aquí, nunca se registra en un trabajo: una grabación de sitio redacta un documento de sitio, no un aprendizaje del equipo. El audio se queda en este celular y se elimina después de 30 días. Nada se envía desde esta pantalla."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transcrit sur ce téléphone et conservé ici, jamais consigné sur un travail : un enregistrement de site rédige un document de site, pas un apprentissage de l’équipe. L’audio reste sur ce téléphone et est supprimé après 30 jours. Rien n’est envoyé depuis cet écran."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ezen a telefonon készül az átirat, és itt marad, sosem kerül munkához: a helyszínfelvételből helyszíndokumentum-vázlat készül, nem csapattanulság. A hang ezen a telefonon marad, és 30 nap után törlődik. Erről a képernyőről semmi sem kerül elküldésre."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trascritto su questo telefono e conservato qui, mai archiviato su un lavoro: una registrazione del sito redige un documento di sito, non un apprendimento del team. L’audio resta su questo telefono e viene eliminato dopo 30 giorni. Da questa schermata non viene inviato nulla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このiPhoneで文字起こしされてここに保存され、ジョブには登録されません。現場の録音からは、チームの学習ではなく現場ドキュメントが下書きされます。音声はこのiPhoneに残り、30日後に削除されます。この画面から送信されるものはありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 휴대폰에서 받아쓰고 여기에 보관하며, 작업에 등록하지 않습니다. 현장 녹음은 팀 학습 내용이 아니라 현장 문서의 초안을 작성합니다. 오디오는 이 휴대폰에 남아 있으며 30일 후 삭제됩니다. 이 화면에서는 아무것도 전송되지 않습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uitgeschreven op deze telefoon en hier bewaard, nooit bij een taak vastgelegd: uit een locatieopname wordt een locatiedocument uitgewerkt, geen teamles. De audio blijft op deze telefoon en wordt na 30 dagen verwijderd. Vanuit dit scherm wordt niets verzonden."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transcrito neste telefone e mantido aqui, nunca registrado em um trabalho: uma gravação de local redige um documento de local, não um aprendizado da equipe. O áudio fica neste telefone e é apagado após 30 dias. Nada é enviado desta tela."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Расшифровывается на этом телефоне и хранится здесь, никогда не сохраняется в задании: из записи объекта составляется черновик документа объекта, а не опыт команды. Аудио остаётся на этом телефоне и удаляется через 30 дней. С этого экрана ничего не отправляется."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Транскрибується на цьому телефоні й зберігається тут, ніколи не додається до завдання: із запису об’єкта складається чернетка документа об’єкта, а не досвід команди. Аудіо залишається на цьому телефоні й видаляється через 30 днів. З цього екрана нічого не надсилається."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اسی فون پر تحریر میں بدلا جاتا ہے اور یہیں رکھا جاتا ہے، کبھی کسی جاب پر درج نہیں ہوتا: سائٹ کی ریکارڈنگ سے سائٹ دستاویز کا مسودہ بنتا ہے، ٹیم کی سیکھی ہوئی بات نہیں۔ آڈیو اسی فون پر رہتی ہے اور 30 دن بعد حذف ہو جاتی ہے۔ اس اسکرین سے کچھ نہیں بھیجا جاتا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在这部手机上转写并保存在这里，不会登记在作业上：现场录音起草的是现场文档，而不是团队经验。音频留在这部手机上，30 天后删除。此屏幕不会发送任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在這支手機上轉寫並儲存在這裡，不會登記在工作上：現場錄音起草的是現場文件，而不是團隊心得。音訊留在這支手機上，30 天後刪除。此畫面不會傳送任何內容。"
+          }
+        }
+      }
+    },
     "Transcribing" : {
       "localizations" : {
         "ar" : {
@@ -779640,6 +783430,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "單位"
+          }
+        }
+      }
+    },
+    "Units and how they connect" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الوحدات وكيفية اتصالها"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Equipos y sus conexiones"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appareils et liens"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Egységek és kapcsolatuk"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unità e collegamenti"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "機器とつながり"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "장비와 연결 방식"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Units en hun verbindingen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unidades e conexões"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Агрегаты и их связи"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Агрегати та їхні зв’язки"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یونٹس اور ان کے رابطے"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "机组及其连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "機組及其連接"
           }
         }
       }
@@ -816679,6 +820557,94 @@
         }
       }
     },
+    "What you already know about a machine, one case per recording, or about a site's units and how they connect, for your team to review." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ما تعرفه بالفعل عن جهاز، حالة واحدة في كل تسجيل، أو عن وحدات موقع وكيفية اتصالها، ليراجعه فريقك."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo que ya sabes sobre una máquina, un caso por grabación, o sobre los equipos de un sitio y cómo se conectan, para que tu equipo lo revise."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce que vous savez déjà d’une machine, un cas par enregistrement, ou des appareils d’un site et de la façon dont ils sont reliés, pour que votre équipe le révise."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amit egy gépről már tud, felvételenként egy esetet, vagy egy helyszín egységeiről és azok kapcsolódásáról, hogy a csapata átnézze."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ciò che sai già su una macchina, un caso per registrazione, o sulle unità di un sito e su come sono collegate, perché il tuo team lo riveda."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "機器について既に知っていること（1回の録音につき1件）、または現場の機器とそのつながりを、チームの確認用に記録します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "장비에 대해 이미 알고 있는 것(녹음 한 번에 한 사례)이나 현장의 장비와 그 연결 방식을 팀이 검토하도록 기록합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wat u al over een machine weet, één geval per opname, of over de units van een locatie en hoe ze verbonden zijn, zodat uw team het kan beoordelen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que você já sabe sobre uma máquina, um caso por gravação, ou sobre as unidades de um local e como elas se conectam, para sua equipe revisar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "То, что вы уже знаете об оборудовании, — один случай на запись — или об агрегатах объекта и о том, как они соединены, чтобы ваша команда это проверила."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Те, що ви вже знаєте про обладнання, — один випадок на запис — або про агрегати об’єкта і як вони з’єднані, щоб ваша команда це переглянула."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کسی مشین کے بارے میں جو آپ پہلے سے جانتے ہیں، ہر ریکارڈنگ میں ایک کیس، یا کسی سائٹ کے یونٹس اور وہ کیسے جڑے ہیں، آپ کی ٹیم کے جائزے کے لیے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记录你已经了解的情况：关于某台设备（每段录音一个案例），或关于某个现场的机组及其连接方式，供你的团队审核。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記錄你已經了解的情況：關於某台設備（每段錄音一個案例），或關於某個現場的機組及其連接方式，供你的團隊審核。"
+          }
+        }
+      }
+    },
     "What you checked and tried." : {
       "localizations" : {
         "ar" : {
@@ -817203,6 +821169,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你想問 Avenkin 的問題"
+          }
+        }
+      }
+    },
+    "What you're recording" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ما الذي تسجّله"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo que grabas"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce que vous enregistrez"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit rögzít"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cosa stai registrando"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録音する内容"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "녹음할 내용"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wat u opneemt"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que você está gravando"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Что вы записываете"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Що ви записуєте"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کیا ریکارڈ کر رہے ہیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你要录制的内容"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你要錄製的內容"
           }
         }
       }
@@ -821976,6 +826030,94 @@
         }
       }
     },
+    "Where" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "المكان"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ubicación"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Emplacement"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hol"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Posizione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "場所"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "위치"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waar"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Localização"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Где"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Де"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کہاں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置"
+          }
+        }
+      }
+    },
     "Where “play”, “pause” and “skip” go when you don't name a speaker. Whatever is already playing is controlled first." : {
       "localizations" : {
         "ar" : {
@@ -824894,6 +829036,94 @@
         }
       }
     },
+    "Which line is this?" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أي سطر هذا؟"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Qué línea es?"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quelle ligne est-ce?"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Melyik sor ez?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quale riga è questa?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これはどの項目ですか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이것은 어느 항목인가요?"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Welke regel is dit?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qual linha é esta?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Какая это строка?"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Який це рядок?"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ کون سی لائن ہے؟"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这是哪一行？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這是哪個項目？"
+          }
+        }
+      }
+    },
     "Which line?" : {
       "localizations" : {
         "ar" : {
@@ -826653,6 +830883,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你要邀請的人"
+          }
+        }
+      }
+    },
+    "Whoever builds your vault can add this file to its site documents. Nothing is added to the vault on this phone." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يمكن لمن يُعدّ خزنتك إضافة هذا الملف إلى مستندات المواقع فيها. لا يُضاف أي شيء إلى الخزنة على هذا الهاتف."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quien arme tu bóveda puede agregar este archivo a sus documentos de sitio. En este celular no se agrega nada a la bóveda."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La personne qui constitue votre coffre peut ajouter ce fichier à ses documents de site. Rien n’est ajouté au coffre sur ce téléphone."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aki a tárolóját összeállítja, hozzáadhatja ezt a fájlt a helyszíndokumentumaihoz. Ezen a telefonon semmi sem kerül a tárolóba."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chi crea il tuo deposito può aggiungere questo file ai suoi documenti di sito. Su questo telefono non viene aggiunto nulla al deposito."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボールトを作成する担当者は、このファイルをボールトの現場ドキュメントに追加できます。このiPhoneではボールトに何も追加されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "볼트를 만드는 사람이 이 파일을 볼트의 현장 문서에 추가할 수 있습니다. 이 휴대폰에서는 볼트에 아무것도 추가되지 않습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie uw kluis samenstelt, kan dit bestand aan de locatiedocumenten ervan toevoegen. Op deze telefoon wordt niets aan de kluis toegevoegd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quem monta o seu cofre pode adicionar este arquivo aos documentos de local dele. Nada é adicionado ao cofre neste telefone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тот, кто ведёт ваше хранилище, может добавить этот файл к его документам объектов. На этом телефоне в хранилище ничего не добавляется."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Той, хто веде ваше сховище, може додати цей файл до його документів об’єктів. На цьому телефоні до сховища нічого не додається."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جو بھی آپ کا والٹ بناتا ہے وہ یہ فائل اس کی سائٹ دستاویزات میں شامل کر سکتا ہے۔ اس فون پر والٹ میں کچھ شامل نہیں کیا جاتا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "负责构建你的保险库的人可以将此文件添加到其现场文档中。这部手机不会向保险库添加任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "負責建立你的保險庫的人可以將此檔案加入其現場文件中。這支手機不會向保險庫加入任何內容。"
           }
         }
       }
@@ -828944,6 +833262,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Word 和 Markdown 手冊會產生用於頁面引用的文字閱讀副本。該副本不保留原始版面和影像；如需圖表，請使用 PDF。您的原始檔案也會儲存在這支手機上。"
+          }
+        }
+      }
+    },
+    "Words not said in the recording: %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "كلمات لم تُذكر في التسجيل: %@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Palabras que no se dijeron en la grabación: %@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mots non dits dans l’enregistrement : %@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A felvételen el nem hangzott szavak: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parole non dette nella registrazione: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録音で話されていない言葉：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "녹음에서 말하지 않은 단어: %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Woorden die niet in de opname zijn gezegd: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Palavras não ditas na gravação: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Слова, не сказанные в записи: %@"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Слова, не сказані в записі: %@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "وہ الفاظ جو ریکارڈنگ میں نہیں کہے گئے: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "录音中没有说到的词语：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "錄音中沒有說到的詞語：%@"
           }
         }
       }
