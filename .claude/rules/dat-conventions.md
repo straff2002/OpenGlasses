@@ -308,6 +308,15 @@ around them.
     sessions, beyond the HFP report above.
   - After the Back gesture, the Display may report `started` while the lens shows Meta's home, so a
     send then may land nowhere.
+- **A Display that never becomes ready, with every reading healthy, can be a missing glasses-side
+  component** (ios #386, Ray-Ban Display release 130.0.1, DAT 1.1.0; reported fixed 2026-11).
+  Registration `registered`, compatibility `compatible`, no `datAppOnTheGlassesUpdateRequired`, yet
+  `display.start()` never leaves `stopped` and the session then ends "Session ended by device".
+  Recovery: factory-reset the glasses and pair them again in Meta AI; Meta AI → Settings → App Info
+  then shows **Install** on the glasses row under Developer Mode; after Install the Display draws.
+  This is a Display that never starts. A Display that is started and refuses one send
+  (`DisplayError.displayError`, read as `DisplayRefusalReason` in the support report) is a
+  different case.
 - **iPhone 17 on iOS 26: HFP may carry no audio either way** (Meta known issue, fixed in iOS 27).
 - **Ray-Ban Meta Audio (no camera) is not supported by DAT** in any release (ios #345): it never
   lists or connects. It is a plain Bluetooth headset.
