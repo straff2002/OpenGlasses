@@ -2376,6 +2376,8 @@ class AppState: ObservableObject, AppStateProtocol {
         jobSendNotificationRouter?.openCheckIn = { [weak self] dayKey in self?.openCheckInFromNotification(dayKey: dayKey) }
         // Plan NH: a tap on the allowance's notification opens the subscription sheet.
         jobSendNotificationRouter?.openSubscription = { [weak self] in self?.subscriptionSheetPresented = true }
+        // Plan MY §6: a tap on the weekly count reminder opens the stock screen's count sheet.
+        jobSendNotificationRouter?.openJobList = { [weak self] request in self?.openJobs(request) }
         UNUserNotificationCenter.current().delegate = jobSendNotificationRouter
         // Plan LM P2: the app's notification buttons, registered once, beside the one delegate that
         // routes their presses.
@@ -2938,6 +2940,12 @@ class AppState: ObservableObject, AppStateProtocol {
     /// job, the start page, or one job. Consumed and cleared by the tab, which decides against what
     /// is on the phone at that moment where it lands (`JobListRouting`).
     @Published var jobListRequest: JobListRequest?
+
+    /// The stock screen should open its weekly count sheet when it next shows (Plan MY §6): set by
+    /// the Jobs tab when the reminder's request lands, consumed and cleared by the screen, which
+    /// decides against the list in front of it (`StockCountOpening`). Held here rather than in the
+    /// screen, so a tap that launched the app is still waiting when the screen first appears.
+    @Published var stockCountRequested = false
 
     /// Show the Jobs tab at `request`. Every surface that sends the wearer to a job comes through
     /// here, so a job's page is always pushed over the list and Back always returns to it.

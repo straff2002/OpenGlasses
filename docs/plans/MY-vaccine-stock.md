@@ -14,14 +14,21 @@ and short forms and brand names become the line's codes, which the EMR check mat
 number. **2026-11-27, P4:** the catalog sync is done: 118 keys in the 13 complete languages,
 add-only, the EMR named by each language's usual short term. Owed: a simulator check of the scan sheet, the count sheet, the report and the EMR check sheet; the device
 pass (a real carton scanned, and the reminder seen on a phone); P5 the pilot; a
-takeover workbook still drops lots (it carries lines and figures only); tapping the count reminder
-opens the app but not the count sheet. **2026-11-27, the clinic's brief (P3c):** the clinic set
+takeover workbook still drops lots (it carries lines and figures only). **2026-11-27, the clinic's brief (P3c):** the clinic set
 out the table it has in mind (immunization number, category, description, tariff, brand names,
 quantity on hand) and how it expects stock to move: a tariff billed in the EMR uses one bottle. The
 table imports as it is: `Category` is kept on the line, and `Immunization #` joins its codes (§8).
 Stock lowered by billing is not built and is set out as Decision 13 (§8a), with the question of
 whether a tariff is a dose or a bottle (§2). One new screen string (*Category*) is owed to a
-catalog sync.
+catalog sync. **2026-11-28, after the build-799 notes:** the spreadsheet export writes a
+`Category` column (last, after the hidden Item ID, and only when some line has one), so an export
+read back, or taken over on another phone, keeps each line's group; a tap on the count reminder opens Jobs › Stock with the count
+sheet up, from a cold launch too (routed by the reminder's identifier, `userInfo` still empty); and
+a carton whose code no line carries offers "Which line is this?" (§5): the chosen line keeps the
+GTIN-14 in its codes in the same entry as the movement, so one Undo takes both back and the next
+scan finds it; a code already on another line is refused. Owed: the new screen strings to a
+catalog sync; a simulator look at the link and the reminder tap; a takeover workbook drops a line's
+codes as well as its lots, so a linked carton is linked again on the new phone.
 **Track:** Field Assist stock, for a medical clinic. The phone, not the glasses (Decision 10).
 **Builds on:**
 - Plan [IH](IH-van-stock.md): the phone's own stock list. That means the append-only movement log

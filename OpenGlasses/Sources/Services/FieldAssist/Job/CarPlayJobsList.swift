@@ -32,6 +32,8 @@ enum CarPlayJobsList {
         case openUpcomingJob(id: String)
         /// Read the five prompts aloud and record hands-free (Plan IM P1).
         case recordExperience
+        /// Read the site prompts aloud and record a site hands-free (Plan IM P4).
+        case recordSite
         /// End the recording running now, keeping what was said.
         case stopExperienceRecording
     }
@@ -43,12 +45,16 @@ enum CarPlayJobsList {
         /// Shown. A lapsed licence is shown it too, and the recorder says why it can't start.
         case offered
         case recording
+        /// Recording a site (Plan IM P4): the same Stop row, saying what it records.
+        case recordingSite
     }
 
-    /// The row's state from the recorder's verdict and whether it is busy.
-    static func experienceRow(verdict: ExperienceRecordingAvailability.Verdict, recorderBusy: Bool) -> ExperienceRow {
+    /// The row's state from the recorder's verdict, whether it is busy and what it records.
+    static func experienceRow(verdict: ExperienceRecordingAvailability.Verdict, recorderBusy: Bool,
+                              recordingKind: ExperienceRecording.Kind = .experience) -> ExperienceRow {
         guard verdict.isOffered else { return .hidden }
-        return recorderBusy ? .recording : .offered
+        guard recorderBusy else { return .offered }
+        return recordingKind == .site ? .recordingSite : .recording
     }
 
     /// What a job ahead offers on the car screen. Two rows, no more: the brief is spoken, and
@@ -82,6 +88,8 @@ enum CarPlayJobsList {
 
     /// The experience row's id, stable across Record and Stop so the car keeps its place.
     static let experienceRowId = "record-experience"
+    /// The "Tell me about this site" row's id (Plan IM P4), shown beside Record experience.
+    static let siteRowId = "record-site"
 
     /// How many jobs ahead the car screen carries.
     static let upcomingLimit = 5
@@ -156,10 +164,16 @@ enum CarPlayJobsList {
                             detail: String(localized: "One case per recording"),
                             isActiveJob: false,
                             selection: .recordExperience))
-        case .recording:
+            rows.append(Row(id: siteRowId,
+                            title: ExperienceRecorderCopy.siteTitle,
+                            detail: String(localized: "Units and how they connect"),
+                            isActiveJob: false,
+                            selection: .recordSite))
+        case .recording, .recordingSite:
             rows.append(Row(id: experienceRowId,
                             title: String(localized: "Stop recording"),
-                            detail: String(localized: "Recording experience"),
+                            detail: experience == .recordingSite ? String(localized: "Recording a site")
+                                                                 : String(localized: "Recording experience"),
                             isActiveJob: false,
                             selection: .stopExperienceRecording))
         }

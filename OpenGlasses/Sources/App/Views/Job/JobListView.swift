@@ -215,8 +215,15 @@ struct JobListView: View {
             }
             .accessibilityIdentifier("record-experience-row")
             .accessibilityHint(Self.hint(.recordExperience))
+            Button { onOpen(.recordSite) } label: {
+                Label(ExperienceRecorderCopy.siteTitle, systemImage: "house")
+                    .foregroundStyle(Color.primary)
+                    .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
+            }
+            .accessibilityIdentifier("record-site-row")
+            .accessibilityHint(Self.hint(.recordSite))
         } footer: {
-            Text("What you already know about a machine, one case per recording, for your team to review.")
+            Text("What you already know about a machine, one case per recording, or about a site's units and how they connect, for your team to review.")
         }
     }
 
@@ -293,6 +300,7 @@ struct JobListView: View {
         case .vanStock: return String(localized: "Opens the stock list.")
         case .vanStockItem: return String(localized: "Opens this line: its count, details and history.")
         case .recordExperience: return String(localized: "Opens the prompts and the recorder.")
+        case .recordSite: return String(localized: "Opens the site prompts and the recorder.")
         }
     }
 }

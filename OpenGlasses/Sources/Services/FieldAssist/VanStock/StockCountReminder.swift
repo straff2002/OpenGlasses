@@ -7,7 +7,8 @@ import UserNotifications
 // **Content-free.** Title "Stock", body "The weekly stock count is due." Nothing about the stock — no
 // line, lot, figure or name — goes into it, and its `userInfo` is empty. It is one repeating weekly
 // request under one identifier, so changing the day or time replaces it and switching it off removes
-// it; nothing has to be topped up.
+// it; nothing has to be topped up. A tap is routed by that identifier
+// (`StockCountReminderPolicy.jobListRequest(forTapped:)`) to the stock screen's count sheet.
 
 /// The clinic's choice: whether the reminder is on, and on which weekday and minute of the day.
 struct StockCountReminderSettings: Codable, Equatable, Sendable {
@@ -64,6 +65,13 @@ enum StockCountReminderPolicy {
         return StockCountReminderRequest(identifier: identifier, fireAt: parts)
     }
 
+    /// Where a tap on a notification lands, when it is the reminder: the stock screen with the
+    /// count sheet open. Read from the request's identifier alone, because the reminder carries
+    /// nothing else (its `userInfo` stays empty). Nil for every other notification.
+    static func jobListRequest(forTapped identifier: String) -> JobListRequest? {
+        identifier == self.identifier ? .stockCount : nil
+    }
+
     /// "Mondays at 09:00", in English for the model, as every stock sentence is (the screen shows
     /// the system's own weekday names).
     static func describe(_ settings: StockCountReminderSettings) -> String {
@@ -73,6 +81,16 @@ enum StockCountReminderPolicy {
         let name = names[weekday - 1]
         let minute = min(23 * 60 + 59, max(0, settings.minute))
         return String(format: "%@s at %02d:%02d", name, minute / 60, minute % 60)
+    }
+}
+
+/// Whether the stock screen opens its weekly count sheet when it was asked to by the reminder.
+/// Only where the screen itself offers "Count the stock…": a clinic's list, readable, with lines
+/// on it, and the phone holding the count (not a connected stock system). Anywhere else the tap
+/// lands on the screen and nothing more.
+enum StockCountOpening {
+    static func opens(clinical: Bool, unreadable: Bool, empty: Bool, systemHoldsCount: Bool) -> Bool {
+        clinical && !unreadable && !empty && !systemHoldsCount
     }
 }
 

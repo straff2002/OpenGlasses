@@ -62,7 +62,7 @@ struct ImmunisationCheckSheet: View {
         }
     }
 
-    private static var types: [UTType] {
+    static var types: [UTType] {
         [UTType(filenameExtension: "xlsx"), UTType.commaSeparatedText, UTType.plainText].compactMap { $0 }
     }
 
@@ -118,8 +118,9 @@ struct ImmunisationCheckSheet: View {
     }
 
     /// The file's bytes, read where the file is and never written anywhere. A file over the
-    /// reader's size limit is refused before any of it is loaded.
-    private static func contents(of url: URL) -> Result<Data, ImmunisationListReader.Failure> {
+    /// reader's size limit is refused before any of it is loaded. The billing check reads its
+    /// export the same way (`BillingCheckSheet`).
+    static func contents(of url: URL) -> Result<Data, ImmunisationListReader.Failure> {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,

@@ -1242,10 +1242,15 @@ final class VanStockService {
 
     /// Record one scanned carton as the sheet's choice says: on the line it resolved to, or as a
     /// new line. The sheet asks "Another one?" itself (`StockScanRepeatGuard`), so a tap is never
-    /// taken for a model's retry.
+    /// taken for a model's retry. A line the person chose for a code it did not carry ("Which line
+    /// is this?") keeps the code from now on, in the same entry as the movement, so one Undo takes
+    /// both back; a code already on another line is refused (`StockScanFlow.linkConflict`).
     func recordScan(_ action: StockScanFlow.Action, scan: StockScan, itemID: String?,
                     newLine: NewScannedLine? = nil, quantity: StockQuantity) -> ScanOutcome {
         guard !store.isUnreadable else { return ScanOutcome(recorded: false, answer: unreadable) }
+        if let itemID, let holder = StockScanFlow.linkConflict(scan, itemID: itemID, in: store.log) {
+            return ScanOutcome(recorded: false, answer: "That code is already on \(holder.name). Nothing was changed.")
+        }
         lastWrite = nil
         let line = Line(description: newLine?.name, quantity: quantity, code: scan.code, asNew: newLine != nil,
                         lot: scan.lot, lotFromScan: scan.lot != nil, expiry: scan.expiry,

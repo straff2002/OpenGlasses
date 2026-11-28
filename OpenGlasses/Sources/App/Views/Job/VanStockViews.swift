@@ -18,6 +18,9 @@ struct VanStockView: View {
     var stockSystem: StockSystemService? = nil
     /// The clinic's own Microsoft 365 workbook (Plan NK P1), shown for a clinical list only.
     var clinicWorkbook: ClinicWorkbookService? = nil
+    /// Set when the weekly count reminder was tapped (Plan MY §6): the screen clears it and opens
+    /// the count sheet when it offers one (`StockCountOpening`).
+    var countRequested: Binding<Bool> = .constant(false)
     /// Open one line's page.
     let onOpen: (String) -> Void
 
@@ -32,6 +35,7 @@ struct VanStockView: View {
     @State private var counting = false
     @State private var reporting = false
     @State private var checkingEMR = false
+    @State private var checkingBilling = false
     @State private var workbookSettings = false
 
     private var rows: [VanStockRow] { VanStockRows.rows(store.log, query: search) }
@@ -74,6 +78,23 @@ struct VanStockView: View {
         }
         .sheet(isPresented: $namingPlace) {
             VanStockPlaceSheet(store: store, books: VanStockPlaceSheet.installedBooks())
+        }
+        // The system holds the count, so there is no count to open: the request is spent.
+        .onChange(of: countRequested.wrappedValue, initial: true) { _, asked in
+            if asked { countRequested.wrappedValue = false }
+        }
+    }
+
+    /// Take the reminder's request: cleared at once, and the count sheet opened only where the
+    /// screen offers it. A moment's wait lets the push that brought the screen finish first.
+    private func takeCountRequest() {
+        guard countRequested.wrappedValue else { return }
+        countRequested.wrappedValue = false
+        guard StockCountOpening.opens(clinical: store.resolvedClinical.clinical, unreadable: store.isUnreadable,
+                                      empty: store.log.isEmpty, systemHoldsCount: false) else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(400))
+            counting = true
         }
     }
 
@@ -156,6 +177,14 @@ struct VanStockView: View {
                     }
                     .disabled(store.isUnreadable || store.log.isEmpty)
                 }
+                ToolbarItem(placement: .secondaryAction) {
+                    Button {
+                        checkingBilling = true
+                    } label: {
+                        Label("Check against billing…", systemImage: "dollarsign.arrow.circlepath")
+                    }
+                    .disabled(store.isUnreadable || store.log.isEmpty)
+                }
                 if clinicWorkbook != nil {
                     ToolbarItem(placement: .secondaryAction) {
                         Button {
@@ -215,11 +244,15 @@ struct VanStockView: View {
         .sheet(isPresented: $counting) {
             StockCountSheet(store: store, service: service)
         }
+        .onChange(of: countRequested.wrappedValue, initial: true) { _, _ in takeCountRequest() }
         .sheet(isPresented: $reporting) {
             StockReportView(store: store, service: service)
         }
         .sheet(isPresented: $checkingEMR) {
             ImmunisationCheckSheet(store: store)
+        }
+        .sheet(isPresented: $checkingBilling) {
+            BillingCheckSheet(store: store)
         }
         .sheet(isPresented: $workbookSettings) {
             if let clinicWorkbook { ClinicWorkbookSettingsView(service: clinicWorkbook) }

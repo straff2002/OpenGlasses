@@ -6,7 +6,10 @@ import VisionKit
 /// says what happened to it: Given, Wasted, Received or Count.
 ///
 /// The phone's camera only (Decision 10). A product number not on the list starts a new line on
-/// Received or Count; a lot not on the line comes in the same way, never on Given. The same code
+/// Received or Count, or, when the carton is a line already on the list that has no product number
+/// yet (one imported from the clinic's list), is linked to the line the person chooses: the code
+/// is kept on it, so the next scan finds it (`StockScanFlow.offersLink`). A lot not on the line
+/// comes in only on Received or Count, never on Given. The same code
 /// recorded again within ten seconds asks "Another one?" first. Nothing here takes or shows who a
 /// dose was given to: this is the stock, not the patient's record.
 @MainActor
@@ -22,6 +25,8 @@ struct StockScanSheet: View {
     @State private var unreadable: GS1ElementString.Failure?
     /// The line the person picked when several share the product number.
     @State private var pickedItemID: String?
+    /// The line the person said a code no line carries belongs to ("Which line is this?").
+    @State private var linkedItemID: String?
     @State private var choice = StockScanText.Choice.given
     @State private var wasteReason = VanStockMovement.WasteReason.other
     @State private var doses = 1
@@ -117,6 +122,7 @@ struct StockScanSheet: View {
     private func take(_ read: StockScan) {
         scan = read
         pickedItemID = nil
+        linkedItemID = nil
         outcome = nil
         doses = 1
         cartons = 1
@@ -137,15 +143,30 @@ struct StockScanSheet: View {
 
     // MARK: - What was scanned
 
-    /// The resolution, with a picked line standing in for "several lines".
+    /// The resolution, with a picked line standing in for "several lines" and a chosen line for
+    /// a code no line carries yet.
     private func resolution(_ scan: StockScan) -> StockScanFlow.Resolution {
         let resolved = StockScanFlow.resolve(scan, in: store.log)
-        guard case .severalLines = resolved, let pickedItemID, let item = store.log.item(id: pickedItemID) else {
-            return resolved
+        switch resolved {
+        case .severalLines:
+            if let pickedItemID, let chosen = StockScanFlow.chosen(scan, itemID: pickedItemID, in: store.log) { return chosen }
+        case .newProduct:
+            if let linkedItemID, let chosen = StockScanFlow.chosen(scan, itemID: linkedItemID, in: store.log) { return chosen }
+        case .known:
+            break
         }
-        guard let code = scan.lot else { return .known(item: item, lot: nil, newLot: nil) }
-        let lot = store.log.lots(of: item.id).first { $0.code == code }
-        return .known(item: item, lot: lot, newLot: lot == nil ? code : nil)
+        return resolved
+    }
+
+    /// Start on the action the resolution allows first, after the line it means has changed.
+    private func applyDefault(_ scan: StockScan) {
+        apply(StockScanFlow.defaultAction(StockScanFlow.allowed(resolution(scan), expiry: scan.expiry, today: today)))
+    }
+
+    /// Whether the line shown is one the person chose for this code, not yet recorded on it.
+    private func isLinking(_ scan: StockScan) -> Bool {
+        guard linkedItemID != nil, outcome == nil else { return false }
+        return StockScanFlow.resolve(scan, in: store.log) == .newProduct
     }
 
     @ViewBuilder
@@ -164,8 +185,15 @@ struct StockScanSheet: View {
                     Text("Choose").tag(String?.none)
                     ForEach(items) { item in Text(item.name).tag(String?.some(item.id)) }
                 }
-                .onChange(of: pickedItemID) { _, _ in
-                    apply(StockScanFlow.defaultAction(StockScanFlow.allowed(resolution(scan), expiry: scan.expiry, today: today)))
+                .onChange(of: pickedItemID) { _, _ in applyDefault(scan) }
+            }
+            if isLinking(scan) {
+                Text("The carton's code is kept on this line when you record it, so the next scan finds it.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Button("Add as a new line instead") {
+                    linkedItemID = nil
+                    applyDefault(scan)
                 }
             }
             if let lot = scan.lot {
@@ -194,6 +222,23 @@ struct StockScanSheet: View {
             Text("Scanned")
         }
 
+        if StockScanFlow.offersLink(resolved, in: store.log) {
+            Section {
+                NavigationLink {
+                    StockScanLinePicker(store: store) { id in
+                        linkedItemID = id
+                        applyDefault(scan)
+                    }
+                } label: {
+                    Text("Choose a line")
+                }
+            } header: {
+                Text("Which line is this?")
+            } footer: {
+                Text("A line imported from a list may not have this carton's code yet. Choose it, and the code is kept on it.")
+            }
+        }
+
         if case .newProduct = resolved {
             Section {
                 TextField("Name, such as the flu vaccine", text: $newName)
@@ -202,7 +247,7 @@ struct StockScanSheet: View {
                     LabeledContent("Doses per carton") { Text("\(newDosesPerCarton)").monospacedDigit() }
                 }
             } header: {
-                Text("New line")
+                StockScanFlow.offersLink(resolved, in: store.log) ? Text("Or add as a new line") : Text("New line")
             } footer: {
                 Text("A new product is added when it's received or counted.")
             }
@@ -301,6 +346,46 @@ struct StockScanSheet: View {
                                         quantity: StockQuantity(whole: amount))
         outcome = result
         if result.recorded { repeatGuard.recorded(scan.raw, at: Date()) }
+    }
+}
+
+/// "Which line is this?": the list's lines, searchable as the Stock screen is, for a carton whose
+/// code no line carries yet. Choosing one goes back to the scan; nothing is recorded until Record.
+private struct StockScanLinePicker: View {
+    @ObservedObject var store: VanStockStore
+    let onPick: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var search = ""
+
+    var body: some View {
+        let rows = VanStockRows.rows(store.log, query: search)
+        List {
+            ForEach(rows) { row in
+                Button {
+                    onPick(row.id)
+                    dismiss()
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(row.item.name)
+                        if let number = row.item.number {
+                            Text(verbatim: number)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(minHeight: OGMetrics.minTouchTarget, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+            }
+            if rows.isEmpty {
+                Text("Nothing on the list matches that.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .searchable(text: $search, prompt: Text("Part number or description"))
+        .navigationTitle("Which line is this?")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

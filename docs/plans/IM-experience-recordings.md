@@ -1,6 +1,6 @@
 # Plan IM — Experience Recordings (what the crew already knows, one case per recording)
 
-**Status:** ✅ P0 merged 2026-11-27 (PR 1256, build 783) ([below](#p0--contract-amendment-and-the-model-headless)): team-learning §13, the candidate's `tried`/`outcome` and `recording` evidence, the manifest's `equipment_types`, symptom matching in retrieval, recollections ranked below job-confirmed learnings, and the recalled lead-in. Part of P0 was built by Plan NF P0 (2026-11-25): `LearningCandidate.Origin.recollection`, the entry fields `tried`/`outcome`, `LearningEntry.Subject.symptom(equipmentType:phrase:)` and §11. ✅ P1 merged 2026-11-27 (PR 1258, build 784) ([below](#p1--the-recorder-record-experience-phone-and-carplay)): the recorder on the phone and CarPlay. ✅ P2 merged 2026-11-27 (PR 1261, build 786) ([below](#p2--the-drafting-pass-pure-segmentation-model-extraction-validation)): the drafting pass, segmenter, schema-forced extraction and validator, with the schema and ten scripted recollections shared with the office's intake (team-learning §13.1). ✅ P4 headless core merged 2026-11-27 (PR 1263, build 787) ([below](#p4--onboarding-campaign-and-site-brain-dumps)): the coverage count and the list, and site recordings drafting an HV site document; sending the list waits on P3's channel, and the site recording's entry points, its review and the device pass are owed. P3 not built. **Owner decisions on the open questions taken 2026-11-27** ([below](#decided-2026-11-27)); three are built (PR pending): the audio sweep joins `RetentionScheduler`, the spoken markers are translated with English always accepted, and a symptom learning ranks below the model learnings when no equipment type resolves. Drafted 2026-10-16.
+**Status:** ✅ P0 merged 2026-11-27 (PR 1256, build 783) ([below](#p0--contract-amendment-and-the-model-headless)): team-learning §13, the candidate's `tried`/`outcome` and `recording` evidence, the manifest's `equipment_types`, symptom matching in retrieval, recollections ranked below job-confirmed learnings, and the recalled lead-in. Part of P0 was built by Plan NF P0 (2026-11-25): `LearningCandidate.Origin.recollection`, the entry fields `tried`/`outcome`, `LearningEntry.Subject.symptom(equipmentType:phrase:)` and §11. ✅ P1 merged 2026-11-27 (PR 1258, build 784) ([below](#p1--the-recorder-record-experience-phone-and-carplay)): the recorder on the phone and CarPlay. ✅ P2 merged 2026-11-27 (PR 1261, build 786) ([below](#p2--the-drafting-pass-pure-segmentation-model-extraction-validation)): the drafting pass, segmenter, schema-forced extraction and validator, with the schema and ten scripted recollections shared with the office's intake (team-learning §13.1). ✅ P4 headless core merged 2026-11-27 (PR 1263, build 787) ([below](#p4--onboarding-campaign-and-site-brain-dumps)): the coverage count and the list, and site recordings drafting an HV site document; sending the list waits on P3's channel. The site recording's entry points and its review are built (2026-11-28, PR pending): "Tell me about this site" on the recorder page, the Jobs list, Field Assist settings and the CarPlay Jobs list, and "Draft site document" on a reviewer's phone with a read-only summary and the file to share. Saving a reviewed draft into a vault, the live-provider pass and the device pass are owed. P3 not built. **Owner decisions on the open questions taken 2026-11-27** ([below](#decided-2026-11-27)); three are built (PR pending): the audio sweep joins `RetentionScheduler`, the spoken markers are translated with English always accepted, and a symptom learning ranks below the model learnings when no equipment type resolves. Drafted 2026-10-16.
 **Track:** Field Assist (B2B).
 **Depends on:** Plan [FP](FP-team-learnings.md) P0–P3 (shipped: candidate, review, entry, corpus,
 bundle) and FP P4 (the review queue on a screen) before anything here is usable by a supervisor.
@@ -331,11 +331,27 @@ gated on them.
    short labels that a quoted sentence would not fit. A live-provider pass may show this is too strict
    for paraphrasing models (owed check).
 
+**Entry points and review, built 2026-11-28 (PR pending).** "Tell me about this site" is offered
+wherever "Record experience" is, under the same `ExperienceRecordingAvailability` verdict: the
+recorder page picks a case or a site (fixed while recording; the site prompts on the card, the button
+and the status line say which), the Jobs list and Field Assist settings open the page on the site, and
+the CarPlay Jobs list carries a "Tell me about this site" row beside Record experience (one Stop row
+while either records, saying which). The kind each surface starts is `ExperienceRecordingEntry` (pure).
+A site recording is never filed on an open job (the page's footer says so) and is labelled "Site" in
+the kept list and "Site recording" on its page. On a reviewer's phone, not under Medical Compliance
+(`SiteDraftOffer`), a kept site recording offers "Draft site document": `SiteDraftReviewModel` runs
+`SiteRecordingDrafter.live` (P2's seam, the configured provider) against the vault the recording was
+made in, then shows the document read-only (name, where, its units with model and serial as
+validated, its other text) and shares its validated bytes as `site-<id>.json`, for whoever builds the
+vault; a refusal shows the drafter's message and its reasons (HV's issues verbatim, or the member the
+rules stopped at). A vault not on the phone drafts nothing. On any other phone the row says a
+reviewer's phone drafts the site document. Nothing is saved and nothing is installed. Tests in
+`SiteRecordingEntryTests.swift` (`ExperienceRecordingEntryTests`, `SiteDraftReviewModelTests`).
+
 **Owed for P4:** sending the list to technicians and showing it on their card (P3's channel; the value
-and the line exist); the "Tell me about this site" entry on the Jobs list, in Field Assist settings and
-in the car (the recorder takes the kind; nothing offers it yet); where a site draft is reviewed and how a
-reviewed one reaches a vault (HV's documents are baseline vault content, so through the office's vault
-build or an export, not built); the live-provider pass over site recordings; the device pass.
+and the line exist); how a reviewed site draft reaches a vault (HV's documents are baseline vault
+content, so through the office's vault build; today the reviewer shares the file); the live-provider
+pass over site recordings; the device pass.
 
 ## Acceptance
 

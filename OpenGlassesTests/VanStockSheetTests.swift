@@ -370,6 +370,65 @@ final class VanStockSheetTests: XCTestCase {
         XCTAssertEqual(log.item(id: line.id)?.category, "Respiratory")
     }
 
+    // MARK: The category goes out and comes back
+
+    func testAListWithCategoriesWritesThemLastAndAnExportReadsBackUnchanged() throws {
+        var log = VanStockLog()
+        VanStockSheet.apply(try VanStockSheet.proposal(from: clinicTable, log: log).get(), to: &log,
+                            at: time(0), batch: "import", verify: verify)
+        let stock = try exported(log, at: time(10))[0].rows
+        XCTAssertEqual(stock[0], VanStockSheet.Column.allCases.map(\.rawValue) + ["Category"],
+                       "after the hidden Item ID, so every other column keeps its place")
+        let respiratory = try XCTUnwrap(stock.first { $0.count > 1 && $0[column(.partNumber)] == "9901" })
+        XCTAssertEqual(respiratory.last, "Respiratory")
+        let other = try XCTUnwrap(stock.first { $0.count > 1 && $0[column(.partNumber)] == "9903" })
+        XCTAssertEqual(other.count, stock[0].count - 1, "a line with no category leaves the cell empty")
+
+        let sheets = try exported(log, at: time(10))
+        let proposal = try VanStockSheet.proposal(from: sheets, log: log).get()
+        XCTAssertTrue(proposal.changesNothing, "its own export changes nothing: \(proposal)")
+        XCTAssertEqual(proposal.refusals, [])
+    }
+
+    func testAnExportedCategoryIsKeptWhenTheListIsTakenToAnotherPhone() throws {
+        var log = VanStockLog()
+        VanStockSheet.apply(try VanStockSheet.proposal(from: clinicTable, log: log).get(), to: &log,
+                            at: time(0), batch: "import", verify: verify)
+        var fresh = VanStockLog()
+        let proposal = try VanStockSheet.proposal(from: exported(log, at: time(10)), log: fresh).get()
+        VanStockSheet.apply(proposal, to: &fresh, at: time(20), batch: "takeover", verify: verify)
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: fresh.items.compactMap { item in item.number.map { ($0, item.category) } }),
+                       ["9901": "Respiratory", "9902": "Routine", "9903": nil])
+
+        let takeover = try VanStockHandover.takeover(from: exported(log, at: time(10)), at: time(30), batch: "t").get()
+        XCTAssertEqual(takeover.log.items.first { $0.number == "9901" }?.category, "Respiratory",
+                       "a takeover from the workbook keeps the category too")
+    }
+
+    func testACategoryChangedInTheSpreadsheetIsAnEdit() throws {
+        var log = VanStockLog()
+        VanStockSheet.apply(try VanStockSheet.proposal(from: clinicTable, log: log).get(), to: &log,
+                            at: time(0), batch: "import", verify: verify)
+        var sheets = try exported(log, at: time(10))
+        let header = sheets[0].rows[0]
+        let categoryIndex = try XCTUnwrap(header.firstIndex(of: "Category"))
+        sheets[0] = XLSXReader.Sheet(name: sheets[0].name, isHidden: sheets[0].isHidden, rows: sheets[0].rows.map { row in
+            guard row.count > categoryIndex, row[column(.partNumber)] == "9902" else { return row }
+            var row = row
+            row[categoryIndex] = "Travel"
+            return row
+        })
+        let proposal = try VanStockSheet.proposal(from: sheets, log: log).get()
+        XCTAssertEqual(proposal.edits.map(\.changes), [[.category("Travel")]])
+    }
+
+    func testAListNobodyGroupedWritesNoCategoryColumn() throws {
+        XCTAssertFalse(VanStockSheet.writesCategory(log))
+        let stock = try exported(log, at: time(10))[0].rows
+        XCTAssertFalse(stock[0].contains("Category"))
+        XCTAssertEqual(stock[0].count, VanStockSheet.Column.allCases.count)
+    }
+
     func testOnlyANumberedImmunizationHeaderIsACode() throws {
         for header in ["Immunization #", "Immunization#", "Immunisation No.", "Immunization Number", "Vaccine code"] {
             XCTAssertTrue(VanStockSheet.immunisationCodeHeaders.contains(VanStockSheet.headerCode(header)), header)

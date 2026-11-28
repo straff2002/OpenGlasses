@@ -39,6 +39,38 @@ enum StockScanFlow {
         return .known(item: chosen, lot: nil, newLot: code)
     }
 
+    /// The line `scan` means once the person has said which: picked among several sharing the
+    /// product number, or chosen from the whole list for a code no line carries yet ("Which line
+    /// is this?"). The lot is read as `resolve` reads it. Nil when the line is gone, or when the
+    /// code is already on another line and not on this one (`linkConflict`).
+    static func chosen(_ scan: StockScan, itemID: String, in log: VanStockLog) -> Resolution? {
+        guard let item = log.item(id: itemID), linkConflict(scan, itemID: itemID, in: log) == nil else { return nil }
+        guard let code = scan.lot else { return .known(item: item, lot: nil, newLot: nil) }
+        let lot = log.lots(of: item.id).first { $0.code == code }
+        return .known(item: item, lot: lot, newLot: lot == nil ? code : nil)
+    }
+
+    /// Link on first scan: a line imported from a clinic's list has its tariff and short forms but
+    /// no product number, and the carton's code carries no name, so the first scan of its carton
+    /// matches nothing. The person says which line it is, and recording the scan keeps the code
+    /// on that line, in the form `resolve` matches (`StockScan.code`, the GTIN-14 for a GS1 code),
+    /// so the next scan finds it. Whether the sheet offers the choice: a code no line carries, on a
+    /// list that has lines to choose from.
+    static func offersLink(_ resolution: Resolution, in log: VanStockLog) -> Bool {
+        guard case .newProduct = resolution else { return false }
+        return !log.items.isEmpty
+    }
+
+    /// The other line that already carries this code, when the chosen line does not: linking it
+    /// there too would make one carton mean two lines, so it is refused. Nil when the chosen line
+    /// carries it already (several lines sharing a product number, Decision 6) or no line does.
+    static func linkConflict(_ scan: StockScan, itemID: String, in log: VanStockLog) -> VanStockItem? {
+        let forms = scan.gtin.map(StockScan.forms(of:)) ?? [scan.code]
+        let holders = log.items.filter { item in item.codes.contains { forms.contains($0) } }
+        guard !holders.contains(where: { $0.id == itemID }) else { return nil }
+        return holders.first
+    }
+
     /// The four things a scanned carton can be (Plan MY §5). Given is the default.
     enum Action: Equatable, Hashable, Sendable {
         case given

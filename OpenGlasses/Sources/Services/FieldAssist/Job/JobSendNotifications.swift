@@ -93,6 +93,9 @@ final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegat
     var openCheckIn: ((_ dayKey: String) -> Void)?
     /// Where a tap on the daily allowance's notification lands (Plan NH): the subscription sheet.
     var openSubscription: (() -> Void)?
+    /// Where a tap on a notification that names a place in the Jobs tab lands: the weekly stock
+    /// count reminder (Plan MY §6), which opens the stock screen's count sheet.
+    var openJobList: ((JobListRequest) -> Void)?
     /// Where a button press goes (Plan LM P2) — the hub by default; injected for tests.
     private let routeAction: @MainActor (NotificationActionPress) -> Void
 
@@ -105,12 +108,15 @@ final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegat
 
     /// Handle one response: a button press goes to its handler, a tap opens its card or tab as before,
     /// a dismissal does nothing. What `didReceive` does, callable without a `UNNotificationResponse`.
-    func handle(_ response: NotificationActionResponse, userInfo: [AnyHashable: Any]) {
+    /// `identifier` is the request's: the stock count reminder is known by it alone.
+    func handle(_ response: NotificationActionResponse, userInfo: [AnyHashable: Any], identifier: String = "") {
         switch response {
         case .press(let press):
             routeAction(press)
         case .tap:
-            if AllowanceNotification.opensSubscription(userInfo), let openSubscription {
+            if let request = StockCountReminderPolicy.jobListRequest(forTapped: identifier), let openJobList {
+                openJobList(request)
+            } else if AllowanceNotification.opensSubscription(userInfo), let openSubscription {
                 openSubscription()
             } else if let dayKey = CheckInNotificationPolicy.dayKey(from: userInfo), let openCheckIn {
                 openCheckIn(dayKey)
@@ -151,12 +157,13 @@ final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegat
                                             didReceive response: UNNotificationResponse,
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         let content = response.notification.request.content
+        let identifier = response.notification.request.identifier
         let userInfo = content.userInfo
         let parsed = NotificationActionResponse.parse(actionIdentifier: response.actionIdentifier,
                                                       categoryIdentifier: content.categoryIdentifier,
                                                       userInfo: userInfo)
         Task { @MainActor in
-            self.handle(parsed, userInfo: userInfo)
+            self.handle(parsed, userInfo: userInfo, identifier: identifier)
             completionHandler()
         }
     }
