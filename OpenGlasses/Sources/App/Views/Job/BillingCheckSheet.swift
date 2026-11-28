@@ -169,7 +169,8 @@ struct BillingCheckSheet: View {
             Section {
                 Text(verbatim: wording.summary(result))
                 if skipped > 0 {
-                    Text("\(skipped) rows had no readable date or tariff and were left out.")
+                    (skipped == 1 ? Text("1 row had no readable date or tariff and was left out.")
+                                  : Text("\(skipped) rows had no readable date or tariff and were left out."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -189,7 +190,7 @@ struct BillingCheckSheet: View {
                 Section {
                     ForEach(result.reconciliation.unmatchedVaccines, id: \.vaccine) { entry in
                         LabeledContent {
-                            Text("\(entry.rows) rows")
+                            entry.rows == 1 ? Text("1 row") : Text("\(entry.rows) rows")
                         } label: {
                             Text(verbatim: entry.vaccine)
                         }

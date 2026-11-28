@@ -126,6 +126,9 @@ final class VanStockService {
     private let systemLink: SystemLink
 
     private var lastWrite: (signature: String, at: Date, answer: String)?
+    /// Why the write in hand was refused, as the scan sheet can say it. Only `recordScan` reads
+    /// it, having cleared it first; a spoken write's answer is its sentence.
+    private var scanProblem: StockScanFlow.Problem?
 
     init(store: VanStockStore? = nil,
          verify: (@MainActor (String) -> TaskPart)? = nil,
@@ -1010,7 +1013,10 @@ final class VanStockService {
                         source: VanStockMovement.Source, mayCreate: Bool) -> Target {
         // The scan sheet chose the line already.
         if let itemID = line.itemID {
-            guard let item = log.item(id: itemID) else { return .failure(composer.notOnVan(line.reference)) }
+            guard let item = log.item(id: itemID) else {
+                scanProblem = .lineGone
+                return .failure(composer.notOnVan(line.reference))
+            }
             attach(line, to: item, in: &log, batch: batch, at: at, source: source)
             return .success(Found(item: log.item(id: item.id) ?? item, created: false))
         }
@@ -1181,6 +1187,13 @@ final class VanStockService {
     /// is refused, with the offer to record it as wasted (Decision 4).
     private func lotChoice(_ purpose: LotPurpose, item: VanStockItem, line: Line, log: inout VanStockLog,
                            batch: String, at: Date) -> Result<StockLot?, StockWriteRefusal> {
+        func refused(_ problem: StockScanFlow.Problem, _ sentence: String) -> Result<StockLot?, StockWriteRefusal> {
+            scanProblem = problem
+            return .failure(.init(sentence: sentence))
+        }
+        func several(_ candidates: [StockLot]) -> StockScanFlow.Problem {
+            .whichLot(line: item.name, lots: StockExpiry.oldestFirst(candidates).map(\.code))
+        }
         let lots = log.lots(of: item.id)
         let levels = log.level(of: item.id).lots
         let chosen: StockLot?
@@ -1189,22 +1202,22 @@ final class VanStockService {
             case .one(let lot):
                 chosen = lot
             case .several(let candidates):
-                return .failure(.init(sentence: lotComposer.whichLot(item, lots: candidates, levels: levels, today: today)))
+                return refused(several(candidates), lotComposer.whichLot(item, lots: candidates, levels: levels, today: today))
             case .none:
                 guard line.lotFromScan else {
-                    return .failure(.init(sentence: lotComposer.lotNotHeld(item, said: said, lots: lots)))
+                    return refused(.lotNotOnLine(lot: said, line: item.name), lotComposer.lotNotHeld(item, said: said, lots: lots))
                 }
                 switch purpose {
                 case .receive, .count:
                     guard let lot = log.addLot(id: makeID(), itemID: item.id, code: said, expiry: line.expiry,
                                                receivedAt: at, batch: batch) else {
-                        return .failure(.init(sentence: lotComposer.lotNotHeld(item, said: said, lots: lots)))
+                        return refused(.other, lotComposer.lotNotHeld(item, said: said, lots: lots))
                     }
                     return .success(lot)
                 case .give:
-                    return .failure(.init(sentence: lotComposer.newLotOnGiven(item, code: said)))
+                    return refused(.lotNotOnLine(lot: said, line: item.name), lotComposer.newLotOnGiven(item, code: said))
                 case .waste, .remove:
-                    return .failure(.init(sentence: lotComposer.lotNotHeld(item, said: said, lots: lots)))
+                    return refused(.lotNotOnLine(lot: said, line: item.name), lotComposer.lotNotHeld(item, said: said, lots: lots))
                 }
             }
         } else {
@@ -1214,24 +1227,27 @@ final class VanStockService {
                 chosen = nil
             case .give, .waste, .remove, .count:
                 if inStock.count > 1 {
-                    return .failure(.init(sentence: lotComposer.whichLot(item, lots: inStock, levels: levels, today: today)))
+                    return refused(several(inStock), lotComposer.whichLot(item, lots: inStock, levels: levels, today: today))
                 }
                 chosen = inStock.first
             }
         }
         if purpose == .give, VaccineStockPolicy.refusesExpiredGiven, let lot = chosen,
            StockExpiry.isExpired(lot, today: today) {
-            return .failure(.init(sentence: lotComposer.expiredOnGiven(item, lot: lot)))
+            return refused(.lotExpired(lot: lot.code, line: item.name), lotComposer.expiredOnGiven(item, lot: lot))
         }
         return .success(chosen)
     }
 
     // MARK: - The scan sheet (Plan MY §5)
 
-    /// What a tap on the scan sheet did: whether anything was recorded, and the read-back.
+    /// What a tap on the scan sheet did: whether anything was recorded, and the read-back. The
+    /// read-back is English, as everything the assistant reads is; the sheet shows `problem`,
+    /// which is set exactly when nothing was recorded.
     struct ScanOutcome: Equatable {
         let recorded: Bool
         let answer: String
+        var problem: StockScanFlow.Problem?
     }
 
     /// A new line the scan sheet is adding: its name and how many doses a carton holds.
@@ -1247,11 +1263,16 @@ final class VanStockService {
     /// both back; a code already on another line is refused (`StockScanFlow.linkConflict`).
     func recordScan(_ action: StockScanFlow.Action, scan: StockScan, itemID: String?,
                     newLine: NewScannedLine? = nil, quantity: StockQuantity) -> ScanOutcome {
-        guard !store.isUnreadable else { return ScanOutcome(recorded: false, answer: unreadable) }
+        guard !store.isUnreadable else {
+            return ScanOutcome(recorded: false, answer: unreadable, problem: .listUnreadable)
+        }
         if let itemID, let holder = StockScanFlow.linkConflict(scan, itemID: itemID, in: store.log) {
-            return ScanOutcome(recorded: false, answer: "That code is already on \(holder.name). Nothing was changed.")
+            return ScanOutcome(recorded: false, answer: "That code is already on \(holder.name). Nothing was changed.",
+                               problem: .codeOnAnotherLine(holder.name))
         }
         lastWrite = nil
+        scanProblem = nil
+        defer { scanProblem = nil }
         let line = Line(description: newLine?.name, quantity: quantity, code: scan.code, asNew: newLine != nil,
                         lot: scan.lot, lotFromScan: scan.lot != nil, expiry: scan.expiry,
                         dosesPerCarton: newLine?.dosesPerCarton, itemID: itemID)
@@ -1264,7 +1285,16 @@ final class VanStockService {
         case .counted: answer = count([line], source: .scanned)
         }
         lastWrite = nil
-        return ScanOutcome(recorded: store.log.movements.count > before, answer: answer)
+        guard store.log.movements.count == before else { return ScanOutcome(recorded: true, answer: answer) }
+        let problem: StockScanFlow.Problem
+        if let systemName {
+            problem = .heldBySystem(systemName)
+        } else if !quantity.isInRange || (quantity == .zero && action != .counted) {
+            problem = .amountOutOfRange
+        } else {
+            problem = scanProblem ?? .other
+        }
+        return ScanOutcome(recorded: false, answer: answer, problem: problem)
     }
 
     private func unknownUnit(_ raw: String) -> String {

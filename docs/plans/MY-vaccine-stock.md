@@ -28,7 +28,12 @@ a carton whose code no line carries offers "Which line is this?" (§5): the chos
 GTIN-14 in its codes in the same entry as the movement, so one Undo takes both back and the next
 scan finds it; a code already on another line is refused. Owed: the new screen strings to a
 catalog sync; a simulator look at the link and the reminder tap; a takeover workbook drops a line's
-codes as well as its lots, so a linked carton is linked again on the new phone.
+codes as well as its lots, so a linked carton is linked again on the new phone. **2026-11-29:** what
+the EMR check, the billing check and the scan sheet say is screen text in the phone's language, with
+its plurals and dates. A scan that records nothing now gives the sheet a reason of its own
+(`StockScanFlow.Problem`, worded by `StockScanText.problem`); before, it showed the assistant's
+English answer, instructions to the model included. That answer is unchanged. The new
+strings are translated in a catalog PR of their own.
 **Track:** Field Assist stock, for a medical clinic. The phone, not the glasses (Decision 10).
 **Builds on:**
 - Plan [IH](IH-van-stock.md): the phone's own stock list. That means the append-only movement log

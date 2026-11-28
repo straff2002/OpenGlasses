@@ -38,17 +38,15 @@ final class BillingFindingWordingTests: XCTestCase {
     func testADoseNotBilledReadsAsAMissedClaim() {
         let finding = ImmunisationReconciliation.Finding.givenNotInEMR(itemID: "mmr", day: day22, lot: "", count: 1)
         let text = wording.sentence(finding)
-        XCTAssertTrue(text.hasPrefix("1 dose of Samplemune (9002) on "), text)
-        XCTAssertTrue(text.hasSuffix("was given here but not billed that day."), text)
+        XCTAssertEqual(text, "1 dose of Samplemune (9002) given here on \(StockScanText.day(day22)) was not billed that day.")
         XCTAssertFalse(text.contains("EMR"), "a bill is not the EMR's record: \(text)")
         XCTAssertFalse(text.contains("lot"), "with no lot column no lot is mentioned")
     }
 
     func testAClaimWithNoDoseHereMayMeanTheStockIsHigh() {
         let text = wording.sentence(.inEMRNotGiven(itemID: "flu", day: day22, lot: "ZZ3001", count: 2))
-        XCTAssertTrue(text.contains("2 doses of Examplevax"), text)
-        XCTAssertTrue(text.contains("lot ZZ3001"), text)
-        XCTAssertTrue(text.hasSuffix("were billed but not recorded as given here, so the stock figure may be high."), text)
+        XCTAssertEqual(text, "2 doses of Examplevax (9001) from lot ZZ3001 billed on \(StockScanText.day(day22)) were not "
+                       + "recorded as given here, so the stock figure may be high.")
     }
 
     func testADifferentLotAndANearbyDayAreSaidPlainly() {
@@ -56,6 +54,9 @@ final class BillingFindingWordingTests: XCTestCase {
             .contains("recorded here from lot ZZ3001 and billed under lot ZZ3009"))
         XCTAssertTrue(wording.sentence(.nearby(itemID: "flu", here: day22, emr: day23, lot: "", count: 1))
             .hasSuffix("nearby, not missing."))
+        XCTAssertEqual(wording.sentence(.differentLot(itemID: "flu", day: day22, here: "", emr: "ZZ3009", count: 2)),
+                       "2 doses of Examplevax (9001) on \(StockScanText.day(day22)) were recorded here from lot (none) and "
+                       + "billed under lot ZZ3009. One of the two records likely has a typo.")
     }
 
     // MARK: - A shared code
@@ -66,9 +67,14 @@ final class BillingFindingWordingTests: XCTestCase {
                                        BillingRecord(day: day22, tariff: "9050", lot: "")])
         XCTAssertEqual(result.sharedCodes.count, 1)
         let text = wording.sentence(result.sharedCodes[0])
-        XCTAssertEqual(text, "2 claims were billed under a shared code, 9050, which 2 lines carry: Testazos and Mockarsv. "
+        let lines = ["Testazos", "Mockarsv"].formatted(.list(type: .and))
+        XCTAssertEqual(text, "2 claims were billed under a shared code, 9050, carried by these lines: \(lines). "
                        + "They are left for staff to assign, and those lines are left out of the check.")
-        XCTAssertTrue(wording.summary(result).hasSuffix(" 2 claims were billed under a shared code."), wording.summary(result))
+        XCTAssertTrue(wording.summary(result).hasSuffix("\n2 claims were billed under a shared code."), wording.summary(result))
+
+        let one = BillingReconciliation.SharedCode(tariff: "9050", itemIDs: ["zos", "rsv"], rows: 1)
+        XCTAssertEqual(wording.sentence(one), "1 claim was billed under a shared code, 9050, carried by these lines: \(lines). "
+                       + "It is left for staff to assign, and those lines are left out of the check.")
     }
 
     // MARK: - The summary
@@ -82,7 +88,7 @@ final class BillingFindingWordingTests: XCTestCase {
         let missed = compare(doses: [.init(itemID: "flu", day: day22, lot: "", count: 1),
                                      .init(itemID: "mmr", day: day22, lot: "", count: 1)],
                              records: [BillingRecord(day: day22, tariff: "9001", lot: "")])
-        XCTAssertTrue(wording.summary(missed).hasSuffix(": 1 dose given here not billed that day."), wording.summary(missed))
+        XCTAssertTrue(wording.summary(missed).hasSuffix(": 1 dose given here but not billed that day."), wording.summary(missed))
         XCTAssertTrue(wording.summary(missed).hasPrefix("From "), "the check spans the export's days")
     }
 

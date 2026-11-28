@@ -71,6 +71,25 @@ enum StockScanFlow {
         return holders.first
     }
 
+    /// Why nothing was recorded, for the sheet to say in the phone's language
+    /// (`StockScanText.problem`). The service's own answer is the assistant's: English, worded as
+    /// instructions to a model, and never put on the screen.
+    enum Problem: Equatable {
+        case listUnreadable
+        /// The business's own system holds the count.
+        case heldBySystem(String)
+        /// The code is already another line's: its name.
+        case codeOnAnotherLine(String)
+        case lineGone
+        case amountOutOfRange
+        /// The code does not say which of these lots, oldest expiry first.
+        case whichLot(line: String, lots: [String])
+        /// A lot the line does not hold, on something other than Received or Count.
+        case lotNotOnLine(lot: String, line: String)
+        case lotExpired(lot: String, line: String)
+        case other
+    }
+
     /// The four things a scanned carton can be (Plan MY §5). Given is the default.
     enum Action: Equatable, Hashable, Sendable {
         case given

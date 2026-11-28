@@ -261,8 +261,8 @@ struct StockScanSheet: View {
             Section {
                 Label(outcome.recorded ? "Recorded." : "Nothing was recorded.",
                       systemImage: outcome.recorded ? "checkmark.circle" : "xmark.circle")
-                if !outcome.recorded {
-                    Text(verbatim: outcome.answer)
+                if let problem = outcome.problem {
+                    Text(verbatim: StockScanText.problem(problem))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -495,6 +495,27 @@ enum StockScanText {
         case .truncated, .tooLong: return String(localized: "That code was read only in part. Scan it again.")
         case .empty, .unknownAI, .notDigits, .repeatedAI, .badCharacters:
             return String(localized: "That code couldn't be read safely. Scan it again.")
+        }
+    }
+
+    /// Why a tap on Record recorded nothing, in a sentence for the person holding the carton.
+    static func problem(_ problem: StockScanFlow.Problem) -> String {
+        switch problem {
+        case .listUnreadable: return String(localized: "The list on this phone can't be read.")
+        case .heldBySystem(let system):
+            return String(localized: "Stock is kept in \(system). Receiving and counting are done there; what is used is noted here and sent once confirmed.")
+        case .codeOnAnotherLine(let line):
+            return String(localized: "That code is already on \(line). Nothing was changed.")
+        case .lineGone: return String(localized: "That line is no longer on the list. Scan the carton again.")
+        case .amountOutOfRange: return String(localized: "That amount can't be recorded. Change it and try again.")
+        case .whichLot(let line, let lots):
+            let list = lots.formatted(.list(type: .and))
+            return String(localized: "\(line) has more than one lot: \(list). This code doesn't say which. Scan the square code on the carton, which gives the lot.")
+        case .lotNotOnLine(let lot, let line):
+            return String(localized: "Lot \(lot) isn't on \(line) yet. It's added when it's received or counted.")
+        case .lotExpired(let lot, let line):
+            return String(localized: "Lot \(lot) of \(line) has expired. It can't be recorded as given; record it as wasted.")
+        case .other: return String(localized: "Check the line on the Stock screen, then scan the carton again.")
         }
     }
 
