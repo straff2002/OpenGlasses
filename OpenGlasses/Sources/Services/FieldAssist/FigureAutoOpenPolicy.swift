@@ -33,6 +33,8 @@ enum ManualTurnClassifier {
         guard !words.isEmpty else { return .statement }
         if ManualTurnScope.isJobManagement(turn) { return .jobBookkeeping }
         if isCorrection(words) { return .correction }
+        // Build 799: "the voltage show me 125 V" is a meter's reading, not a page request.
+        if ShowMeReadout.isReadout(words: words) { return .reading }
         if isShowMe(words) { return .showMe }
         let asks = isQuestion(turn, words: words)
         if !asks, isReading(words) { return .reading }

@@ -20,8 +20,13 @@ struct VisionIntentDetector {
     static func classify(_ transcript: String) -> CameraIntent {
         let lower = transcript.lowercased()
 
+        // A meter's reading said aloud ("the voltage show me 125 V", build 799) asks for no look:
+        // its "show me" is not a trigger, though any other phrase in it still is.
+        let readout = ShowMeReadout.isReadout(transcript)
+
         // Direct vision trigger phrases
         for phrase in visionPhrases {
+            if readout, phrase == "show me" { continue }
             if lower.contains(phrase) { return .vision }
         }
 
